@@ -1,1 +1,2 @@
-worker: python "Telegram bot Railway app.py"
+worker: python bot.py
+
