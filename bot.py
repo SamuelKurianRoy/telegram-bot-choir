@@ -1,17 +1,3 @@
-# Load JSON key from Railway environment variables
-import os
-import json
-import tempfile
-
-
-
-
-FILE_ID = os.getenv("FILE_ID")
-TOKEN = os.getenv("TOKEN")
-SCOPES=["https://www.googleapis.com/auth/drive"]
-
-
-
 import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler,ConversationHandler, MessageHandler, filters, CallbackContext
@@ -24,22 +10,58 @@ import numpy as np
 from telegram import Update, ReplyKeyboardMarkup
 import logging
 from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
+import os
+import json
+
+import os
+# Retrieve variables l1 to l28 from the environment
+lines = [os.getenv(f"l{i}") for i in range(1, 29)]  # Assuming l1 to l28 exist
+
+# Check if any variable is missing
+if None in lines:
+    missing = [f"l{i}" for i in range(1, 29) if os.getenv(f"l{i}") is None]
+    raise ValueError(f"Missing environment variables: {', '.join(missing)}")
+
+# Join them into a single private key
+private_key = "\n".join(lines)
+
+print(private_key)  # Debugging purpose
+
+
+# Dynamically construct the service account JSON
+service_account_data = {
+    "type": os.getenv("type"),
+    "project_id": os.getenv("project_id"),
+    "private_key_id": os.getenv("private_key_id"),
+    "private_key": private_key, # Fix newlines
+    "client_email": os.getenv("client_email"),
+    "client_id": os.getenv("client_id"),
+    "auth_uri": os.getenv("auth_uri"),
+    "token_uri": os.getenv("token_uri"),
+    "auth_provider_x509_cert_url": os.getenv("auth_provider_x509_cert_url"),
+    "client_x509_cert_url": os.getenv("client_x509_cert_url"),
+    "universe_domain": os.getenv("universe_domain"),
+}
+
+# Save the JSON to a temporary file
+KEY_PATH = "service_account.json"
+with open(KEY_PATH, "w") as f:
+    json.dump(service_account_data, f)
+
+# Set the GOOGLE_APPLICATION_CREDENTIALS environment variable
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = KEY_PATH
+
+# Existing environment variables
+FILE_ID = os.getenv("FILE_ID")
+TOKEN = os.getenv("TOKEN")
+SCOPES = ["https://www.googleapis.com/auth/drive"]
+
+print("✅ Environment variables loaded successfully!")
+
+
 
 # Enable logging
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
-
-# Load JSON key from environment variables
-KEY_JSON = os.getenv("KEY_JSON")  # This contains the entire JSON file content
-
-if KEY_JSON:
-    # Save JSON key to a temporary file
-    with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json") as temp_key_file:
-        temp_key_file.write(KEY_JSON)
-        KEY_PATH = temp_key_file.name  # This is the new path to the JSON key
-
-    print(f"Temporary JSON key saved at: {KEY_PATH}")  # Debugging
-else:
-    print("ERROR: KEY_JSON environment variable not found!")
 
 # Step 1: Authenticate and build the drive service
 creds = service_account.Credentials.from_service_account_file(KEY_PATH, scopes=SCOPES)
