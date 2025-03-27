@@ -19,7 +19,7 @@ else:
 
 FILE_ID = os.getenv("FILE_ID")
 TOKEN = os.getenv("TOKEN")
-SCOPES = os.getenv("SCOPES")
+SCOPES=["https://www.googleapis.com/auth/drive"]
 
 
 
