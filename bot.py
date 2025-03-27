@@ -3,18 +3,7 @@ import os
 import json
 import tempfile
 
-# Load JSON key from environment variables
-KEY_JSON = os.getenv("KEY_JSON")  # This contains the entire JSON file content
 
-if KEY_JSON:
-    # Save JSON key to a temporary file
-    with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json") as temp_key_file:
-        temp_key_file.write(KEY_JSON)
-        KEY_PATH = temp_key_file.name  # This is the new path to the JSON key
-
-    print(f"Temporary JSON key saved at: {KEY_PATH}")  # Debugging
-else:
-    print("ERROR: KEY_JSON environment variable not found!")
 
 
 FILE_ID = os.getenv("FILE_ID")
@@ -38,6 +27,19 @@ from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 # Enable logging
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
+
+# Load JSON key from environment variables
+KEY_JSON = os.getenv("KEY_JSON")  # This contains the entire JSON file content
+
+if KEY_JSON:
+    # Save JSON key to a temporary file
+    with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json") as temp_key_file:
+        temp_key_file.write(KEY_JSON)
+        KEY_PATH = temp_key_file.name  # This is the new path to the JSON key
+
+    print(f"Temporary JSON key saved at: {KEY_PATH}")  # Debugging
+else:
+    print("ERROR: KEY_JSON environment variable not found!")
 
 # Step 1: Authenticate and build the drive service
 creds = service_account.Credentials.from_service_account_file(KEY_PATH, scopes=SCOPES)
