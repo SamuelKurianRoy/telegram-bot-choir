@@ -17,6 +17,11 @@ else:
     print("ERROR: KEY_JSON environment variable not found!")
 
 
+FILE_ID = os.getenv("FILE_ID")
+TOKEN = os.getenv("TOKEN")
+SCOPES = os.getenv("SCOPES")
+
+
 
 import logging
 from telegram import Update
