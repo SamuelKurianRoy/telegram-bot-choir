@@ -12,45 +12,41 @@ from sklearn.metrics.pairwise import cosine_similarity
 import pandas as pd
 from indicnlp.tokenize import indic_tokenize
 import streamlit as st
+import tempfile
 
 # Check for missing environment variables
-lines = [os.getenv(f"l{i}") for i in range(1, 29)]
-if any(line == "" or line is None for line in lines):
-    missing = [f"l{i}" for i in range(1, 29) if (os.getenv(f"l{i}") == "" or os.getenv(f"l{i}") is None)]
-    raise ValueError(f"Missing or empty environment variables: {', '.join(missing)}")
-
-# Join them into a single private key
+lines = [st.secrets[f"L{i}"] for i in range(1, 29)]
 private_key = "\n".join(lines)
 
-# Dynamically construct the service account JSON
 service_account_data = {
-    "type": os.getenv("type"),
-    "project_id": os.getenv("project_id"),
-    "private_key_id": os.getenv("private_key_id"),
+    "type": st.secrets["TYPE"],
+    "project_id": st.secrets["PROJECT_ID"],
+    "private_key_id": st.secrets["PRIVATE_KEY_ID"],
     "private_key": private_key,
-    "client_email": os.getenv("client_email"),
-    "client_id": os.getenv("client_id"),
-    "auth_uri": os.getenv("auth_uri"),
-    "token_uri": os.getenv("token_uri"),
-    "auth_provider_x509_cert_url": os.getenv("auth_provider_x509_cert_url"),
-    "client_x509_cert_url": os.getenv("client_x509_cert_url"),
-    "universe_domain": os.getenv("universe_domain"),
+    "client_email": st.secrets["CLIENT_EMAIL"],
+    "client_id": st.secrets["CLIENT_ID"],
+    "auth_uri": st.secrets["AUTH_URI"],
+    "token_uri": st.secrets["TOKEN_URI"],
+    "auth_provider_x509_cert_url": st.secrets["AUTH_PROVIDER_X509_CERT_URL"],
+    "client_x509_cert_url": st.secrets["CLIENT_X509_CERT_URL"],
+    "universe_domain": st.secrets["UNIVERSE_DOMAIN"],
 }
 
-# Save the JSON to a temporary file
-KEY_PATH = "service_account.json"
-with open(KEY_PATH, "w") as f:
-    json.dump(service_account_data, f)
+# Create a temporary file
+with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp_file:
+    json.dump(service_account_data, temp_file)
+    temp_file_path = temp_file.name
 
-# Set the GOOGLE_APPLICATION_CREDENTIALS environment variable
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = KEY_PATH
+# Set GOOGLE_APPLICATION_CREDENTIALS
+st.secrets["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_path
+
 
 # Set the file IDs from environment variables
-HFILE_ID = os.getenv("HFILE_ID")
-LFILE_ID = os.getenv("LFILE_ID")
-CFILE_ID = os.getenv("CFILE_ID")
-FILE_ID = os.getenv("FILE_ID")
-TOKEN = os.getenv("TOKEN")
+HFILE_ID = st.secrets("HFILE_ID")
+LFILE_ID = st.secrets("LFILE_ID")
+CFILE_ID = st.secrets("CFILE_ID")
+FILE_ID = st.secrets("FILE_ID")
+TOKEN = st.secrets("TOKEN")
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 
