@@ -1,39 +1,35 @@
-import logging
-from telegram import Update
-from telegram.ext import Application, CommandHandler,ConversationHandler, MessageHandler, filters, CallbackContext
-import pandas as pd
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-import io
+from concurrent.futures import ThreadPoolExecutor
 from googleapiclient.http import MediaIoBaseDownload
-import numpy as np
-from telegram import Update, ReplyKeyboardMarkup
-import logging
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
+import io
+import pandas as pd
 import os
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
 import json
+import logging
+from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackContext
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import pandas as pd
+from indicnlp.tokenize import indic_tokenize
 
-import os
-# Retrieve variables l1 to l28 from the environment
-lines = [os.getenv(f"l{i}") for i in range(1, 29)]  # Assuming l1 to l28 exist
-
-# Check if any variable is missing
-if None in lines:
-    missing = [f"l{i}" for i in range(1, 29) if os.getenv(f"l{i}") is None]
-    raise ValueError(f"Missing environment variables: {', '.join(missing)}")
+# Check for missing environment variables
+lines = [os.getenv(f"l{i}") for i in range(1, 29)]
+if any(line == "" or line is None for line in lines):
+    missing = [f"l{i}" for i in range(1, 29) if (os.getenv(f"l{i}") == "" or os.getenv(f"l{i}") is None)]
+    raise ValueError(f"Missing or empty environment variables: {', '.join(missing)}")
 
 # Join them into a single private key
 private_key = "\n".join(lines)
-
-print(private_key)  # Debugging purpose
-
 
 # Dynamically construct the service account JSON
 service_account_data = {
     "type": os.getenv("type"),
     "project_id": os.getenv("project_id"),
     "private_key_id": os.getenv("private_key_id"),
-    "private_key": private_key, # Fix newlines
+    "private_key": private_key,
     "client_email": os.getenv("client_email"),
     "client_id": os.getenv("client_id"),
     "auth_uri": os.getenv("auth_uri"),
@@ -51,21 +47,57 @@ with open(KEY_PATH, "w") as f:
 # Set the GOOGLE_APPLICATION_CREDENTIALS environment variable
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = KEY_PATH
 
-# Existing environment variables
+# Set the file IDs from environment variables
+HFILE_ID = os.getenv("HFILE_ID")
+LFILE_ID = os.getenv("LFILE_ID")
+CFILE_ID = os.getenv("CFILE_ID")
 FILE_ID = os.getenv("FILE_ID")
 TOKEN = os.getenv("TOKEN")
+
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 print("✅ Environment variables loaded successfully!")
 
-
-
 # Enable logging
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
-# Step 1: Authenticate and build the drive service
+# Authenticate and build the drive service
 creds = service_account.Credentials.from_service_account_file(KEY_PATH, scopes=SCOPES)
 drive_service = build("drive", "v3", credentials=creds)
+
+def download_file(file_id, label):
+    """Downloads a Google Sheet file and loads it into a Pandas DataFrame"""
+    request = drive_service.files().export_media(
+        fileId=file_id,
+        mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    file_data = io.BytesIO()
+    downloader = MediaIoBaseDownload(file_data, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+
+    file_data.seek(0)  # Reset file pointer
+
+    # Load the Excel data into Pandas
+    try:
+        df = pd.read_excel(file_data)
+        print(f"✅ {label} has been loaded!")
+        return df
+    except Exception as e:
+        print(f"❌ Failed to load {label}: {e}")
+        return None
+
+# Use ThreadPoolExecutor to download both files concurrently
+with ThreadPoolExecutor(max_workers=2) as executor:
+    future_HFILE = executor.submit(download_file, HFILE_ID, "Hymn Index")
+    future_LFILE = executor.submit(download_file, LFILE_ID, "Lyric Index")
+    future_CFILE = executor.submit(download_file, CFILE_ID, "Convention Index")
+
+    dfH = future_HFILE.result()
+    dfL = future_LFILE.result()
+    dfC = future_CFILE.result()
 
 # Step 2: Download the file into memory
 request = drive_service.files().get_media(fileId=FILE_ID)
@@ -79,44 +111,23 @@ file_data.seek(0)  # Reset file pointer
 
 # Step 3: Read the Excel file into Pandas
 try:
-    xls = pd.ExcelFile(file_data)  # Read the file into an ExcelFile object
+    xls = pd.ExcelFile(file_data)
     print("Excel file loaded successfully.")
 except Exception as e:
     print(f"Failed to load Excel file: {e}")
 
-# Step 4: Try to read specific sheets and handle errors
-yr23 = None
-yr24 = None
-yr25 = None
-df = None
+# Load sheets into respective variables
+sheets = {"2023": None, "2024": None, "2025": None, "Sheet 1": None}
+for sheet in sheets:
+    try:
+        sheets[sheet] = pd.read_excel(xls, sheet_name=sheet)
+        print(f"✅ Successfully loaded the '{sheet}' sheet.")
+    except ValueError:
+        print(f"❌ Sheet '{sheet}' not found.")
 
-# Attempt to load '2023' sheet
-try:
-    yr23 = pd.read_excel(xls, sheet_name="2023")
-    print("Successfully loaded the '2023' sheet.")
-except ValueError:
-    print("Sheet '2023' not found.")
+# Assign variables
+yr23, yr24, yr25, df = sheets["2023"], sheets["2024"], sheets["2025"], sheets["Sheet 1"]
 
-# Attempt to load '2024' sheet
-try:
-    yr24 = pd.read_excel(xls, sheet_name="2024")
-    print("Successfully loaded the '2024' sheet.")
-except ValueError:
-    print("Sheet '2024' not found.")
-
-# Attempt to load '2025' sheet
-try:
-    yr25 = pd.read_excel(xls, sheet_name="2025")
-    print("Successfully loaded the '2025' sheet.")
-except ValueError:
-    print("Sheet '2025' not found.")
-
-# Attempt to load 'Sheet 1' sheet
-try:
-    df = pd.read_excel(xls, sheet_name="Sheet 1")
-    print("Successfully loaded the 'Sheet 1' sheet.")
-except ValueError:
-    print("Sheet 'Sheet 1' not found.")
 
 
 def yrDataPreprocessing():
@@ -151,6 +162,29 @@ df= df[pd.to_datetime(df['Date'],errors='coerce').notna()]
 df = df[df['Date'].notna()]
 df.reset_index(drop=True,inplace=True)
 df['Date'] = pd.to_datetime(df['Date']).dt.date
+
+def standardize_song_columns(df):
+    standardized_df = df.copy()
+    song_columns = [col for col in df.columns if col != 'Date']
+    
+    for col in song_columns:
+        standardized_df[col] = standardized_df[col].astype(str).apply(lambda x: re.sub(r'\s+', '', x))
+    
+    return standardized_df
+df = standardize_song_columns(df)
+
+
+
+
+def standardize_hlc_value(value):
+    
+    # Replace multiple consecutive hyphens with a single hyphen
+    value = re.sub(r'-+', '-', value)
+    # Remove spaces around the hyphen and strip extra spaces
+    value = re.sub(r'\s*-+\s*', '-', value).strip()
+    return value
+
+    
 
 
 def ChoirVocabulary():
@@ -211,10 +245,10 @@ def ChoirVocabulary():
   def Vocabulary():
 
     # Create a DataFrame called vocabulary with these three series
-    vocabulary = pd.DataFrame({'Hymn no': unique_sorted_hymn, 'Lyric no': lyric_unique_sorted, 'Convention no': convention_unique_sorted})
+    vocabulary = pd.DataFrame({'Hymn no': unique_sorted_hymn.astype("string"), 'Lyric no': lyric_unique_sorted.astype('string'), 'Convention no': convention_unique_sorted.astype('string')})
 
     # Display the vocabulary DataFrame
-    vocabulary= vocabulary.fillna(0).astype(int)
+    vocabulary= vocabulary.fillna('')
     return vocabulary
 
 
@@ -234,73 +268,191 @@ VOCABULARY_CATEGORIES = {
 }
 
 
-def isVocabulary(Song):
-  Found= False
-  song=Song.strip()
-  if (Song.startswith("H")):
-    Song=song.replace('H','')
-    song=Song.strip()
-    Song=song.replace("-",'')
-    song= Song.strip()
-    song=int(song)
-    for i in Vocabulary['Hymn no']:
-      if i == song:
-        Found = True
-        break
-      else:
-        pass
 
-  elif (Song.startswith("L")):
-    Song=song.replace('L','')
-    song=Song.strip()
-    Song=song.replace("-",'')
-    song= Song.strip()
-    song=int(song)
-    for i in Vocabulary['Lyric no']:
-      if i== 0:
-        break
-      elif i== song:
-        Found = True
-        break
-      else: pass
+# Malayalam tokenizer using indic-nlp-library
+def malayalam_tokenizer(text):
+    return indic_tokenize.trivial_tokenize(text, lang='ml')
 
-  elif (Song.startswith("C")):
-    Song=song.replace('C','')
-    song=Song.strip()
-    Song=song.replace("-",'')
-    song= Song.strip()
-    song=int(song)
-    for i in Vocabulary['Convention no']:
-      if i== 0:
-        break
-      elif i== song:
-        Found = True
+# TF-IDF Vectorizer setup for Hymn and Lyric
+vectorizer_hymn = TfidfVectorizer(analyzer='word', tokenizer=malayalam_tokenizer, token_pattern=None)
+tfidf_matrix_hymn = vectorizer_hymn.fit_transform(dfH['Hymn Index'])
 
-        break
-      else: pass
-  else:
-    print("Invalid Response")
-  if Found == True:
-    return "The Song is in the choir Vocabulory"
-  else:
-    return "The Song not found in the choir vocabulory"
+vectorizer_lyric = TfidfVectorizer(analyzer='word', tokenizer=malayalam_tokenizer, token_pattern=None)
+tfidf_matrix_lyric = vectorizer_lyric.fit_transform(dfL['Lyric Index'])
 
-def Datefinder(song):
-  song=song.strip()
-  Found = False
-  for i in range (len(df)-1,-1,-1):
-    if song in df.iloc[i].tolist():
-      Found = True
-      song = df['Date'].iloc[i]
-      formatted_date = song.strftime("%d/%m/%Y")
-      break
+vectorizer_convention = TfidfVectorizer(analyzer='word', tokenizer=malayalam_tokenizer, token_pattern=None)
+tfidf_matrix_convention = vectorizer_convention.fit_transform(dfC['Convention Index'])
+
+def find_best_match(query, category="hymn"):
+    """
+    Given a query string, this function returns the best matching hymn or lyric number.
+    :param query: Input text
+    :param category: "hymn" for Hymn Index, "lyric" for Lyric Index
+    :return: Best matching number (Hymn no or Lyric no)
+    """
+    if category == "hymn":
+        vectorizer = vectorizer_hymn
+        tfidf_matrix = tfidf_matrix_hymn
+        data = dfH
+        column_no = 'Hymn no'
+    elif category == "lyric":
+        vectorizer = vectorizer_lyric
+        tfidf_matrix = tfidf_matrix_lyric
+        data = dfL
+        column_no = 'Lyric no'
+    elif category == "convention":
+        vectorizer = vectorizer_convention
+        tfidf_matrix = tfidf_matrix_convention
+        data = dfC
+        column_no = 'Convention no'
+    else:
+        return "Invalid category!"
+
+    # Transform the query into the TF-IDF vector space
+    query_vec = vectorizer.transform([query])
+    
+    # Compute cosine similarity between the query and each text
+    similarities = cosine_similarity(query_vec, tfidf_matrix).flatten()
+    
+    # Find the index with the highest similarity score
+    best_index = similarities.argmax()
+    
+    # Return the corresponding hymn or lyric number
+    return data[column_no].iloc[best_index]
+
+# Example usage:
+def song_search_index():
+    user_query = input("Enter search text: ")  # Example: "ആത്മാവേ നീ"
+    category = input("Search in (hymn/lyric/convention)? ").strip().lower()
+
+    result_number = find_best_match(user_query, category)
+    print(f"The best match for your query is: {result_number}")
 
 
-  if Found == True:
-    return f"The song was last sang on: {formatted_date}"
-  else:
-    return "Song Not Sang in the past years since 2022"
+def search_index(no, option):
+    """
+    Returns the index (number) from the corresponding DataFrame given the number and option.
+    :param no: The one-based index number.
+    :param option: "hymn" or "lyric".
+    :return: The corresponding number or an error message.
+    """
+    try:
+        no = int(no)
+    except ValueError:
+        return "Index must be an integer."
+    
+    if option == 'hymn':
+        if no < 1 or no > len(dfH):
+            return "Invalid hymn index."
+        return dfH['Hymn Index'].iloc[no - 1]
+    elif option == 'lyric':
+        if no < 1 or no > len(dfL):
+            return "Invalid lyric index."
+        return dfL['Lyric Index'].iloc[no - 1]
+    elif option == 'convention':
+        if no < 1 or no > len(dfC):
+            return "Invalid convention index."
+        return dfC['Convention Index'].iloc[no - 1]
+    else:
+        return "Invalid option. Use 'hymn' or 'lyric'."
+     
+
+
+def isVocabulary(Songs):
+    Found = False
+    songs = standardize_hlc_value(Songs)
+    song= songs
+
+    if song.startswith("H"):
+        song = song.replace('H', '').replace("-", '').strip()
+        song = int(song)
+        for i in Vocabulary['Hymn no']:
+            if int(i) == 0:
+                break
+            elif int(i) == song:
+                Found = True
+                break
+    elif song.startswith("L"):
+        song = song.replace('L', '').replace("-", '').strip()
+        song = int(song)
+        for i in Vocabulary['Lyric no']:
+            if int(i) == 0:
+                break
+            elif int(i) == song:
+                Found = True
+                break
+    elif song.startswith("C"):
+        song = song.replace('C', '').replace("-", '').strip()
+        song = int(song)
+        for i in Vocabulary['Convention no']:
+            if int(i) == 0:
+                break
+            elif int(i) == song:
+                Found = True
+                break
+    else:
+        print("Invalid Response")
+
+    if Found:
+        return f"{songs}: {IndexFinder(songs)} is in the choir Vocabulary"
+    else:
+        return "The Song was not found in the choir vocabulary"
+
+
+def Datefinder(songs):
+    Song = standardize_hlc_value(songs)
+    Found = False
+    for i in range(len(df) - 1, -1, -1):
+        if Song in df.iloc[i].tolist():
+            Found = True
+            Songs = df['Date'].iloc[i]
+            formatted_date = Songs.strftime("%d/%m/%Y")
+            break
+    if Found:
+        return f"{Song}: {IndexFinder(Song)}  was last sung on: {formatted_date}"
+    else:
+        return "Song Not Sang in the past years since 2022"
+
   
+def IndexFinder(Song):
+    song = standardize_hlc_value(Song)
+    if song.startswith("H"):
+        song = song.replace('H','').strip().replace("-", "")
+        song = int(song)
+        return dfH['Hymn Index'][song-1]
+    elif song.startswith("L"):
+        song = song.replace('L','').strip().replace("-", "")
+        song = int(song)
+        return dfL['Lyric Index'][song-1]
+    elif song.startswith("C"):
+        song = song.replace('C','').strip().replace("-", "")
+        song = int(song)
+        return dfC['Convention Index'][song-1]
+    else:
+        return "Invalid Number"
+    
+
+def filter_hymns_by_theme(data, theme):
+    """
+    Filters the DataFrame for rows where the "Themes" column contains the given theme.
+    """
+    filtered = data[data["Themes"].str.contains(theme, case=False, na=False)]
+    return filtered
+
+# def hymn_filter_search(df):
+#     """
+#     Prompts the user for a theme, filters the DataFrame, and displays the hymn details.
+#     """
+#     theme_input = input("Enter a theme to filter hymns: ").strip()
+#     filtered_df = filter_hymns_by_theme(df, theme_input)
+    
+#     if filtered_df.empty:
+#         print(f"No hymns found for theme: {theme_input}")
+#     else:
+#         print("Filtered Hymns:")
+#         return filtered_df
+
+
 
 
 
@@ -312,27 +464,128 @@ async def start(update: Update, context: CallbackContext) -> None:
         "🎵 *Welcome to the Choir Song Bot!*\n\n"
         "Use `/check <song>` to check if a song is in the vocabulary.\n"
         "Use `/last <song>` to find when it was last sung.\n"
-        "_Example:_ `/check H-27` or `/last H-27`"
+        "Use `/searchno <category> <search text>` to search for a hymn, lyric, or convention by text.\n"
+        "Use `/searchindex` to interactively search by index: you'll be prompted to select 'Hymn' or 'Lyric' and then provide the index number.\n"
+        "_Example:_ Type `/searchindex` and follow the prompts."
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
+async def help_command(update: Update, context: CallbackContext) -> None:
+    help_text = (
+        "🎵 *Choir Song Bot Help*\n\n"
+        "Here are the available commands and how to use them:\n\n"
+        "• **/start**\n"
+        "  - *Description:* Starts the bot and shows the welcome message with basic instructions.\n"
+        "  - *Example:* Simply type `/start`.\n\n"
+        "• **/check <song>**\n"
+        "  - *Description:* Checks if a song is in the vocabulary.\n"
+        "  - *Example:* `/check H-27`\n\n"
+        "• **/last <song>**\n"
+        "  - *Description:* Finds out when the song was last sung.\n"
+        "  - *Example:* `/last H-27`\n\n"
+        "• **/searchno <category> <search text>**\n"
+        "  - *Description:* Searches for a hymn, lyric, or convention by text using TF-IDF matching.\n"
+        "  - *Category Options:* `hymn`, `lyric`, or `convention`.\n"
+        "  - *Example:* `/searchno hymn ആത്മാവേ നീ`\n\n"
+        "• **/searchindex**\n"
+        "  - *Description:* Initiates an interactive search by index.\n"
+        "  - *Process:* The bot will prompt you to select a category (Hymn, Lyric, or Convention) and then ask for the index number.\n"
+        "  - *Example:* Type `/searchindex` and follow the prompts.\n\n"
+        "• **/filtertheme <theme>**\n"
+        "  - *Description:* Filters the hymns by the specified theme and displays matching hymn numbers and titles.\n"
+        "  - *Example:* `/filtertheme Additional Hymns`\n\n"
+        "• **/vocabulary**\n"
+        "  - *Description:* Starts the vocabulary export conversation.\n"
+        "  - *Example:* Type `/vocabulary` and follow the instructions.\n\n"
+        "• **/cancel**\n"
+        "  - *Description:* Cancels the current operation.\n"
+        "  - *Example:* If you are in a conversation, type `/cancel` to stop it.\n\n"
+        "If you need further assistance, feel free to ask!"
+    )
+    await update.message.reply_text(help_text, parse_mode="Markdown")
+
+
+
 async def check_song(update: Update, context: CallbackContext) -> None:
-    """Handles the /check command to verify if a song is in the vocabulary."""
     if not context.args:
         await update.message.reply_text("⚠️ Please provide a song number.\n_Example:_ `/check H-27`", parse_mode="Markdown")
         return
-    song = context.args[0]
+    # Join all parts of the argument into a single string
+    song = " ".join(context.args)
     result = isVocabulary(song)
     await update.message.reply_text(result)
 
+
 async def last_sung(update: Update, context: CallbackContext) -> None:
-    """Handles the /last command to check when a song was last sung."""
     if not context.args:
         await update.message.reply_text("⚠️ Please provide a song number.\n_Example:_ `/last H-27`", parse_mode="Markdown")
         return
-    song = context.args[0]
+    song = " ".join(context.args)
     result = Datefinder(song)
     await update.message.reply_text(result)
+
+async def search_no(update: Update, context: CallbackContext) -> None:
+    """
+    New command: /searchno
+    Usage: /searchno <category> <search text>
+    For example: /searchno hymn ആത്മാവേ നീ
+    """
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text("⚠️ Please provide a category and search text.\n_Example:_ `/searchno hymn ആത്മാവേ നീ`", parse_mode="Markdown")
+        return
+    # Extract the category (first argument) and the query (rest of the arguments)
+    category = context.args[0].strip().lower()
+    query = " ".join(context.args[1:])
+    result = find_best_match(query, category)
+    await update.message.reply_text(f"The best match for your query is: {result}")
+
+# --- Conversation Handler for /searchindex command ---
+SEARCH_CATEGORY, SEARCH_NUMBER = range(2)
+
+async def search_index_start(update: Update, context: CallbackContext) -> int:
+    """
+    Starts the conversation by asking the user whether to search in hymn or lyric.
+    """
+    keyboard = [["Hymn", "Lyric","Convention"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+    await update.message.reply_text("Please select which index you want to search:", reply_markup=reply_markup)
+    return SEARCH_CATEGORY
+
+async def search_index_category(update: Update, context: CallbackContext) -> int:
+    """
+    Stores the chosen category and asks the user for the index number.
+    """
+    user_choice = update.message.text.strip().lower()
+    if user_choice not in ["hymn", "lyric","convention"]:
+        await update.message.reply_text("Invalid choice. Please select either 'Hymn' , 'Lyric' or 'Convention'.")
+        return SEARCH_CATEGORY
+    context.user_data["search_index_category"] = user_choice
+    await update.message.reply_text("Please enter the index number:")
+    return SEARCH_NUMBER
+
+async def search_index_number(update: Update, context: CallbackContext) -> int:
+    """
+    Processes the index number, calls the search_index function, and returns the result.
+    """
+    index_text = update.message.text.strip()
+    category = context.user_data.get("search_index_category")
+    try:
+        index_num = int(index_text)
+    except ValueError:
+        await update.message.reply_text("Index must be an integer. Please enter a valid index number:")
+        return SEARCH_NUMBER
+    
+    result = search_index(index_num, category)
+    await update.message.reply_text(f"Search index result: {result}", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+
+async def search_index_cancel(update: Update, context: CallbackContext) -> int:
+    await update.message.reply_text("Search index operation cancelled.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+
+
+
+
 # Step 1: Start vocabulary conversation
 CATEGORY_SELECTION, EXPORT_CONFIRMATION = range(2)
 async def start_vocabulary(update: Update, context: CallbackContext) -> int:
@@ -424,6 +677,32 @@ async def export_confirmation(update: Update, context: CallbackContext) -> int:
 
     return ConversationHandler.END
 
+async def filter_theme(update: Update, context: CallbackContext) -> None:
+    """
+    Handles the /filtertheme command.
+    Usage: /filtertheme <theme>
+    It filters the hymns DataFrame by the given theme and replies with the matching hymn numbers and titles.
+    """
+    if not context.args:
+        await update.message.reply_text(
+            "⚠️ Please provide a theme.\nExample: /filtertheme Additional Hymns"
+        )
+        return
+
+    theme_input = " ".join(context.args).strip()
+    filtered_df = filter_hymns_by_theme(dfH, theme_input)
+    
+    if filtered_df.empty:
+        await update.message.reply_text(f"No hymns found for theme: '{theme_input}'.")
+    else:
+        # Build a text message from the filtered results.
+        output_lines = []
+        for _, row in filtered_df.iterrows():
+            output_lines.append(f"Hymn no: {row['Hymn no']} - {row['Hymn Index']}")
+        output_text = "\n".join(output_lines)
+        await update.message.reply_text(f"Filtered Hymns for theme '{theme_input}':\n{output_text}")
+
+
 
 # Fallback in case the user cancels the operation.
 async def cancel(update: Update, context: CallbackContext) -> int:
@@ -446,9 +725,24 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)]
     )
 
+    search_index_conv = ConversationHandler(
+    entry_points=[CommandHandler("searchindex", search_index_start)],
+    states={
+        SEARCH_CATEGORY: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_index_category)],
+        SEARCH_NUMBER: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_index_number)],
+    },
+    fallbacks=[CommandHandler("cancel", search_index_cancel)]
+)
+
+
+
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("check", check_song))
     app.add_handler(CommandHandler("last", last_sung))
+    app.add_handler(CommandHandler("searchno", search_no))
+    app.add_handler(CommandHandler("filtertheme", filter_theme))
+    app.add_handler(search_index_conv)
     app.add_handler(conv_handler)
     
 
@@ -457,4 +751,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
