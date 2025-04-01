@@ -16,21 +16,21 @@ import tempfile
 from googleapiclient.errors import HttpError
 
 # Check for missing environment variables
-lines = [st.secrets[f"L{i}"] for i in range(1, 29)]
+lines = [st.secrets[f"l{i}"] for i in range(1, 29)]
 private_key = "\n".join(lines)
 
 service_account_data = {
-    "type": st.secrets["TYPE"],
-    "project_id": st.secrets["PROJECT_ID"],
-    "private_key_id": st.secrets["PRIVATE_KEY_ID"],
+    "type": st.secrets["type"],
+    "project_id": st.secrets["project_id"],
+    "private_key_id": st.secrets["private_key_id"],
     "private_key": private_key,
-    "client_email": st.secrets["CLIENT_EMAIL"],
-    "client_id": st.secrets["CLIENT_ID"],
-    "auth_uri": st.secrets["AUTH_URI"],
-    "token_uri": st.secrets["TOKEN_URI"],
-    "auth_provider_x509_cert_url": st.secrets["AUTH_PROVIDER_X509_CERT_URL"],
-    "client_x509_cert_url": st.secrets["CLIENT_X509_CERT_URL"],
-    "universe_domain": st.secrets["UNIVERSE_DOMAIN"],
+    "client_email": st.secrets["client_email"],
+    "client_id": st.secrets["client_id"],
+    "auth_uri": st.secrets["auth_uri"],
+    "token_uri": st.secrets["token_uri"],
+    "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
+    "client_x509_cert_url": st.secrets["client_x509_cert_url"],
+    "universe_domain": st.secrets["universe_domain"],
 }
 
 # Set the file IDs from environment variables
@@ -517,5 +517,3 @@ elif choice == "Vocabulary":
             file_name=f"{vocab_choice}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
-
