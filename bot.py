@@ -6,14 +6,12 @@ import os
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 import json
-import logging
-from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackContext
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import pandas as pd
 from indicnlp.tokenize import indic_tokenize
+import streamlit as st
 
 # Check for missing environment variables
 lines = [os.getenv(f"l{i}") for i in range(1, 29)]
@@ -57,9 +55,6 @@ TOKEN = os.getenv("TOKEN")
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 print("✅ Environment variables loaded successfully!")
-
-# Enable logging
-logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 # Authenticate and build the drive service
 creds = service_account.Credentials.from_service_account_file(KEY_PATH, scopes=SCOPES)
@@ -439,21 +434,101 @@ def filter_hymns_by_theme(data, theme):
     filtered = data[data["Themes"].str.contains(theme, case=False, na=False)]
     return filtered
 
-# def hymn_filter_search(df):
-#     """
-#     Prompts the user for a theme, filters the DataFrame, and displays the hymn details.
-#     """
-#     theme_input = input("Enter a theme to filter hymns: ").strip()
-#     filtered_df = filter_hymns_by_theme(df, theme_input)
+
+# ------------------------------
+# Streamlit App
+# ------------------------------
+
+st.title("Choir Song App")
+st.write("Welcome to the Choir Song App! Use the sidebar to select a function.")
+
+# Sidebar menu for navigation
+menu_options = [
+    "Check Song",
+    "Last Sung",
+    "Search by Text",
+    "Search by Index",
+    "Filter by Theme",
+    "Vocabulary"
+]
+choice = st.sidebar.selectbox("Select Function", menu_options)
+
+# --- Check Song ---
+if choice == "Check Song":
+    st.header("Check if a Song is in the Vocabulary")
+    song_input = st.text_input("Enter song (e.g., H-27):")
+    if st.button("Check Song"):
+        result = isVocabulary(song_input)
+        st.write(result)
+
+# --- Last Sung ---
+elif choice == "Last Sung":
+    st.header("Find Last Sung Date")
+    song_input = st.text_input("Enter song (e.g., H-27):")
+    if st.button("Find Last Sung Date"):
+        result = Datefinder(song_input)
+        st.write(result)
+
+# --- Search by Text ---
+elif choice == "Search by Text":
+    st.header("Search for a Song by Text")
+    category = st.selectbox("Select Category", ["hymn", "lyric", "convention"])
+    query = st.text_input("Enter search text:")
+    if st.button("Search"):
+        result = find_best_match(query, category)
+        st.write(result)
+
+# --- Search by Index ---
+elif choice == "Search by Index":
+    st.header("Search for a Song by Index")
+    category = st.selectbox("Select Category", ["hymn", "lyric", "convention"], key="index_category")
+    index_input = st.text_input("Enter index number:")
+    if st.button("Search by Index"):
+        try:
+            index_num = int(index_input)
+            result = search_index(index_num, category)
+        except ValueError:
+            result = "Index must be an integer."
+        st.write(result)
+
+# --- Filter by Theme ---
+elif choice == "Filter by Theme":
+    st.header("Filter Hymns by Theme")
+    theme_input = st.text_input("Enter theme (e.g., Joy):")
+    if st.button("Filter"):
+        filtered_df = filter_hymns_by_theme(dfH, theme_input)
+        if filtered_df.empty:
+            st.write(f"No hymns found for theme: '{theme_input}'")
+        else:
+            st.write(f"Filtered Hymns for theme '{theme_input}':")
+            for _, row in filtered_df.iterrows():
+                st.write(f"Hymn no: {row['Hymn no']} - {row['Hymn Index']}")
+
+# --- Vocabulary ---
+elif choice == "Vocabulary":
+    st.header("Vocabulary Export")
+    vocab_choice = st.selectbox("Select Vocabulary", list(VOCABULARY_CATEGORIES.keys()))
+    data = VOCABULARY_CATEGORIES[vocab_choice]
+
+    # If the vocabulary is a Series, convert it to a DataFrame for consistent display.
+    if isinstance(data, pd.Series):
+        data = data.to_frame(name=vocab_choice)
     
-#     if filtered_df.empty:
-#         print(f"No hymns found for theme: {theme_input}")
-#     else:
-#         print("Filtered Hymns:")
-#         return filtered_df
-
-
-
+    st.write(f"{vocab_choice} Preview:")
+    st.dataframe(data.head(10))
+    
+    # Option to export as Excel
+    if st.button("Export as Excel"):
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            data.to_excel(writer, sheet_name="Vocabulary", index=False)
+        output.seek(0)
+        st.download_button(
+            label="Download Excel file",
+            data=output,
+            file_name=f"{vocab_choice}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 
 #Telegram bot
