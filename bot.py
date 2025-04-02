@@ -2,18 +2,17 @@ from concurrent.futures import ThreadPoolExecutor
 from googleapiclient.http import MediaIoBaseDownload
 import io
 import pandas as pd
-import os
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
-import json
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import pandas as pd
 from indicnlp.tokenize import indic_tokenize
 import streamlit as st
-import tempfile
-from googleapiclient.errors import HttpError
+import logging
+import time
+
 
 # Check for missing environment variables
 lines = [st.secrets[f"l{i}"] for i in range(1, 29)]
@@ -48,29 +47,46 @@ print("✅ Environment variables loaded successfully!")
 creds = service_account.Credentials.from_service_account_info(service_account_data, scopes=SCOPES)
 drive_service = build("drive", "v3", credentials=creds)
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def robust_download(downloader, max_retries=5):
+    retries = 0
+    done = False
+    while not done and retries < max_retries:
+        try:
+            # Log the attempt
+            logging.info(f"Attempt {retries + 1}/{max_retries}: Downloading next chunk...")
+            _, done = downloader.next_chunk()
+            logging.info("Chunk downloaded successfully.")
+        except Exception as e:
+            retries += 1
+            logging.error(f"Error on attempt {retries}/{max_retries}: {e}")
+            time.sleep(2 ** retries)  # Exponential backoff
+    if not done:
+        raise TimeoutError("Download did not complete after multiple retries.")
+
+
 def download_file(file_id, label):
-    """Downloads a Google Sheet file and loads it into a Pandas DataFrame"""
     request = drive_service.files().export_media(
         fileId=file_id,
         mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
     file_data = io.BytesIO()
-    downloader = MediaIoBaseDownload(file_data, request)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
+    downloader = MediaIoBaseDownload(file_data, request, chunksize=1024 * 256)  # adjust chunk size if needed
 
-    file_data.seek(0)  # Reset file pointer
-
-    # Load the Excel data into Pandas
     try:
+        robust_download(downloader)
+        file_data.seek(0)  # Reset file pointer
         df = pd.read_excel(file_data)
-        print(f"✅ {label} has been loaded!")
+        logging.info(f"✅ {label} has been loaded successfully!")
         return df
     except Exception as e:
-        print(f"❌ Failed to load {label}: {e}")
+        logging.error(f"❌ Failed to load {label}: {e}")
         return None
+
+
 
 # Use ThreadPoolExecutor to download both files concurrently
 with ThreadPoolExecutor(max_workers=2) as executor:
@@ -175,7 +191,7 @@ def ChoirVocabulary():
      # Extract hymns from the '1st Song', '2nd Song', '3rd Song', and '4th Song' columns
      hymns = []
 
-     for column in ['1st Song', '2nd Song', '3rd Song', '4th Song']:
+     for column in ['1st Song', '2nd Song', '3rd Song', '4th Song','5th Song']:
          # Extract hymn numbers that contain 'H'
          hymns += df[df[column].str.contains('H', na=False)][column].str.extract('(\d+)').astype(int).squeeze().tolist()
 
@@ -193,7 +209,7 @@ def ChoirVocabulary():
     lyric = []
 
     # Iterate through each column
-    for column in ['1st Song', '2nd Song', '3rd Song', '4th Song']:
+    for column in ['1st Song', '2nd Song', '3rd Song', '4th Song','5th Song']:
         # Extract lyric hymn numbers (assuming they contain 'L' and digits)
         lyric += df[df[column].str.contains('L', na=False)][column].str.extract('(\d+)').astype(int).squeeze().tolist()
 
@@ -212,7 +228,7 @@ def ChoirVocabulary():
     convention = []
 
     # Iterate through each column
-    for column in ['1st Song', '2nd Song', '3rd Song', '4th Song']:
+    for column in ['1st Song', '2nd Song', '3rd Song', '4th Song','5th Song']:
         # Extract convention hymn numbers (assuming they contain 'C' and digits)
         convention += df[df[column].str.contains('C', na=False)][column].str.extract('(\d+)').astype(int).squeeze().tolist()
 
