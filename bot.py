@@ -62,7 +62,7 @@ try :
  # Save the JSON to a temporary file
  KEY_PATH = "/tmp/service_account.json"
  with open(KEY_PATH, "w") as f:
-    json.dump(st.secrets["google"], f) 
+    json.dump(service_account_data, f) 
  # Set the GOOGLE_APPLICATION_CREDENTIALS environment variable
  os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = KEY_PATH
  
