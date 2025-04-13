@@ -19,6 +19,7 @@ from datetime import datetime, date
 import streamlit as st
 import os
 import asyncio
+import threading
 
 # Ensure an event loop exists for the current thread
 try:
@@ -1520,8 +1521,17 @@ try :
  
 #  if __name__ == "__main__":
 #      main()
+ def start_bot_in_thread():
+    """Starts the bot in a background thread."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)  # Set the event loop for this thread
+    loop.run_until_complete(main())  # Run the bot
+
  def run_bot():
-    asyncio.run(main())
+    """Starts the bot in a new thread."""
+    bot_thread = threading.Thread(target=start_bot_in_thread)
+    bot_thread.daemon = True  # Ensure the thread exits when the program ends
+    bot_thread.start()
     
  
 except KeyboardInterrupt:
