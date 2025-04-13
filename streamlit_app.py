@@ -1,11 +1,22 @@
-import subprocess
 import streamlit as st
 
-st.set_page_config(page_title="Telegram Bot Controller", page_icon="🤖")
-st.title("🎛️ Telegram Bot Controller")
+st.title("Telegram Bot Controller")
 
 if st.button("Start Bot"):
-    subprocess.Popen(["python", "run_bot.py"])
-    st.success("✅ Bot started successfully!")
+    st.write("Attempting to start the bot...")
 
-st.info("Click the button to start your Telegram bot in the background.")
+    try:
+        # Check imports explicitly to fail early
+        from bot import run_bot
+
+        # Wrap actual bot run in a try-except
+        try:
+            run_bot()
+            st.success("Bot started successfully!")
+        except Exception as bot_error:
+            st.error(f"Bot failed to run: {bot_error}")
+
+    except ModuleNotFoundError as import_error:
+        st.error(f"Dependency missing: {import_error}")
+    except Exception as e:
+        st.error(f"Unexpected error: {e}")
