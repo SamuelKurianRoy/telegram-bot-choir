@@ -60,10 +60,9 @@ try :
  print("✅ Environment variables loaded successfully!")
  
  # Save the JSON to a temporary file
- KEY_PATH = "service_account.json"
+ KEY_PATH = "/tmp/service_account.json"
  with open(KEY_PATH, "w") as f:
-     json.dump(service_account_data, f)
- 
+    json.dump(st.secrets["google"], f) 
  # Set the GOOGLE_APPLICATION_CREDENTIALS environment variable
  os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = KEY_PATH
  
@@ -752,7 +751,7 @@ try :
     """Check if the user is authorized to interact with the bot."""
     user_id = update.effective_user.id
     # List of authorized user IDs from the environment variable
-    authorized_users_str = st.secrets("AUTHORIZED_USERS")
+    authorized_users_str = st.secrets["AUTHORIZED_USERS"]
     
     if authorized_users_str is not None:
         authorized_users = list(map(int, authorized_users_str.split(',')))
