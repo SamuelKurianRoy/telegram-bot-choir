@@ -1518,9 +1518,11 @@ try :
      user_logger.info("🤖 Bot is running...")
      app.run_polling()
  
- if __name__ == "__main__":
-     main()
-
+#  if __name__ == "__main__":
+#      main()
+ def run_bot():
+    main()
+    
  
 except KeyboardInterrupt:
     print("\n🛑 Bot stopped manually by user (Ctrl + C).")
