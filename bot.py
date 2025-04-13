@@ -1438,7 +1438,7 @@ try :
  
  
  
- def main():
+ async def main():
      """Starts the bot and registers command handlers."""
      app = Application.builder().token(TOKEN).build()
  
@@ -1516,12 +1516,12 @@ try :
      
  
      user_logger.info("🤖 Bot is running...")
-     app.run_polling()
+     await app.run_polling()
  
 #  if __name__ == "__main__":
 #      main()
  def run_bot():
-    main()
+    asyncio.run(main())
     
  
 except KeyboardInterrupt:
