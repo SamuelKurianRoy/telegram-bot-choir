@@ -1383,7 +1383,7 @@ try :
     comment = update.message.text.strip()
     
     # Load the admin's user ID from environment variables
-    admin_id = st.secrets("ADMIN_ID")  # Ensure this is set in your environment variables
+    admin_id = st.secrets["ADMIN_ID"]  # Ensure this is set in your environment variables
     
     if admin_id:
         try:
@@ -1408,7 +1408,7 @@ try :
     This command is restricted to the admin and calls load_datasets() to
     refresh all datasets.
     """
-    admin_id_str = st.secrets("ADMIN_ID")
+    admin_id_str = st.secrets["ADMIN_ID"]
     if not admin_id_str:
         await update.message.reply_text("ADMIN_ID environment variable is not set.")
         return
