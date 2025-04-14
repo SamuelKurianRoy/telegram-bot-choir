@@ -1,22 +1,10 @@
 import streamlit as st
+from run_bot import start_bot_in_background
 
-st.title("Telegram Bot Controller")
+# Start bot only once per session
+if "bot_started" not in st.session_state:
+    start_bot_in_background()
+    st.session_state["bot_started"] = True
 
-if st.button("Start Bot"):
-    st.write("Attempting to start the bot...")
-
-    try:
-        # Check imports explicitly to fail early
-        from bot import run_bot
-
-        # Wrap actual bot run in a try-except
-        try:
-            run_bot()
-            st.success("Bot started successfully!")
-        except Exception as bot_error:
-            st.error(f"Bot failed to run: {bot_error}")
-
-    except ModuleNotFoundError as import_error:
-        st.error(f"Dependency missing: {import_error}")
-    except Exception as e:
-        st.error(f"Unexpected error: {e}")
+st.title("📢 Railway Choir Bot")
+st.write("This Streamlit app is running alongside the Telegram bot.")

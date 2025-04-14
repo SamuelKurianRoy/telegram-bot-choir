@@ -1,5 +1,7 @@
 # run_bot.py
 from bot import run_bot
+import threading
 
-if __name__ == "__main__":
-    run_bot()
+def start_bot_in_background():
+    thread = threading.Thread(target=run_bot, daemon=True)
+    thread.start()
