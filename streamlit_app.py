@@ -6,4 +6,4 @@ if "bot_started" not in st.session_state:
     st.session_state["bot_started"] = True
 
 st.title("🎶 Railway Choir Bot")
-st.write("Telegram bot is now running in the background.")
+st.write("The Telegram bot is running in the background.")

@@ -1532,8 +1532,14 @@ try :
 #     bot_thread.daemon = True  # Ensure the thread exits when the program ends
 #     bot_thread.start()
 
+ import asyncio
+ import nest_asyncio
+ 
+ nest_asyncio.apply()  # patch asyncio to allow nested event loops
+ 
  def run_bot():
     asyncio.run(main())
+
 
 
     
