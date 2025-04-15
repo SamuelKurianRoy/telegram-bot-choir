@@ -1507,7 +1507,7 @@ try :
      app.add_handler(CommandHandler("help", help_command))
      app.add_handler(CommandHandler("date", date_command))
      app.add_handler(CommandHandler("refresh", refresh_command))
-     app.add_handler(CommandHandler("tuneno", tune_command))
+     app.add_handler(CommandHandler("tune", tune_command))
      app.add_handler(last_conv_handler)
      app.add_handler(check_conv)
      app.add_handler(theme_handler)
