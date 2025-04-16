@@ -314,7 +314,6 @@ try :
         doc_id (str): Google Docs file ID (e.g. COMFILE_ID, BFILE_ID, etc.)
         log_file (str): Path to the local log file (e.g. 'bot_log.txt')
     """
-    print("Inside log function")
     if not os.path.exists(log_file):
         logger.warning(f"⚠️ Log file {log_file} does not exist.")
         return
