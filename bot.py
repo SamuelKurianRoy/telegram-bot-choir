@@ -290,8 +290,8 @@ try :
  dfcleaning()
  df = standardize_song_columns()
  
- BFILE_ID = st.secrets("BFILE_ID")
- UFILE_ID = st.secrets("UFILE_ID")
+ BFILE_ID = st.secrets["BFILE_ID"]
+ UFILE_ID = st.secrets["UFILE_ID"]
  creds = service_account.Credentials.from_service_account_file(KEY_PATH, scopes=SCOPES)
  docs_service = build("docs", "v1", credentials=creds)
  def upload_log_to_google_doc(file_path, doc_id):
