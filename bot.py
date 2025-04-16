@@ -314,6 +314,7 @@ try :
         doc_id (str): Google Docs file ID (e.g. COMFILE_ID, BFILE_ID, etc.)
         log_file (str): Path to the local log file (e.g. 'bot_log.txt')
     """
+    print("Inside log function")
     if not os.path.exists(log_file):
         logger.warning(f"⚠️ Log file {log_file} does not exist.")
         return
@@ -1605,7 +1606,7 @@ try :
             admin_id = int(admin_id)
             await context.bot.send_message(
                 admin_id,
-                f"📝 New comment from an user:\n\n{comment}"
+                f"📝 New comment from an {user.full_name} (@{user.username}, ID: {user.id}:\n\n{comment}"
             )
         except ValueError:
             user_logger.error("Invalid admin ID in environment variables.")
