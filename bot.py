@@ -303,7 +303,7 @@ try :
  creds = service_account.Credentials.from_service_account_file(KEY_PATH, scopes=SCOPES)
  docs_service = build("docs", "v1", credentials=creds)
 
-
+ from googleapiclient.errors import HttpError
  def upload_log_to_google_doc(doc_id: str, log_file: str):
     """
     Uploads a local log file's contents to a Google Docs file.
@@ -358,6 +358,7 @@ try :
         ).execute()
 
         logger.info(f"✅ Successfully uploaded {log_file} to Google Doc ({doc_id})")
+        print("log Files Loaded")
 
     except HttpError as e:
         logger.error(f"❌ Failed to log due to: {e}")
