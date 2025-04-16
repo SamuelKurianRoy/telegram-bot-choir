@@ -1605,7 +1605,7 @@ try :
             admin_id = int(admin_id)
             await context.bot.send_message(
                 admin_id,
-                f"📝 New comment from an user:\n\n{comment}"
+                f"📝 New comment from an {user.full_name} (@{user.username}, ID: {user.id}:\n\n{comment}"
             )
         except ValueError:
             user_logger.error("Invalid admin ID in environment variables.")
