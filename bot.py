@@ -366,9 +366,9 @@ try :
 
 
 
-# Step 3: Upload both logs
- upload_log_to_google_doc("bot_log.txt", st.secrets["BFILE_ID"])
- upload_log_to_google_doc("user_log.txt", st.secrets["UFILE_ID"])
+ upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
+ upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
+
  
  
  def standardize_hlc_value(value):
