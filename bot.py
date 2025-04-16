@@ -314,18 +314,16 @@ try :
         doc_id (str): Google Docs file ID (e.g. COMFILE_ID, BFILE_ID, etc.)
         log_file (str): Path to the local log file (e.g. 'bot_log.txt')
     """
-    print("inside Log File handler")
     if not os.path.exists(log_file):
         logger.warning(f"⚠️ Log file {log_file} does not exist.")
         return
-    print("Exited First if")
+
     with open(log_file, "r", encoding="utf-8") as file:
         content = file.read().strip()
 
     if not content:
         logger.info(f"ℹ️ Log file {log_file} is empty. Skipping upload.")
         return
-    print("Reached Before Try Statement")
 
     try:
         # Step 1: Get the document content to find its current length
