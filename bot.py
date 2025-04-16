@@ -300,10 +300,10 @@ try :
 # Initialize logger
  logging.basicConfig(level=logging.INFO)
  logger = logging.getLogger(__name__) 
- creds = service_account.Credentials.from_service_account_file(KEY_PATH, scopes=SCOPES)
+ DOC_SCOPES = ["https://www.googleapis.com/auth/documents"]
+ creds = service_account.Credentials.from_service_account_file(KEY_PATH, scopes=DOC_SCOPES)
  docs_service = build("docs", "v1", credentials=creds)
 
- from googleapiclient.errors import HttpError
  def upload_log_to_google_doc(doc_id: str, log_file: str):
     """
     Uploads a local log file's contents to a Google Docs file.
