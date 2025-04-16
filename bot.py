@@ -295,48 +295,73 @@ try :
  creds = service_account.Credentials.from_service_account_file(KEY_PATH, scopes=SCOPES)
  docs_service = build("docs", "v1", credentials=creds)
  print("reached before log")
+ 
+
+# Initialize logger
+ logging.basicConfig(level=logging.INFO)
+ logger = logging.getLogger(__name__) 
+ creds = service_account.Credentials.from_service_account_file(KEY_PATH, scopes=SCOPES)
+ docs_service = build("docs", "v1", credentials=creds)
+
+
  def upload_log_to_google_doc(doc_id: str, log_file: str):
+    """
+    Uploads a local log file's contents to a Google Docs file.
+    Clears the existing content and appends the new content.
+
+    Parameters:
+        doc_id (str): Google Docs file ID (e.g. COMFILE_ID, BFILE_ID, etc.)
+        log_file (str): Path to the local log file (e.g. 'bot_log.txt')
+    """
+    if not os.path.exists(log_file):
+        logger.warning(f"⚠️ Log file {log_file} does not exist.")
+        return
+
+    with open(log_file, "r", encoding="utf-8") as file:
+        content = file.read().strip()
+
+    if not content:
+        logger.info(f"ℹ️ Log file {log_file} is empty. Skipping upload.")
+        return
+
     try:
-        # Read log file content
-        if not os.path.exists(log_file):
-            logging.warning(f"⚠️ Log file {log_file} does not exist.")
-            return
-
-        with open(log_file, "r", encoding="utf-8") as f:
-            content = f.read().strip()
-
-        if not content:
-            logging.warning(f"⚠️ Log file {log_file} is empty. Skipping upload.")
-            return
-
-        # Get current document content to find end index
+        # Step 1: Get the document content to find its current length
         doc = docs_service.documents().get(documentId=doc_id).execute()
-        end_index = doc.get("body", {}).get("content", [])[-1].get("endIndex", 1)
+        end_index = doc.get('body', {}).get('content', [{}])[-1].get('endIndex', 1)
 
-        requests = [
-            {
-                "deleteContentRange": {
-                    "range": {
-                        "startIndex": 1,
-                        "endIndex": end_index - 1
+        # Step 2: Clear the document (if it has any content)
+        requests = []
+        if end_index > 1:
+            requests.append({
+                'deleteContentRange': {
+                    'range': {
+                        'startIndex': 1,
+                        'endIndex': end_index - 1
                     }
                 }
-            },
-            {
-                "insertText": {
-                    "location": {"index": 1},
-                    "text": content
-                }
-            }
-        ]
+            })
 
-        docs_service.documents().batchUpdate(documentId=doc_id, body={"requests": requests}).execute()
-        logging.info(f"✅ Successfully uploaded {log_file} to Google Doc ({doc_id}).")
+        # Step 3: Insert new content
+        requests.append({
+            'insertText': {
+                'location': {
+                    'index': 1
+                },
+                'text': content
+            }
+        })
+
+        # Step 4: Execute batch update
+        docs_service.documents().batchUpdate(
+            documentId=doc_id,
+            body={'requests': requests}
+        ).execute()
+
+        logger.info(f"✅ Successfully uploaded {log_file} to Google Doc ({doc_id})")
 
     except HttpError as e:
-        logging.error(f"❌ Failed to upload {log_file} to Google Doc ({doc_id}): {e}")
-    except Exception as e:
-        logging.error(f"❌ Unexpected error while uploading {log_file}: {e}")
+        logger.error(f"❌ Failed to log due to: {e}")
+
 
 
 
