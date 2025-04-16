@@ -294,49 +294,50 @@ try :
  UFILE_ID = st.secrets["UFILE_ID"]
  creds = service_account.Credentials.from_service_account_file(KEY_PATH, scopes=SCOPES)
  docs_service = build("docs", "v1", credentials=creds)
- def upload_log_to_google_doc(file_path, doc_id):
+ print("reached before log")
+ def upload_log_to_google_doc(doc_id: str, log_file: str):
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            log_text = f.read()
+        # Read log file content
+        if not os.path.exists(log_file):
+            logging.warning(f"⚠️ Log file {log_file} does not exist.")
+            return
 
-        # Step 1: Get the document's current structure
+        with open(log_file, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+
+        if not content:
+            logging.warning(f"⚠️ Log file {log_file} is empty. Skipping upload.")
+            return
+
+        # Get current document content to find end index
         doc = docs_service.documents().get(documentId=doc_id).execute()
-        end_index = doc.get("body").get("content")[-1].get("endIndex", 1)
+        end_index = doc.get("body", {}).get("content", [])[-1].get("endIndex", 1)
 
-        # Step 2: Build requests
-        requests = []
-
-        # Only add a deleteContentRange if there's something beyond index 1
-        if end_index > 1:
-            requests.append({
+        requests = [
+            {
                 "deleteContentRange": {
                     "range": {
                         "startIndex": 1,
                         "endIndex": end_index - 1
                     }
                 }
-            })
-
-        # Step 3: Add insertText request
-        requests.append({
-            "insertText": {
-                "location": {
-                    "index": 1
-                },
-                "text": log_text
+            },
+            {
+                "insertText": {
+                    "location": {"index": 1},
+                    "text": content
+                }
             }
-        })
+        ]
 
-        # Step 4: Execute batch update
-        docs_service.documents().batchUpdate(
-            documentId=doc_id,
-            body={"requests": requests}
-        ).execute()
+        docs_service.documents().batchUpdate(documentId=doc_id, body={"requests": requests}).execute()
+        logging.info(f"✅ Successfully uploaded {log_file} to Google Doc ({doc_id}).")
 
-        print(f"✅ Log successful")
-
+    except HttpError as e:
+        logging.error(f"❌ Failed to upload {log_file} to Google Doc ({doc_id}): {e}")
     except Exception as e:
-        logging.error(f"❌ Failed to log due to: {e}")
+        logging.error(f"❌ Unexpected error while uploading {log_file}: {e}")
+
 
 
 
