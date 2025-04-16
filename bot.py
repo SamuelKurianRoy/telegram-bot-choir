@@ -239,6 +239,8 @@ try :
  dfH, dfL, dfC, yr23, yr24, yr25, df,dfTH, dfTD = load_datasets()
  
  def yrDataPreprocessing():
+
+    global yr23, yr24, yr25, df, dfH
  
     yr23.dropna(inplace=True)
     yr23.columns = yr23.iloc[0]
@@ -259,19 +261,23 @@ try :
     yr25.drop(index=1,inplace=True)
     yr25.reset_index(drop=True,inplace=True)
     yr25['Date'] = pd.to_datetime(yr25['Date']).dt.date
+
+    dfH['Tunes'] = dfH['Tunes'].fillna("Unknown")
+
+ 
+ def dfcleaning():
+  global df
+  df.dropna(inplace=True)
+  df.shape
+  df= df[pd.to_datetime(df['Date'],errors='coerce').notna()]
+  df = df[df['Date'].notna()]
+  df.reset_index(drop=True,inplace=True)
+  df['Date'] = pd.to_datetime(df['Date']).dt.date
  
  
- yrDataPreprocessing()
  
- 
- df.dropna(inplace=True)
- df.shape
- df= df[pd.to_datetime(df['Date'],errors='coerce').notna()]
- df = df[df['Date'].notna()]
- df.reset_index(drop=True,inplace=True)
- df['Date'] = pd.to_datetime(df['Date']).dt.date
- 
- def standardize_song_columns(df):
+ def standardize_song_columns():
+     global df
      standardized_df = df.copy()
      song_columns = [col for col in df.columns if col != 'Date']
      
@@ -279,9 +285,64 @@ try :
          standardized_df[col] = standardized_df[col].astype(str).apply(lambda x: re.sub(r'\s+', '', x))
      
      return standardized_df
- df = standardize_song_columns(df)
  
+ yrDataPreprocessing()
+ dfcleaning()
+ df = standardize_song_columns()
  
+ BFILE_ID = st.secrets("BFILE_ID")
+ UFILE_ID = st.secrets("UFILE_ID")
+ creds = service_account.Credentials.from_service_account_file(KEY_PATH, scopes=SCOPES)
+ docs_service = build("docs", "v1", credentials=creds)
+ def upload_log_to_google_doc(file_path, doc_id):
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            log_text = f.read()
+
+        # Step 1: Get the document's current structure
+        doc = docs_service.documents().get(documentId=doc_id).execute()
+        end_index = doc.get("body").get("content")[-1].get("endIndex", 1)
+
+        # Step 2: Build requests
+        requests = []
+
+        # Only add a deleteContentRange if there's something beyond index 1
+        if end_index > 1:
+            requests.append({
+                "deleteContentRange": {
+                    "range": {
+                        "startIndex": 1,
+                        "endIndex": end_index - 1
+                    }
+                }
+            })
+
+        # Step 3: Add insertText request
+        requests.append({
+            "insertText": {
+                "location": {
+                    "index": 1
+                },
+                "text": log_text
+            }
+        })
+
+        # Step 4: Execute batch update
+        docs_service.documents().batchUpdate(
+            documentId=doc_id,
+            body={"requests": requests}
+        ).execute()
+
+        print(f"✅ Log successful")
+
+    except Exception as e:
+        logging.error(f"❌ Failed to log due to: {e}")
+
+
+
+# Step 3: Upload both logs
+ upload_log_to_google_doc("bot_log.txt", st.secrets["BFILE_ID"])
+ upload_log_to_google_doc("user_log.txt", st.secrets["UFILE_ID"])
  
  
  def standardize_hlc_value(value):
@@ -293,7 +354,34 @@ try :
      return value
  
      
- 
+ def IndexFinder(Song):
+     song = standardize_hlc_value(Song)
+     if song.startswith("H"):
+         song = song.replace('H','').strip().replace("-", "")
+         song = int(song)
+         return dfH['Hymn Index'][song-1]
+     elif song.startswith("L"):
+         song = song.replace('L','').strip().replace("-", "")
+         song = int(song)
+         return dfL['Lyric Index'][song-1]
+     elif song.startswith("C"):
+         song = song.replace('C','').strip().replace("-", "")
+         song = int(song)
+         return dfC['Convention Index'][song-1]
+     else:
+         return "Invalid Number"
+     
+
+
+ def Tune_finder_of_known_songs(song):
+         song = standardize_hlc_value(song)
+         if song.startswith("H"):
+          song = song.replace('H','').strip().replace("-", "")
+          song = int(song)
+          return dfH['Tunes'][song-1]
+         else:
+          return "Invalid Number"
+
  
  def ChoirVocabulary():
     def HymnVocabulary():
@@ -319,7 +407,7 @@ try :
         # Create a Pandas Series with the hymn numbers
         Hymn = pd.Series(hymns, name='Hymn no')
         # Get unique hymn numbers and sort them
-        unique_sorted_hymn = pd.Series(Hymn.unique(), name='Hymn').sort_values().reset_index(drop=True)
+        unique_sorted_hymn = pd.Series(Hymn.unique(), name='Hymn no').sort_values().reset_index(drop=True)
         return unique_sorted_hymn
 
     def LyricVocabulary():
@@ -337,7 +425,7 @@ try :
                 continue
 
         Lyric = pd.Series(lyric, name='Lyric no')
-        lyric_unique_sorted = pd.Series(Lyric.unique(), name="Lyric").sort_values().reset_index(drop=True)
+        lyric_unique_sorted = pd.Series(Lyric.unique(), name="Lyric no").sort_values().reset_index(drop=True)
         return lyric_unique_sorted
 
     def ConventionVocabulary():
@@ -355,7 +443,7 @@ try :
                 continue
 
         Convention = pd.Series(convention, name='Convention no')
-        convention_unique_sorted = pd.Series(Convention.unique(), name='Convention').sort_values().reset_index(drop=True)
+        convention_unique_sorted = pd.Series(Convention.unique(), name='Convention no').sort_values().reset_index(drop=True)
         return convention_unique_sorted
 
     def Vocabulary():
@@ -376,8 +464,40 @@ try :
     return vocabulary, unique_sorted_hymn, lyric_unique_sorted, convention_unique_sorted
 
  
-
  Vocabulary, Hymn_Vocabulary, Lyric_Vocabulary, Convention_Vocabulary = ChoirVocabulary()
+
+# Define a function to apply IndexFinder to a vocabulary series
+ def apply_index_finder(vocab_series, prefix):
+    # Combine prefix with number to create full song label (e.g., H123)
+    full_labels = prefix + vocab_series.astype(str)
+    # Apply IndexFinder
+    return full_labels.apply(IndexFinder)
+
+# Apply IndexFinder to each vocabulary type
+ VOCABULARY_INDEXES = {
+    "Hymn Indexes": apply_index_finder(Hymn_Vocabulary, "H"),
+    "Lyric Indexes": apply_index_finder(Lyric_Vocabulary, "L"),
+    "Convention Indexes": apply_index_finder(Convention_Vocabulary, "C"),
+}
+ # Add new columns for indexes to the vocabulary DataFrame
+ Vocabulary["Hymn Index"] = VOCABULARY_INDEXES["Hymn Indexes"]
+ Vocabulary["Lyric Index"] = VOCABULARY_INDEXES["Lyric Indexes"]
+ Vocabulary["Convention Index"] = VOCABULARY_INDEXES["Convention Indexes"]
+ Vocabulary["Lyric Index"]  = Vocabulary["Lyric Index"].fillna('')
+ Vocabulary["Convention Index"] = Vocabulary["Convention Index"].fillna('')
+ # Reorder the columns as desired
+ Vocabulary = Vocabulary[[
+    "Hymn no", "Hymn Index",
+    "Lyric no", "Lyric Index",
+    "Convention no", "Convention Index"
+]]
+ Hymn_Vocabulary = pd.DataFrame(Hymn_Vocabulary)
+ Lyric_Vocabulary = pd.DataFrame(Lyric_Vocabulary)
+ Convention_Vocabulary = pd.DataFrame(Convention_Vocabulary)
+ Hymn_Vocabulary["Hymn Index"] = VOCABULARY_INDEXES["Hymn Indexes"]
+ Lyric_Vocabulary["Lyric Index"] = VOCABULARY_INDEXES["Lyric Indexes"]
+ Convention_Vocabulary["Convention Index"] = VOCABULARY_INDEXES["Convention Indexes"]
+
  VOCABULARY_CATEGORIES = {
      "Full Vocabulary": Vocabulary,
      "Hymn Vocabulary": Hymn_Vocabulary,
@@ -564,9 +684,15 @@ try :
             
             # Check if the standardized song number is in the column
             if song_number in valid_numbers.values:
-                return f"{songs_std}: {IndexFinder(songs_std)} is in the choir Vocabulary"
+                tune_info = f"\n Known tunes: {Tune_finder_of_known_songs(songs_std)}" if songs_std.startswith('H') else ''
+                return f"{songs_std}: {IndexFinder(songs_std)} is in the choir Vocabulary{tune_info}"
+
             else:
-                return f"The Song: {Songs} was not found in the choir vocabulary"
+                try:
+                    tune_info = f"\n Known tunes: {Tune_finder_of_known_songs(songs_std)}" if songs_std.startswith('H') else ''
+                    return f"{songs_std}: {IndexFinder(songs_std)} was not found in the choir Vocabulary{tune_info}\n\nNote: A Known Song may appear here if it hasn't been sung in the past three years"
+                except Exception as e:
+                    return f"An error occurred: {str(e)}"
     
     # If no valid prefix is found
     return "Invalid Response"
@@ -592,25 +718,6 @@ try :
     else:
          return f"The Song {Song} was not Sang in the past years since 2022"
 
-
- 
-   
- def IndexFinder(Song):
-     song = standardize_hlc_value(Song)
-     if song.startswith("H"):
-         song = song.replace('H','').strip().replace("-", "")
-         song = int(song)
-         return dfH['Hymn Index'][song-1]
-     elif song.startswith("L"):
-         song = song.replace('L','').strip().replace("-", "")
-         song = int(song)
-         return dfL['Lyric Index'][song-1]
-     elif song.startswith("C"):
-         song = song.replace('C','').strip().replace("-", "")
-         song = int(song)
-         return dfC['Convention Index'][song-1]
-     else:
-         return "Invalid Number"
      
  
  def filter_hymns_by_theme(data, theme):
@@ -736,9 +843,38 @@ try :
         return "\n".join(tune.strip() for tune in result.tolist())
     else:
         return "Tune Index not found."
+    
+    
+ def Hymn_Tune_no_Finder(dfTH, tune_query, top_n=10):
+    # Preprocess: lowercase all entries
+    dfTH = dfTH.copy()
+    dfTH['Tune Index'] = dfTH['Tune Index'].astype(str).str.lower()
+    tune_query = tune_query.lower()
 
-     
+    # Combine all tune names into a list and add the query
+    tune_list = dfTH['Tune Index'].tolist()
+    all_tunes = tune_list + [tune_query]
+
+    # Use character n-grams (for partial and fuzzy matching)
+    vectorizer = TfidfVectorizer(analyzer='char_wb', ngram_range=(2, 4))
+    tfidf_matrix = vectorizer.fit_transform(all_tunes)
+
+    # Compute cosine similarity
+    cosine_sim = cosine_similarity(tfidf_matrix[-1], tfidf_matrix[:-1]).flatten()
+
+    # Get top N indices
+    top_indices = cosine_sim.argsort()[::-1][:top_n]
+
+    # Build results DataFrame
+    results = dfTH.iloc[top_indices][['Hymn no', 'Tune Index']].copy()
+    results['Similarity'] = cosine_sim[top_indices]
+
+    return results.reset_index(drop=True)
+ 
+ 
  print("Reached Telegram Bot code")
+ 
+
  #Telegram bot
  
  # Log messages from users
@@ -770,17 +906,21 @@ try :
      user = update.effective_user
      user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /start")
      """Handles the /start command."""
-     welcome_text = (
-    "🎵 *Welcome to the Choir Song Bot!*\n\n"
-    "Use **/check**  to check if a song is in the vocabulary interactively. The bot will first ask whether to search by hymn, lyric, or convention, then prompt you for the song number.\n\n"
-    "Use **/last**  to find when a song was last sung interactively. The bot will prompt you to choose the category (hymn, lyric, or convention) and then ask for the song number.\n\n"
-    "Use **/search**  to search for a hymn, lyric, or convention. You can choose to search by text or by index:\n"
-    "   - *Text Search:*  Provide the category and search text.\n"
-    "   - *Index Search:*  Provide the category and the index number.\n\n"
-    "Use **/help**  to know more about all available commands."
+     welcome_text = (f"Hello {user.username if user.username is not None else user.full_name}\n\n"
+    "🎵 <b>Welcome to the Choir Bot!</b>\n\n"
+    "&quot;<code>Bach gave us God's word.</code>\n"
+    "<code>Mozart gave us God's laughter.</code>\n"
+    "<code>Beethoven gave us God's fire.</code>\n"
+    "<code>God gave us Music so that we may pray without words.</code>&quot;\n\n"
+    "<b><i>S.D.G</i></b>\n\n"
+    "Use <b>/help</b> to know more about all available commands."
 )
 
-     await update.message.reply_text(welcome_text, parse_mode="Markdown")
+
+
+
+     await update.message.reply_text(welcome_text, parse_mode="HTML")
+
  
  async def help_command(update: Update, context: CallbackContext) -> None:
      user = update.effective_user
@@ -793,26 +933,30 @@ try :
     "  - *Description:* Starts the bot and shows the welcome message with basic instructions.\n"
     "  - *Example:* Simply type `/start`.\n\n"
     "• **/check**\n"
-    "  - *Description:* Interactively checks if a song is in the vocabulary. You will first choose whether to search by hymn, lyric, or convention, then provide the song number.\n"
-    "  - *Example:* Type `/check` and follow the prompts (e.g. choose *Hymn*, then enter `27` for song H-27).\n\n"
+    "  - *Description:* Check if a song exists in the vocabulary or not. After typing the command, enter the song in the format H-27 (Hymn), L-14 (Lyric), or C-5 (Convention).\n"
+    "  - *Example:* Type `/check`, then enter a song like `H-27`.\n\n"
     "• **/last**\n"
-    "  - *Description:* Interactively finds out when a song was last sung. The bot will prompt you to choose whether to search by hymn, lyric, or convention, and then ask for the song number.\n"
-    "  - *Example:* Type `/last` and follow the prompts (e.g. choose *Hymn*, then enter `27` for song H-27).\n\n"
+    "  - *Description:* Find out when a song was last sung. After typing the command, enter the song like H-27 (Hymn), L-14 (Lyric), or C-5 (Convention). You'll also have the option to view all the dates it was sung.\n"
+    "  - *Example:* Type `/last`, then enter a song like `H-27`.\n\n"
     "• **/search**\n"
     "  - *Description:* Interactive search for songs.\n"
     "  - *Options:*\n"
     "     - _By Index:_ Search by entering a line from a hymn, lyric, or convention.\n"
     "     - _By Number:_ Search by entering an index number.\n"
     "  - *Example:* Type `/search` and follow the prompts.\n\n"
+    "• **/tune**\n"
+    "  - *Description:* Interactively find tunes by hymn number or tune index.\n"
+    "  - *Options:*\n"
+    "     - _By Hymn Number:_ Returns the tune(s) for a specific hymn number.\n"
+    "     - _By Tune Index:_ Provides the top matching hymns using fuzzy matching on tune names.\n"
+    "  - *Example:* Type `/tune` and choose either *Hymn Number* or *Tune Index*, then enter your query (e.g. `Whit` or `29`).\n\n"
     "• **/theme**\n"
     "  - *Description:* Initiates an interactive theme filter. You will be presented with a list of unique themes (collected from all comma-separated entries in the database), and you can select or type a theme to display the hymns related to it.\n"
     "  - *Example:* Type `/theme` and choose from the displayed themes, or type a custom theme like `Additional Hymns`.\n\n"
     "• **/date**\n"
     "  - *Description:* Shows the songs sung on a specific date or the next available date if none found. Accepts various date formats.\n"
     "  - *Examples:*\n"
-    "     - `/date 05/04/2024`\n"
-    "     - `/date 5/4`\n"
-    "     - `/date 5`\n\n"
+    "     - `/date 05/04/2024`\n\n"
     "• **/vocabulary**\n"
     "  - *Description:* Starts the vocabulary export conversation.\n"
     "  - *Example:* Type `/vocabulary` and follow the instructions.\n\n"
@@ -827,136 +971,171 @@ try :
 
 
 
+
+
  
      await update.message.reply_text(help_text, parse_mode="Markdown")
  
  
  
  
-  # Conversation states
- SELECT_TYPE, ENTER_SONG = range(2)
+
+
+ # Only one state needed
+ ENTER_SONG = 1
  
- # Start /check conversation
+ # /check 
  async def check_song_start(update: Update, context: CallbackContext) -> int:
-     reply_keyboard = [["Hymn", "Lyric", "Convention"]]
      await update.message.reply_text(
-         "Please choose the category:",
-         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
+         "🎵 Please enter the song (e.g. H-27, L-14, C-5):",
+         reply_markup=ReplyKeyboardRemove()
      )
-     return SELECT_TYPE
- 
- # Handle category selection
- async def check_song_type(update: Update, context: CallbackContext) -> int:
-     song_type = update.message.text.strip().lower()
- 
-     if song_type not in ["hymn", "lyric", "convention"]:
-         await update.message.reply_text("❌ Invalid choice. Please choose Hymn, Lyric, or Convention.")
-         return SELECT_TYPE
- 
-     context.user_data["song_type"] = song_type[0].upper()  # Store 'H', 'L', or 'C'
- 
-     await update.message.reply_text(f"Please enter the {song_type} number (e.g. 27):", reply_markup=ReplyKeyboardRemove())
      return ENTER_SONG
  
- # Handle song number input
- async def check_song_number(update: Update, context: CallbackContext) -> int:
-     song_number = update.message.text.strip()
-     song_type = context.user_data.get("song_type")
+ # Handle song input
+ async def check_song_input(update: Update, context: CallbackContext) -> int:
+     user_input = update.message.text.strip().upper()
+     user_input = standardize_hlc_value(user_input)
+
  
-     if not song_number.isdigit():
-         await update.message.reply_text("❌ Please enter a valid number (e.g. 27).")
+     # Basic format check
+     if not user_input or '-' not in user_input:
+         await update.message.reply_text("❌ Invalid format. Please use format like H-27.")
          return ENTER_SONG
  
-     full_song = f"{song_type}-{song_number}"
-     result = isVocabulary(full_song)
+     song_type, _, song_number = user_input.partition('-')
  
+     if song_type not in ['H', 'L', 'C'] or not song_number.isdigit():
+         await update.message.reply_text("❌ Invalid input. Use H-, L-, or C- followed by a number (e.g. H-27).")
+         return ENTER_SONG
+ 
+     result = isVocabulary(user_input)
      await update.message.reply_text(result)
      return ConversationHandler.END
 
+
   
-  #/last
- SELECT_LAST_TYPE, ENTER_LAST_SONG, ASK_SHOW_ALL = range(3)
+#/last
 
+ # States
+ ENTER_LAST_SONG, ASK_SHOW_ALL = range(2)
+ 
+ # /last entry point
  async def last_sung_start(update: Update, context: CallbackContext) -> int:
-    reply_keyboard = [["Hymn", "Lyric", "Convention"]]
-    await update.message.reply_text(
-        "Please choose the category:",
-        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
-    )
-    return SELECT_LAST_TYPE
-
- async def last_sung_type(update: Update, context: CallbackContext) -> int:
-    category = update.message.text.strip().lower()
-    if category not in ["hymn", "lyric", "convention"]:
-        await update.message.reply_text("❌ Invalid choice. Please choose Hymn, Lyric, or Convention.")
-        return SELECT_LAST_TYPE
-
-    # Store the first letter in uppercase ("H", "L", or "C")
-    context.user_data["last_category"] = category[0].upper()
-    await update.message.reply_text(
-        f"Please enter the {category} number (e.g. 27):", reply_markup=ReplyKeyboardRemove()
-    )
-    return ENTER_LAST_SONG
+     await update.message.reply_text(
+         "🎼 Please enter the song (e.g. H-27, L-14, C-5):",
+         reply_markup=ReplyKeyboardRemove()
+     )
+     return ENTER_LAST_SONG
  
- async def last_sung_number(update: Update, context: CallbackContext) -> int:
-    song_number = update.message.text.strip()
-    if not song_number.isdigit():
-        await update.message.reply_text("❌ Please enter a valid number (e.g. 27).")
-        return ENTER_LAST_SONG
-
-    category = context.user_data.get("last_category")
-    full_song = f"{category}-{song_number}"
-    context.user_data["last_song"] = full_song
-
-    # Get the last sung date (first occurrence only)
-    result = Datefinder(full_song, category, first=True)
-    await update.message.reply_text(result)
-
-    # Provide a reply keyboard with Yes/No options
-    reply_keyboard = [["Yes", "No"]]
-    await update.message.reply_text(
-        "Would you like to see all the dates on which this song was sung?",
-        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
-    )
-    return ASK_SHOW_ALL
-
+ # Handle song input
+ async def last_sung_input(update: Update, context: CallbackContext) -> int:
+     user_input = update.message.text.strip().upper()
+     user_input = standardize_hlc_value(user_input)
  
+     if not user_input or '-' not in user_input:
+         await update.message.reply_text("❌ Invalid format. Please use format like H-27.")
+         return ENTER_LAST_SONG
+ 
+     song_type, _, song_number = user_input.partition('-')
+ 
+     if song_type not in ['H', 'L', 'C'] or not song_number.isdigit():
+         await update.message.reply_text("❌ Invalid code. Use H-, L-, or C- followed by a number (e.g. H-27).")
+         return ENTER_LAST_SONG
+ 
+     full_song = f"{song_type}-{song_number}"
+     context.user_data["last_category"] = song_type
+     context.user_data["last_song"] = full_song
+ 
+     # Get last sung date
+     result = Datefinder(full_song, song_type, first=True)
+     await update.message.reply_text(result)
+ 
+     # Ask if user wants all dates
+     reply_keyboard = [["Yes", "No"]]
+     await update.message.reply_text(
+         "Would you like to see all the dates on which this song was sung?",
+         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
+     )
+     return ASK_SHOW_ALL
+ 
+ # Handle "show all dates?" step
  async def last_sung_show_all(update: Update, context: CallbackContext) -> int:
-    reply = update.message.text.strip().lower()
-    if reply == "yes":
-        category = context.user_data.get("last_category")
-        full_song = context.user_data.get("last_song")
-        result = Datefinder(full_song, category, first=False)
-        await update.message.reply_text(result, reply_markup=ReplyKeyboardRemove())
-    else:
-        await update.message.reply_text("(❁´◡`❁)", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
+     reply = update.message.text.strip().lower()
+     category = context.user_data.get("last_category")
+     full_song = context.user_data.get("last_song")
  
-
-
+     if reply == "yes":
+         result = Datefinder(full_song, category, first=False)
+         await update.message.reply_text(result, reply_markup=ReplyKeyboardRemove())
+     else:
+         await update.message.reply_text(
+             "May the music stay in your heart 🎵\n(❁´◡`❁)\n<b><i>S.D.G</i></b>",
+             parse_mode="HTML",
+             reply_markup=ReplyKeyboardRemove()
+         )
+ 
+     return ConversationHandler.END
+ 
+ 
  # Telegram command handler for /tune command
 
- async def tune_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Check if the user is authorized
-    if not await is_authorized(update):
-        return
-
-    # Log the received command (optional)
-    user = update.effective_user
-    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /tune")
-
-    # Check if the hymn number was provided as an argument
-    if not context.args:
-        await update.message.reply_text("Please provide a hymn number. For example: /tune 75")
-        return
-
-    hymn_no = context.args[0]
-
-    # Get the tune index using your function
-    tune_result = Tunenofinder(hymn_no)
-
-    # Reply to the user with the output
-    await update.message.reply_text(tune_result)
+ # States for ConversationHandler
+ CHOOSE_METHOD, GET_INPUT = range(2)
+ 
+ # Store user input temporarily
+ user_input_method = {}
+ 
+ # Start the tune command conversation
+ async def tune_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+     if not await is_authorized(update):
+         return ConversationHandler.END
+ 
+     user = update.effective_user
+     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /tune")
+ 
+     # Ask user how they want to search
+     reply_keyboard = [["Hymn Number", "Tune Name"]]
+     await update.message.reply_text(
+         "How would you like to search?",
+         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True),
+     )
+     return CHOOSE_METHOD
+ 
+ # Handle the choice
+ async def choose_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+     choice = update.message.text.lower()
+     user_input_method[update.effective_user.id] = choice
+ 
+     if choice == "hymn number":
+         await update.message.reply_text("Please enter the hymn number:")
+     elif choice == "tune name":
+         await update.message.reply_text("Please enter the tune name (or part of it):")
+     else:
+         await update.message.reply_text("Invalid choice. Please type /tune to start over.")
+         return ConversationHandler.END
+ 
+     return GET_INPUT
+ 
+ # Handle the actual search
+ async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+     user_id = update.effective_user.id
+     method = user_input_method.get(user_id)
+     user_input = update.message.text.strip()
+ 
+     if method == "hymn number":
+         result = Tunenofinder(user_input)  # Your existing hymn number search
+     elif method == "tune name":
+         result_df = Hymn_Tune_no_Finder(dfTH, user_input, top_n=10)
+         result = "Top matching hymns:\n" + "\n".join(
+             f"H-{row['Hymn no']}: Tune: {row['Tune Index']}, \t \t Similarity: {row['Similarity']:.2f}"
+             for _, row in result_df.iterrows()
+         )
+     else:
+         result = "Something went wrong. Please try again with /tune."
+ 
+     await update.message.reply_text(result)
+     return ConversationHandler.END
 
 
  
@@ -1079,12 +1258,13 @@ try :
          return NUMBER_INPUT
  
      result = search_index(index_num, category)
-     await update.message.reply_text(f"Search result of {category[0].upper()}-{index_num}: {result}")
+     tune= f"\nTunes: {Tunenofinder(index_num)}" if category == 'hymn' else ''
+     await update.message.reply_text(f"Search result of {category[0].upper()}-{index_num} : {result}{tune}")
      user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) searched by number: {index_num} in {category}")
      return ConversationHandler.END
  
  
- 
+ #/vocabulary
  
  # Step 1: Start vocabulary conversation
  CATEGORY_SELECTION, EXPORT_CONFIRMATION = range(2)
@@ -1109,42 +1289,35 @@ try :
 
  # Step 2: Process category selection and show preview
  async def category_selection(update: Update, context: CallbackContext) -> int:
-     user_choice = update.message.text.strip()
-     if user_choice not in VOCABULARY_CATEGORIES:
-         await update.message.reply_text("⚠️ Invalid choice. Please use /vocabulary again.")
-         return CATEGORY_SELECTION
- 
-     data = VOCABULARY_CATEGORIES[user_choice]
- 
-     # Convert Series to DataFrame if needed
-     
-     # If it's a Series, convert it to a DataFrame for consistency.
-     if isinstance(data, pd.Series):
-         data = data.to_frame(name=user_choice)
-     # For "Full Vocabulary", remove rows where all values are zero.
-     if user_choice == "Full Vocabulary":
-         data = data[(data != 0).any(axis=1)]
-     else:
-         # For Series-based vocabularies, remove rows where the value is zero.
-         data = data[data[user_choice] != 0]
- 
-     # Store the cleaned data and filename in user_data.
-     context.user_data["export_data"] = data
-     context.user_data["export_filename"] = f"{user_choice}.xlsx"
- 
-     # Show a preview (first 10 rows) of the data.
-     preview_text = f"📋 {user_choice} Preview:\n" + data.head(10).to_string(index=False)
-     await update.message.reply_text(preview_text)
- 
-     # Ask if the user wants to export the data as Excel
-     
- 
- 
-     # Ask the user if they want to export the data.
-     keyboard = [["Yes", "No"]]
-     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
-     await update.message.reply_text("📂 Would you like to export this as an Excel file?", reply_markup=reply_markup)
-     return EXPORT_CONFIRMATION
+    user_choice = update.message.text.strip()
+    if user_choice not in VOCABULARY_CATEGORIES:
+        await update.message.reply_text("⚠️ Invalid choice. Please use /vocabulary again.")
+        return CATEGORY_SELECTION
+
+    data = VOCABULARY_CATEGORIES[user_choice]
+
+    # Convert Series to DataFrame if needed.
+    if isinstance(data, pd.Series):
+        data = data.to_frame(name="Value")
+        # Remove rows where "Value" is empty after stripping whitespace.
+        data = data[data["Value"].astype(str).str.strip() != '']
+    elif user_choice == "Full Vocabulary":
+        data = data[(data != 0).any(axis=1)]
+    
+    # Store the cleaned data and filename in user_data.
+    context.user_data["export_data"] = data
+    context.user_data["export_filename"] = f"{user_choice}.xlsx"
+
+    # Show a preview (first 10 rows) of the data.
+    preview_text = f"📋 {user_choice} Preview:\n" + data.head(10).to_string(index=False)
+    await update.message.reply_text(preview_text)
+
+    # Ask the user if they want to export the data.
+    keyboard = [["Yes", "No"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+    await update.message.reply_text("📂 Would you like to export this as an Excel file?", reply_markup=reply_markup)
+    return EXPORT_CONFIRMATION
+
  
  # Step 3: Handle the export confirmation.
  async def export_confirmation(update: Update, context: CallbackContext) -> int:
@@ -1172,15 +1345,20 @@ try :
              user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) attempted to export but no data was found.")
      elif response == "no":
          if "export_data" in context.user_data:
-             data = context.user_data["export_data"]
-             full_vocab = data.to_string(index=False)
-             # Send the full vocabulary as text (using Markdown formatting for a code block)
-             await update.message.reply_text(
-                 f"Here is the full vocabulary:\n```\n{full_vocab}\n```",
+            #  data = context.user_data["export_data"]
+            #  full_vocab = data.to_string(index=False)
+            #  # Send the full vocabulary as text (using Markdown formatting for a code block)
+            #  await update.message.reply_text(
+            #      f"Here is the full vocabulary:\n```\n{full_vocab}\n```",
+            #      parse_mode="Markdown",
+            #      reply_markup=ReplyKeyboardRemove()
+            #  )
+            await update.message.reply_text(
+                 f"Thank You",
                  parse_mode="Markdown",
                  reply_markup=ReplyKeyboardRemove()
              )
-             user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) viewed vocabulary as text.")
+            user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) viewed vocabulary as text.")
          else:
              await update.message.reply_text("⚠️ No data found.")
              user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) attempted to view text but no data was found.")
@@ -1253,7 +1431,7 @@ try :
             unknown_hymns.append(hymn_no)
 
     # Build display lines for known and unknown hymns
-    display_known = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]}" for h in known_hymns]
+    display_known = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]} - {dfH[dfH['Hymn no'] == h]['Tunes'].values[0]}" for h in known_hymns ]
     display_unknown = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]}" for h in unknown_hymns]
 
     message_parts = [f"🎼 *Hymns related to theme:* `{theme_input}`\n"]
@@ -1312,10 +1490,11 @@ try :
             date_obj = get_last_sung_date(hymn_code)
             # Retrieve hymn index from DataFrame
             index = dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]
+            tune = dfH[dfH['Hymn no'] == h]['Tunes'].values[0]
             if date_obj and date_obj.year == s_year:
-                sung.append(f"{hymn_code} - {index}")
+                sung.append(f"{hymn_code} - {index}  -{tune}")
             else:
-                not_sung.append(f"{hymn_code} - {index}")
+                not_sung.append(f"{hymn_code} - {index} -{tune}")
         return sung, not_sung
 
     # Retrieve stored hymn numbers and theme from user_data
@@ -1354,8 +1533,11 @@ try :
         result = get_songs_by_date(input_date)
         
         if isinstance(result, dict):
-            songs_text = "\n".join(f"{i+1}. {s}" for i, s in enumerate(result["songs"]))
-            response = f"{result['message']}:\n\n{songs_text}"
+         songs_text = "\n".join(
+        f"{i + 1}. {s} - {IndexFinder(s)}" for i, s in enumerate(result["songs"])
+    )
+         response = f"{result['message']}:\n\n{songs_text}"
+
         else:
             response = result  # This will be the error message from get_songs_by_date
     else:
@@ -1382,27 +1564,51 @@ try :
     user = update.effective_user
     comment = update.message.text.strip()
     
-    # Load the admin's user ID from environment variables
-    admin_id = st.secrets["ADMIN_ID"]  # Ensure this is set in your environment variables
-    
+    admin_id = st.secrets["ADMIN_ID"]
+    comfile_id = st.secrets["COMFILE_ID"]  # Google Doc ID to store comments
+
+    # Build the full comment message
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    comment_entry = f"{timestamp} - {user.full_name} (@{user.username}, ID: {user.id}) said:\n{comment}\n\n"
+
+    # Send comment to admin
     if admin_id:
         try:
-            admin_id = int(admin_id)  # Convert the admin ID to an integer
-            # Send the comment to the admin via a private message
-            await context.bot.send_message(admin_id, f"New comment from {user.full_name} (@{user.username}, ID: {user.id}):\n\n{comment}")
+            admin_id = int(admin_id)
+            await context.bot.send_message(
+                admin_id,
+                f"📝 New comment from an user:\n\n{comment}"
+            )
         except ValueError:
             user_logger.error("Invalid admin ID in environment variables.")
-    
-    # Save the comment to a file (comments.txt)
-    with open("comments.txt", "a", encoding="utf-8") as file:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        file.write(f"{timestamp} - {user.full_name} (@{user.username}, ID: {user.id}) said:\n{comment}\n\n")
-    
-    # Confirm to the user that their comment has been received
-    await update.message.reply_text("Thank you for your feedback! We appreciate your thoughts.")
+
+    # Append comment to Google Doc
+    try:
+        doc = docs_service.documents().get(documentId=comfile_id).execute()
+        end_index = doc.get("body").get("content")[-1].get("endIndex", 1)
+
+        requests = [{
+            "insertText": {
+                "location": {"index": end_index - 1},
+                "text": comment_entry
+            }
+        }]
+
+        docs_service.documents().batchUpdate(
+            documentId=comfile_id,
+            body={"requests": requests}
+        ).execute()
+
+        print("✅ Comment appended to Google Doc.")
+    except Exception as e:
+        logging.error(f"❌ Failed to append comment to Google Doc ({comfile_id}): {e}")
+
+    # Confirm to the user
+    await update.message.reply_text("✅ Thank you for your feedback! We appreciate your thoughts.")
     user_logger.info(f"Comment from {user.full_name} (@{user.username}, ID: {user.id}): {comment}")
-    
+
     return ConversationHandler.END
+
  async def refresh_command(update: Update, context: CallbackContext) -> None:
     """
     This command is restricted to the admin and calls load_datasets() to
@@ -1426,6 +1632,9 @@ try :
     try:
         global dfH, dfL, dfC, yr23, yr24, yr25, df,dfTH, dfTD
         dfH, dfL, dfC, yr23, yr24, yr25, df,dfTH, dfTD = load_datasets()  # Refresh all datasets
+        yrDataPreprocessing()
+        dfcleaning()
+        df = standardize_song_columns()
         await update.message.reply_text("Datasets reloaded successfully!")
     except Exception as e:
         await update.message.reply_text(f"Error reloading datasets: {e}")
@@ -1435,6 +1644,7 @@ try :
  async def cancel_comment(update: Update, context: CallbackContext) -> int:
     await update.message.reply_text("Comment process has been canceled.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
+ 
  
  
  
@@ -1473,23 +1683,23 @@ try :
 )
      
      check_conv = ConversationHandler(
-    entry_points=[CommandHandler("check", check_song_start)],
+    entry_points=[CommandHandler('check', check_song_start)],
     states={
-        SELECT_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_song_type)],
-        ENTER_SONG: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_song_number)],
+        ENTER_SONG: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_song_input)],
     },
-    fallbacks=[CommandHandler("cancel", cancel)],
+    fallbacks=[],
 )
+
      
      last_conv_handler = ConversationHandler(
     entry_points=[CommandHandler("last", last_sung_start)],
     states={
-        SELECT_LAST_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, last_sung_type)],
-        ENTER_LAST_SONG: [MessageHandler(filters.TEXT & ~filters.COMMAND, last_sung_number)],
+        ENTER_LAST_SONG: [MessageHandler(filters.TEXT & ~filters.COMMAND, last_sung_input)],
         ASK_SHOW_ALL: [MessageHandler(filters.TEXT & ~filters.COMMAND, last_sung_show_all)],
     },
-    fallbacks=[CommandHandler("cancel", cancel)]
+    fallbacks=[],
 )
+
      comment_handler = ConversationHandler(
     entry_points=[CommandHandler('comment', start_comment)],
     states={
@@ -1499,6 +1709,14 @@ try :
     },
     fallbacks=[CommandHandler('cancel', cancel_comment)]
 )
+     tune_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("tune", tune_command)],
+    states={
+        CHOOSE_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_method)],
+        GET_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_input)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
  
  
  
@@ -1507,7 +1725,7 @@ try :
      app.add_handler(CommandHandler("help", help_command))
      app.add_handler(CommandHandler("date", date_command))
      app.add_handler(CommandHandler("refresh", refresh_command))
-     app.add_handler(CommandHandler("tune", tune_command))
+     app.add_handler(tune_conv_handler)
      app.add_handler(last_conv_handler)
      app.add_handler(check_conv)
      app.add_handler(theme_handler)
@@ -1543,14 +1761,24 @@ try :
 
 
     
- 
 except KeyboardInterrupt:
     print("\n🛑 Bot stopped manually by user (Ctrl + C).")
     bot_logger.info(f"\nBot was stoped by the user\n\n")
-    sys.exit(0)
+    try:
+        upload_log_to_google_doc("bot_log.txt", os.getenv("BFILE_ID"))
+        upload_log_to_google_doc("user_log.txt", os.getenv("UFILE_ID"))
+        sys.exit(0)
+    except Exception as e:
+        print(f"Couldn't save log files due to Error: {e}")
+        sys.exit(0)
 except Exception as e:
     print(f"\n❌ An unexpected error occurred: {e}")
     bot_logger.error(f"\n❌ An unexpected error occurred: {e}")
     bot_logger.info("\n")
-    sys.exit(1) 
- 
+    try:
+        upload_log_to_google_doc("bot_log.txt", os.getenv("BFILE_ID"))
+        upload_log_to_google_doc("user_log.txt", os.getenv("UFILE_ID"))
+        sys.exit(1)
+    except Exception as e:
+        print(f"Couldn't save log files due to Error: {e}")
+        sys.exit(1) 
