@@ -930,7 +930,7 @@ try :
     
     return True
  
- ADMIN_USER_ID = int(st.secrets["ADMIN_USER_ID"])
+ ADMIN_ID = int(st.secrets["ADMIN_ID"])
 
  async def start(update: Update, context: CallbackContext) -> None:
     user = update.effective_user
@@ -943,7 +943,7 @@ try :
     if user.id not in authorized_users:
         # Notify admin but do NOT block user
         await context.bot.send_message(
-            chat_id=ADMIN_USER_ID,
+            chat_id=ADMIN_ID,
             text=(
                 f"⚠️ <b>Unauthorized user accessed /start</b>\n\n"
                 f"<b>Name:</b> {user.full_name}\n"
@@ -1311,7 +1311,7 @@ try :
  
  
  CATEGORY_SELECTION, EXPORT_CONFIRMATION = range(2)
- ADMIN_USER_ID = int(st.secrets["ADMIN_USER_ID"])
+ ADMIN_ID = int(st.secrets["ADMIN_ID"])
 
  async def start_vocabulary(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
@@ -1321,7 +1321,7 @@ try :
 
         # Notify admin of unauthorized attempt
         await context.bot.send_message(
-            chat_id=ADMIN_USER_ID,
+            chat_id=ADMIN_ID,
             text=(
                 f"🚨 <b>Unauthorized user tried to access /vocabulary</b>\n\n"
                 f"<b>Name:</b> {user.full_name}\n"
