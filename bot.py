@@ -1025,18 +1025,38 @@ try :
  
  
  
+#/check
 
+ ADMIN_ID = int(st.secrets["ADMIN_ID"])
+ ENTER_SONG = 0  # Ensure this is defined somewhere globally
 
- # Only one state needed
- ENTER_SONG = 1
- 
- # /check 
  async def check_song_start(update: Update, context: CallbackContext) -> int:
-     await update.message.reply_text(
-         "🎵 Please enter the song (e.g. H-27, L-14, C-5):",
-         reply_markup=ReplyKeyboardRemove()
-     )
-     return ENTER_SONG
+    user = update.effective_user
+
+    if not await is_authorized(update):
+        user_logger.warning(f"Unauthorized access attempt to /checksong by {user.full_name} (@{user.username}, ID: {user.id})")
+
+        # Notify the admin
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=(
+                f"🚨 <b>Unauthorized user tried to access /checksong</b>\n\n"
+                f"<b>Name:</b> {user.full_name}\n"
+                f"<b>Username:</b> @{user.username}\n"
+                f"<b>User ID:</b> <code>{user.id}</code>"
+            ),
+            parse_mode="HTML"
+        )
+
+        return ConversationHandler.END
+
+    await update.message.reply_text(
+        "🎵 Please enter the song (e.g. H-27, L-14, C-5):",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ENTER_SONG
+
+
  
  # Handle song input
  async def check_song_input(update: Update, context: CallbackContext) -> int:
