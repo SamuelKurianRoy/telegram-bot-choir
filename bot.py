@@ -930,24 +930,42 @@ try :
     
     return True
  
+ ADMIN_USER_ID = int(st.secrets["ADMIN_USER_ID"])
+
  async def start(update: Update, context: CallbackContext) -> None:
-     user = update.effective_user
-     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /start")
-     """Handles the /start command."""
-     welcome_text = (f"Hello {user.username if user.username is not None else user.full_name}\n\n"
-    "🎵 <b>Welcome to the Choir Bot!</b>\n\n"
-    "&quot;<code>Bach gave us God's word.</code>\n"
-    "<code>Mozart gave us God's laughter.</code>\n"
-    "<code>Beethoven gave us God's fire.</code>\n"
-    "<code>God gave us Music so that we may pray without words.</code>&quot;\n\n"
-    "<b><i>S.D.G</i></b>\n\n"
-    "Use <b>/help</b> to know more about all available commands."
-)
+    user = update.effective_user
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /start")
 
+    # Check authorization
+    authorized_users_str = st.secrets["AUTHORIZED_USERS"]
+    authorized_users = list(map(int, authorized_users_str.split(','))) if authorized_users_str else []
 
+    if user.id not in authorized_users:
+        # Notify admin but do NOT block user
+        await context.bot.send_message(
+            chat_id=ADMIN_USER_ID,
+            text=(
+                f"⚠️ <b>Unauthorized user accessed /start</b>\n\n"
+                f"<b>Name:</b> {user.full_name}\n"
+                f"<b>Username:</b> @{user.username}\n"
+                f"<b>User ID:</b> <code>{user.id}</code>"
+            ),
+            parse_mode="HTML"
+        )
 
+    # Proceed with regular welcome message
+    welcome_text = (f"Hello {user.username if user.username else user.full_name}\n\n"
+        "🎵 <b>Welcome to the Choir Bot!</b>\n\n"
+        "&quot;<code>Bach gave us God's word.</code>\n"
+        "<code>Mozart gave us God's laughter.</code>\n"
+        "<code>Beethoven gave us God's fire.</code>\n"
+        "<code>God gave us Music so that we may pray without words.</code>&quot;\n\n"
+        "<b><i>S.D.G</i></b>\n\n"
+        "Use <b>/help</b> to know more about all available commands."
+    )
 
-     await update.message.reply_text(welcome_text, parse_mode="HTML")
+    await update.message.reply_text(welcome_text, parse_mode="HTML")
+
 
  
  async def help_command(update: Update, context: CallbackContext) -> None:
@@ -1292,15 +1310,27 @@ try :
      return ConversationHandler.END
  
  
- #/vocabulary
- 
- # Step 1: Start vocabulary conversation
  CATEGORY_SELECTION, EXPORT_CONFIRMATION = range(2)
+ ADMIN_USER_ID = int(st.secrets["ADMIN_USER_ID"])
+
  async def start_vocabulary(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
 
     if not await is_authorized(update):
         user_logger.warning(f"Unauthorized access attempt by {user.full_name} (@{user.username}, ID: {user.id})")
+
+        # Notify admin of unauthorized attempt
+        await context.bot.send_message(
+            chat_id=ADMIN_USER_ID,
+            text=(
+                f"🚨 <b>Unauthorized user tried to access /vocabulary</b>\n\n"
+                f"<b>Name:</b> {user.full_name}\n"
+                f"<b>Username:</b> @{user.username}\n"
+                f"<b>User ID:</b> <code>{user.id}</code>"
+            ),
+            parse_mode="HTML"
+        )
+
         return ConversationHandler.END
 
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) started /vocabulary")
@@ -1310,10 +1340,12 @@ try :
         ["Lyric Vocabulary", "Convention Vocabulary"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
     await update.message.reply_text(
         "📚 Please choose a vocabulary category:", reply_markup=reply_markup
     )
     return CATEGORY_SELECTION
+
 
  # Step 2: Process category selection and show preview
  async def category_selection(update: Update, context: CallbackContext) -> int:
