@@ -526,6 +526,9 @@ try :
  Lyric_Vocabulary = pd.DataFrame(Lyric_Vocabulary)
  Convention_Vocabulary = pd.DataFrame(Convention_Vocabulary)
  Hymn_Vocabulary["Hymn Index"] = VOCABULARY_INDEXES["Hymn Indexes"]
+ Hymn_Vocabulary["Hymn Tune"] = (
+    "H-" + Vocabulary["Hymn no"].astype(str)
+).apply(Tune_finder_of_known_songs)
  Lyric_Vocabulary["Lyric Index"] = VOCABULARY_INDEXES["Lyric Indexes"]
  Convention_Vocabulary["Convention Index"] = VOCABULARY_INDEXES["Convention Indexes"]
 
