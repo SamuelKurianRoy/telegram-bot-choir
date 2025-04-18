@@ -1332,8 +1332,8 @@ try :
  async def start_vocabulary(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
 
-    # Notify admin that someone accessed /vocabulary
-    await context.bot.send_message(
+    if if user.id not in authorized_users: # Notify admin about unauthorized access /vocabulary
+     await context.bot.send_message(
         chat_id=ADMIN_ID,
         text=(
             f"📢 <b>User accessed /vocabulary</b>\n\n"
