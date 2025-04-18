@@ -904,6 +904,8 @@ try :
  
 
  #Telegram bot
+ authorized_users_str = st.secrets["AUTHORIZED_USERS"]
+ authorized_users = list(map(int, authorized_users_str.split(','))) if authorized_users_str else []
  
  # Log messages from users
  async def log_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1332,7 +1334,7 @@ try :
  async def start_vocabulary(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
 
-    if if user.id not in authorized_users: # Notify admin about unauthorized access /vocabulary
+    if user.id not in authorized_users: # Notify admin about unauthorized access /vocabulary
      await context.bot.send_message(
         chat_id=ADMIN_ID,
         text=(
