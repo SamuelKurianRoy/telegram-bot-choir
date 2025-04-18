@@ -956,7 +956,7 @@ try :
         )
 
     # Proceed with regular welcome message
-    welcome_text = (f"Hello {user.username if user.username else user.full_name}\n\n"
+    welcome_text = (f"Hello {user.full_name if user.full_name else user.username}\n\n"
         "🎵 <b>Welcome to the Choir Bot!</b>\n\n"
         "&quot;<code>Bach gave us God's word.</code>\n"
         "<code>Mozart gave us God's laughter.</code>\n"
