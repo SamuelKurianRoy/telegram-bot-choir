@@ -1731,8 +1731,7 @@ try :
      conv_handler = ConversationHandler(
          entry_points=[CommandHandler("vocabulary", start_vocabulary)],
          states={
-             CATEGORY_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, category_selection)],
-             EXPORT_CONFIRMATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, export_confirmation)],
+             CATEGORY_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, category_selection)]
          },
          fallbacks=[CommandHandler("cancel", cancel)]
      )
