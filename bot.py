@@ -1040,15 +1040,13 @@ try :
         await context.bot.send_message(
             chat_id=ADMIN_ID,
             text=(
-                f"🚨 <b>Unauthorized user tried to access /checksong</b>\n\n"
+                f"🚨 <b>Unauthorized user accessed /checksong</b>\n\n"
                 f"<b>Name:</b> {user.full_name}\n"
                 f"<b>Username:</b> @{user.username}\n"
                 f"<b>User ID:</b> <code>{user.id}</code>"
             ),
             parse_mode="HTML"
         )
-
-        return ConversationHandler.END
 
     await update.message.reply_text(
         "🎵 Please enter the song (e.g. H-27, L-14, C-5):",
@@ -1154,19 +1152,17 @@ try :
  
  # Start the tune command conversation
  async def tune_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-     if not await is_authorized(update):
-         return ConversationHandler.END
- 
-     user = update.effective_user
-     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /tune")
- 
-     # Ask user how they want to search
-     reply_keyboard = [["Hymn Number", "Tune Name"]]
-     await update.message.reply_text(
-         "How would you like to search?",
-         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True),
-     )
-     return CHOOSE_METHOD
+    user = update.effective_user
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /tune")
+
+    # Ask user how they want to search
+    reply_keyboard = [["Hymn Number", "Tune Name"]]
+    await update.message.reply_text(
+        "How would you like to search?",
+        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True),
+    )
+    return CHOOSE_METHOD
+
  
  # Handle the choice
  async def choose_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
