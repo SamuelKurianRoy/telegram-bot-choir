@@ -1033,11 +1033,11 @@ try :
  async def check_song_start(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
 
-    if not await is_authorized(update):
-        user_logger.warning(f"Unauthorized access attempt to /checksong by {user.full_name} (@{user.username}, ID: {user.id})")
+    # if not await is_authorized(update):
+    #     user_logger.warning(f"Unauthorized access attempt to /checksong by {user.full_name} (@{user.username}, ID: {user.id})")
 
         # Notify the admin
-        await context.bot.send_message(
+    await context.bot.send_message(
             chat_id=ADMIN_ID,
             text=(
                 f"🚨 <b>Unauthorized user accessed /checksong</b>\n\n"
@@ -1332,11 +1332,11 @@ try :
  async def start_vocabulary(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
 
-    if not await is_authorized(update):
-        user_logger.warning(f"Unauthorized access attempt by {user.full_name} (@{user.username}, ID: {user.id})")
+    # if not await is_authorized(update):
+    #     user_logger.warning(f"Unauthorized access attempt by {user.full_name} (@{user.username}, ID: {user.id})")
 
         # Notify admin of unauthorized attempt
-        await context.bot.send_message(
+    await context.bot.send_message(
             chat_id=ADMIN_ID,
             text=(
                 f"🚨 <b>Unauthorized user tried to access /vocabulary</b>\n\n"
@@ -1347,7 +1347,7 @@ try :
             parse_mode="HTML"
         )
 
-        return ConversationHandler.END
+    return ConversationHandler.END
 
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) started /vocabulary")
 
