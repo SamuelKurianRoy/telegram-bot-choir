@@ -1332,21 +1332,17 @@ try :
  async def start_vocabulary(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
 
-    # if not await is_authorized(update):
-    #     user_logger.warning(f"Unauthorized access attempt by {user.full_name} (@{user.username}, ID: {user.id})")
-
-        # Notify admin of unauthorized attempt
+    # Notify admin that someone accessed /vocabulary
     await context.bot.send_message(
-            chat_id=ADMIN_ID,
-            text=(
-                f"🚨 <b>Unauthorized user tried to access /vocabulary</b>\n\n"
-                f"<b>Name:</b> {user.full_name}\n"
-                f"<b>Username:</b> @{user.username}\n"
-                f"<b>User ID:</b> <code>{user.id}</code>"
-            ),
-            parse_mode="HTML"
-        )
-
+        chat_id=ADMIN_ID,
+        text=(
+            f"📢 <b>User accessed /vocabulary</b>\n\n"
+            f"<b>Name:</b> {user.full_name}\n"
+            f"<b>Username:</b> @{user.username}\n"
+            f"<b>User ID:</b> <code>{user.id}</code>"
+        ),
+        parse_mode="HTML"
+    )
 
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) started /vocabulary")
 
@@ -1362,86 +1358,90 @@ try :
     return CATEGORY_SELECTION
 
 
+
  # Step 2: Process category selection and show preview
  async def category_selection(update: Update, context: CallbackContext) -> int:
+    user = update.effective_user
     user_choice = update.message.text.strip()
+
     if user_choice not in VOCABULARY_CATEGORIES:
         await update.message.reply_text("⚠️ Invalid choice. Please use /vocabulary again.")
         return CATEGORY_SELECTION
 
     data = VOCABULARY_CATEGORIES[user_choice]
 
-    # Convert Series to DataFrame if needed.
+    # Clean up the data
     if isinstance(data, pd.Series):
         data = data.to_frame(name="Value")
-        # Remove rows where "Value" is empty after stripping whitespace.
         data = data[data["Value"].astype(str).str.strip() != '']
     elif user_choice == "Full Vocabulary":
         data = data[(data != 0).any(axis=1)]
-    
-    # Store the cleaned data and filename in user_data.
-    context.user_data["export_data"] = data
-    context.user_data["export_filename"] = f"{user_choice}.xlsx"
 
-    # Show a preview (first 10 rows) of the data.
-    preview_text = f"📋 {user_choice} Preview:\n" + data.head(10).to_string(index=False)
-    await update.message.reply_text(preview_text)
+    # Create and send the Excel file directly
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        data.to_excel(writer, sheet_name="Vocabulary", index=False)
+    output.seek(0)
 
-    # Ask the user if they want to export the data.
-    keyboard = [["Yes", "No"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
-    await update.message.reply_text("📂 Would you like to export this as an Excel file?", reply_markup=reply_markup)
-    return EXPORT_CONFIRMATION
+    filename = f"{user_choice}.xlsx"
+    await update.message.reply_document(
+        document=output,
+        filename=filename,
+        caption=f"📂 Here is your '{user_choice}' vocabulary in Excel format.",
+        reply_markup=ReplyKeyboardRemove()
+    )
 
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) downloaded vocabulary: {user_choice}.")
+    return ConversationHandler.END
+
+#  # Step 3: Handle the export confirmation.
+#  async def export_confirmation(update: Update, context: CallbackContext) -> int:
+#      user = update.effective_user
+#      response = update.message.text.strip().lower()
+#      if response == "yes":
+#          if "export_data" in context.user_data:
+#              data = context.user_data["export_data"]
+#              filename = context.user_data["export_filename"]
  
- # Step 3: Handle the export confirmation.
- async def export_confirmation(update: Update, context: CallbackContext) -> int:
-     user = update.effective_user
-     response = update.message.text.strip().lower()
-     if response == "yes":
-         if "export_data" in context.user_data:
-             data = context.user_data["export_data"]
-             filename = context.user_data["export_filename"]
+#              # Convert the DataFrame to an in-memory Excel file.
+#              output = io.BytesIO()
+#              with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+#                  data.to_excel(writer, sheet_name="Vocabulary", index=False)
+#              output.seek(0)  # Reset the pointer to the beginning of the file
  
-             # Convert the DataFrame to an in-memory Excel file.
-             output = io.BytesIO()
-             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                 data.to_excel(writer, sheet_name="Vocabulary", index=False)
-             output.seek(0)  # Reset the pointer to the beginning of the file
+#              await update.message.reply_document(
+#                  document=output,
+#                  filename=filename,
+#                  caption="📂 Here is your vocabulary data in Excel format."
+#              )
+#              user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) exported vocabulary as Excel.")
+#          else:
+#              await update.message.reply_text("⚠️ No data found for export.")
+#              user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) attempted to export but no data was found.")
+#      elif response == "no":
+#          if "export_data" in context.user_data:
+#              data = context.user_data["export_data"]
+#              full_vocab = data.to_string(index=False)
+#              # Send the full vocabulary as text (using Markdown formatting for a code block)
+#              await update.message.reply_text(
+#                  f"Here is the full vocabulary:\n```\n{full_vocab}\n```",
+#                  parse_mode="Markdown",
+#                  reply_markup=ReplyKeyboardRemove()
+#              )
+#             await update.message.reply_text(
+#                  f"Thank You",
+#                  parse_mode="Markdown",
+#                  reply_markup=ReplyKeyboardRemove()
+#              )
+#             user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) viewed vocabulary as text.")
+#          else:
+#              await update.message.reply_text("⚠️ No data found.")
+#              user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) attempted to view text but no data was found.")
+#      else:
+#          await update.message.reply_text("⚠️ Invalid choice. Please reply with 'Yes' or 'No'.")
+#          return EXPORT_CONFIRMATION
  
-             await update.message.reply_document(
-                 document=output,
-                 filename=filename,
-                 caption="📂 Here is your vocabulary data in Excel format."
-             )
-             user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) exported vocabulary as Excel.")
-         else:
-             await update.message.reply_text("⚠️ No data found for export.")
-             user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) attempted to export but no data was found.")
-     elif response == "no":
-         if "export_data" in context.user_data:
-            #  data = context.user_data["export_data"]
-            #  full_vocab = data.to_string(index=False)
-            #  # Send the full vocabulary as text (using Markdown formatting for a code block)
-            #  await update.message.reply_text(
-            #      f"Here is the full vocabulary:\n```\n{full_vocab}\n```",
-            #      parse_mode="Markdown",
-            #      reply_markup=ReplyKeyboardRemove()
-            #  )
-            await update.message.reply_text(
-                 f"Thank You",
-                 parse_mode="Markdown",
-                 reply_markup=ReplyKeyboardRemove()
-             )
-            user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) viewed vocabulary as text.")
-         else:
-             await update.message.reply_text("⚠️ No data found.")
-             user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) attempted to view text but no data was found.")
-     else:
-         await update.message.reply_text("⚠️ Invalid choice. Please reply with 'Yes' or 'No'.")
-         return EXPORT_CONFIRMATION
- 
-     return ConversationHandler.END
+#      return ConversationHandler.END
  
 #/theme
 
