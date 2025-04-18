@@ -374,7 +374,7 @@ try :
  
  
  def standardize_hlc_value(value):
-     
+     value = str(value)
      # Replace multiple consecutive hyphens with a single hyphen
      value = re.sub(r'-+', '-', value)
      # Remove spaces around the hyphen and strip extra spaces
@@ -509,13 +509,16 @@ try :
 }
  # Add new columns for indexes to the vocabulary DataFrame
  Vocabulary["Hymn Index"] = VOCABULARY_INDEXES["Hymn Indexes"]
+ Vocabulary["Hymn Tune"] = (
+    "H-" + Vocabulary["Hymn no"].astype(str)
+).apply(Tune_finder_of_known_songs)
  Vocabulary["Lyric Index"] = VOCABULARY_INDEXES["Lyric Indexes"]
  Vocabulary["Convention Index"] = VOCABULARY_INDEXES["Convention Indexes"]
  Vocabulary["Lyric Index"]  = Vocabulary["Lyric Index"].fillna('')
  Vocabulary["Convention Index"] = Vocabulary["Convention Index"].fillna('')
  # Reorder the columns as desired
  Vocabulary = Vocabulary[[
-    "Hymn no", "Hymn Index",
+    "Hymn no", "Hymn Index", "Hymn Tune",
     "Lyric no", "Lyric Index",
     "Convention no", "Convention Index"
 ]]
