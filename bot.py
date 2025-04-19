@@ -264,6 +264,7 @@ try :
     yr25['Date'] = pd.to_datetime(yr25['Date']).dt.date
 
     dfH['Tunes'] = dfH['Tunes'].fillna("Unknown")
+    dfTH['Page no'] = dfTH['Page no'].fillna("0")
 
  
  def dfcleaning():
@@ -683,6 +684,59 @@ try :
          return dfC['Convention Index'].iloc[no - 1]
      else:
          return "Invalid option. Use 'hymn' or 'lyric'."
+     
+
+ def getNotation(p):
+  p=int(str(p))
+  if p<=0:
+    return "Enter a valid number"
+  elif p<501:
+    return f"https://online.fliphtml5.com/btdsx/ohjz/#p={p}"
+  elif p<838:
+    p-=500
+    return f"https://online.fliphtml5.com/btdsx/bszu/#p={p}"
+  else:
+    return "Invalid Page Number"
+  
+
+  
+ def Music_notation_link(hymnno): 
+    hymnno = standardize_hlc_value(hymnno)
+    results = []
+
+    if hymnno.startswith("H"):
+        hymnno = hymnno.replace('H','').strip().replace("-", "")
+        hymnno = int(hymnno)
+        t = dfH["Tunes"][hymnno -1]
+        t = t.split(',')
+
+        for hymn_name in t:
+            hymn_name = hymn_name.strip()
+            tune = dfTH[dfTH["Hymn no"] == hymnno]["Tune Index"]
+            tune = tune.tolist()
+
+            if hymn_name in tune:
+                mask = (dfTH["Hymn no"] == hymnno) & (dfTH["Tune Index"] == hymn_name)
+                page_no = dfTH[mask]['Page no']
+                if not page_no.empty:
+                    results.append(f"{hymn_name}: {getNotation(str(page_no.values[0]).split(',')[0])}")
+                else:
+                    results.append(f"{hymn_name}: Page not found")
+            else:
+                for idx, i in enumerate(dfTH['Tune Index']):
+                    i_list = str(i).split(',')
+                    if hymn_name in i_list:
+                        page_number = str(dfTH['Page no'].iloc[idx]).split(',')[0]
+                        results.append(f"{hymn_name}: {getNotation(page_number)}")
+
+        if not results:
+            return "Notation not found"
+        return "\n".join(results)
+    else:
+        return "Invalid Number"
+
+
+  
       
  
  
@@ -718,12 +772,12 @@ try :
             
             # Check if the standardized song number is in the column
             if song_number in valid_numbers.values:
-                tune_info = f"\n Known tunes: {Tune_finder_of_known_songs(songs_std)}" if songs_std.startswith('H') else ''
+                tune_info = f"\n Known tunes: {Music_notation_link(songs_std)}" if songs_std.startswith('H') else ''
                 return f"{songs_std}: {IndexFinder(songs_std)} is in the choir Vocabulary{tune_info}"
 
             else:
                 try:
-                    tune_info = f"\n Known tunes: {Tune_finder_of_known_songs(songs_std)}" if songs_std.startswith('H') else ''
+                    tune_info = f"\n Known tunes: {Music_notation_link(songs_std)}" if songs_std.startswith('H') else ''
                     return f"{songs_std}: {IndexFinder(songs_std)} was not found in the choir Vocabulary{tune_info}\n\nNote: A Known Song may appear here if it hasn't been sung in the past three years"
                 except Exception as e:
                     return f"An error occurred: {str(e)}"
@@ -1066,24 +1120,37 @@ try :
  
  # Handle song input
  async def check_song_input(update: Update, context: CallbackContext) -> int:
-     user_input = update.message.text.strip().upper()
-     user_input = standardize_hlc_value(user_input)
+    user_input = update.message.text.strip().upper()
+    user_input = standardize_hlc_value(user_input)
 
- 
-     # Basic format check
-     if not user_input or '-' not in user_input:
-         await update.message.reply_text("❌ Invalid format. Please use format like H-27.")
-         return ENTER_SONG
- 
-     song_type, _, song_number = user_input.partition('-')
- 
-     if song_type not in ['H', 'L', 'C'] or not song_number.isdigit():
-         await update.message.reply_text("❌ Invalid input. Use H-, L-, or C- followed by a number (e.g. H-27).")
-         return ENTER_SONG
- 
-     result = isVocabulary(user_input)
-     await update.message.reply_text(result)
-     return ConversationHandler.END
+    # Basic format check
+    if not user_input or '-' not in user_input:
+        await update.message.reply_text(
+            "❌ Invalid format. Please use format like H-27.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ENTER_SONG
+
+    song_type, _, song_number = user_input.partition('-')
+
+    if song_type not in ['H', 'L', 'C'] or not song_number.isdigit():
+        await update.message.reply_text(
+            "❌ Invalid input. Use H-, L-, or C- followed by a number (e.g. H-27).",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ENTER_SONG
+
+    # Generate your result string (may contain a fliphtml URL)
+    result = isVocabulary(user_input)
+
+    # Send back the result but suppress any web page preview
+    await update.message.reply_text(
+        result,
+        disable_web_page_preview=True,
+        reply_markup=ReplyKeyboardRemove()
+    )
+
+    return ConversationHandler.END
 
 
   
