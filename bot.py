@@ -743,47 +743,63 @@ try :
  def isVocabulary(Songs):
     songs_std = standardize_hlc_value(Songs)
     song = songs_std
-    
+
     # Mapping prefixes to the corresponding column names
     prefix_mapping = {
         "H": "Hymn no",
         "L": "Lyric no",
         "C": "Convention no"
     }
-    
-    # Iterate over the possible prefixes
+
     for prefix, col in prefix_mapping.items():
         if song.startswith(prefix):
-            # Remove prefix and any dashes/spaces, then convert to int
+            # strip off prefix/dashes and parse number
             number_str = song.replace(prefix, '').replace("-", '').strip()
             try:
                 song_number = int(number_str)
             except ValueError:
                 return f"Invalid song number: {song}"
-            
-            # Convert the target column values to integers,
-            # filtering out values that are not valid numbers or are zeros.
+
+            # build list of valid numbers in that column
             def to_int(x):
                 x = x.strip()
                 return int(x) if x.isdigit() and int(x) != 0 else None
-            
-            valid_numbers = Vocabulary[col].dropna().apply(to_int)
-            valid_numbers = valid_numbers.dropna()  # Remove any None values
-            
-            # Check if the standardized song number is in the column
-            if song_number in valid_numbers.values:
-                tune_info = f"\n Known tunes: {Music_notation_link(songs_std)}" if songs_std.startswith('H') else ''
-                return f"{songs_std}: {IndexFinder(songs_std)} is in the choir Vocabulary{tune_info}"
 
+            valid_numbers = (Vocabulary[col]
+                             .dropna()
+                             .apply(to_int)
+                             .dropna()
+                             .astype(int)
+                             .values)
+
+            # check membership
+            in_vocab = song_number in valid_numbers
+
+            # fetch your notation block (this will be lines joined by "\n")
+            notation_block = ""
+            if songs_std.startswith('H'):
+                notation_block = Music_notation_link(songs_std)
+
+            # build the tune_info multiline string
+            tune_info = ""
+            if notation_block:
+                tune_info = "\nKnown tunes:\n" + notation_block
+
+            # choose the correct message template
+            if in_vocab:
+                return (
+                    f"{songs_std}: {IndexFinder(songs_std)} is in the choir Vocabulary"
+                    f"{tune_info}"
+                )
             else:
-                try:
-                    tune_info = f"\n Known tunes: {Music_notation_link(songs_std)}" if songs_std.startswith('H') else ''
-                    return f"{songs_std}: {IndexFinder(songs_std)} was not found in the choir Vocabulary{tune_info}\n\nNote: A Known Song may appear here if it hasn't been sung in the past three years"
-                except Exception as e:
-                    return f"An error occurred: {str(e)}"
-    
-    # If no valid prefix is found
+                return (
+                    f"{songs_std}: {IndexFinder(songs_std)} was not found in the choir Vocabulary"
+                    f"{tune_info}"
+                    "\n\nNote: A Known Song may appear here if it hasn't been sung in the past three years"
+                )
+
     return "Invalid Response"
+
 
  def Datefinder(songs, category=None, first=False):
     First=first
