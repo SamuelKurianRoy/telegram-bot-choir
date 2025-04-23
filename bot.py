@@ -709,9 +709,9 @@ try :
     results = []
 
     if hymnno.startswith("H"):
-        hymnno = hymnno.replace('H','').strip().replace("-", "")
+        hymnno = hymnno.replace('H', '').strip().replace("-", "")
         hymnno = int(hymnno)
-        t = dfH["Tunes"][hymnno -1]
+        t = dfH["Tunes"][hymnno - 1]
         t = t.split(',')
 
         for hymn_name in t:
@@ -723,21 +723,26 @@ try :
                 mask = (dfTH["Hymn no"] == hymnno) & (dfTH["Tune Index"] == hymn_name)
                 page_no = dfTH[mask]['Page no']
                 if not page_no.empty:
-                    results.append(f"{hymn_name}: {getNotation(str(page_no.values[0]).split(',')[0])}")
+                    page = str(page_no.values[0]).split(',')[0]
+                    link = getNotation(page)
+                    results.append(f'<a href="{link}">{hymn_name}</a>')
                 else:
-                    results.append(f"{hymn_name}: Page not found")
+                    results.append(f'{hymn_name}: Page not found')
             else:
                 for idx, i in enumerate(dfTH['Tune Index']):
                     i_list = str(i).split(',')
                     if hymn_name in i_list:
                         page_number = str(dfTH['Page no'].iloc[idx]).split(',')[0]
-                        results.append(f"{hymn_name}: {getNotation(page_number)}")
+                        link = getNotation(page_number)
+                        results.append(f'<a href="{link}">{hymn_name}</a>')
 
         if not results:
             return "Notation not found"
         return "\n".join(results)
+
     else:
         return "Invalid Number"
+
 
 
   
@@ -1160,12 +1165,13 @@ try :
         )
         return ENTER_SONG
 
-    # Generate your result string (may contain a fliphtml URL)
+    # Generate your result string (may contain a fliphtml URL as HTML link)
     result = isVocabulary(user_input)
 
-    # Send back the result but suppress any web page preview
+    # Send back the result with HTML parsing and no link preview
     await update.message.reply_text(
         result,
+        parse_mode="HTML",  # <-- Required for clickable links
         disable_web_page_preview=True,
         reply_markup=ReplyKeyboardRemove()
     )
