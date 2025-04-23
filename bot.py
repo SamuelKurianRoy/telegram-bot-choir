@@ -737,7 +737,7 @@ try :
                         results.append(f'<a href="{link}">{hymn_name}</a>')
 
         if not results:
-            return "Notation not found"
+            return f"{Tune_finder_of_known_songs(f'H-{hymnno}')}: Notation not found"
         return "\n".join(results)
 
     else:
@@ -1291,7 +1291,7 @@ try :
      elif method == "tune name":
          result_df = Hymn_Tune_no_Finder(dfTH, user_input, top_n=10)
          result = "Top matching hymns:\n" + "\n".join(
-             f"H-{row['Hymn no']}: Tune: {row['Tune Index']}, \t \t Similarity: {row['Similarity']:.2f}"
+             f"H-{int(row['Hymn no'])}: Tune: {row['Tune Index']}, \t \t Similarity: {row['Similarity']:.2f}"
              for _, row in result_df.iterrows()
          )
      else:
