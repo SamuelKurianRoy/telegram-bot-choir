@@ -1812,10 +1812,20 @@ try :
         yrDataPreprocessing()
         dfcleaning()
         df = standardize_song_columns()
+        try:
+         upload_log_to_google_doc("bot_log.txt", os.getenv("BFILE_ID"))
+         upload_log_to_google_doc("user_log.txt", os.getenv("UFILE_ID"))
+        except Exception as e:
+         print(f"Couldn't save log files due to Error: {e}")
         await update.message.reply_text("Datasets reloaded successfully!")
     except Exception as e:
         await update.message.reply_text(f"Error reloading datasets: {e}")
         logging.error(f"Error in /refresh command: {e}")
+        try:
+         upload_log_to_google_doc("bot_log.txt", os.getenv("BFILE_ID"))
+         upload_log_to_google_doc("user_log.txt", os.getenv("UFILE_ID"))
+        except Exception as e:
+         print(f"Couldn't save log files due to Error: {e}")
 
 # Step 3: Handle /cancel if the user wants to exit
  async def cancel_comment(update: Update, context: CallbackContext) -> int:
