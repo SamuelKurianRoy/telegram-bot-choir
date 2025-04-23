@@ -375,12 +375,16 @@ try :
  
  
  def standardize_hlc_value(value):
-     value = str(value)
-     # Replace multiple consecutive hyphens with a single hyphen
-     value = re.sub(r'-+', '-', value)
-     # Remove spaces around the hyphen and strip extra spaces
-     value = re.sub(r'\s*-+\s*', '-', value).strip()
-     return value
+    value = str(value).upper().strip()
+
+    # Fix format if it's like H 23 or H23 -> H-23
+    value = re.sub(r'^([HLC])\s*[-]?\s*(\d+)$', r'\1-\2', value)
+
+    # Replace multiple hyphens with a single hyphen and remove spaces around them
+    value = re.sub(r'-+', '-', value)
+    value = re.sub(r'\s*-\s*', '-', value)
+
+    return value
  
      
  def IndexFinder(Song):
