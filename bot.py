@@ -550,15 +550,18 @@ try :
  def malayalam_tokenizer(text):
      return indic_tokenize.trivial_tokenize(text, lang='ml')
  
- # TF-IDF Vectorizer setup for Hymn and Lyric
- vectorizer_hymn = TfidfVectorizer(analyzer='word', tokenizer=malayalam_tokenizer, token_pattern=None)
- tfidf_matrix_hymn = vectorizer_hymn.fit_transform(dfH['Hymn Index'])
+ # TF-IDF Vectorizer setup for Hymn, Lyric, and Convention with character n-grams
+ # Hymn
+ vectorizer_hymn = TfidfVectorizer(analyzer='char_wb', ngram_range=(3, 5))
+ tfidf_matrix_hymn = vectorizer_hymn.fit_transform(dfH['Hymn Index'].fillna(''))
  
- vectorizer_lyric = TfidfVectorizer(analyzer='word', tokenizer=malayalam_tokenizer, token_pattern=None)
- tfidf_matrix_lyric = vectorizer_lyric.fit_transform(dfL['Lyric Index'])
+ # Lyric
+ vectorizer_lyric = TfidfVectorizer(analyzer='char_wb', ngram_range=(3, 5))
+ tfidf_matrix_lyric = vectorizer_lyric.fit_transform(dfL['Lyric Index'].fillna(''))
  
- vectorizer_convention = TfidfVectorizer(analyzer='word', tokenizer=malayalam_tokenizer, token_pattern=None)
- tfidf_matrix_convention = vectorizer_convention.fit_transform(dfC['Convention Index'])
+ # Convention
+ vectorizer_convention = TfidfVectorizer(analyzer='char_wb', ngram_range=(3, 5))
+ tfidf_matrix_convention = vectorizer_convention.fit_transform(dfC['Convention Index'].fillna(''))
  
 
 
@@ -1495,54 +1498,7 @@ try :
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) downloaded vocabulary: {user_choice}.")
     return ConversationHandler.END
 
-#  # Step 3: Handle the export confirmation.
-#  async def export_confirmation(update: Update, context: CallbackContext) -> int:
-#      user = update.effective_user
-#      response = update.message.text.strip().lower()
-#      if response == "yes":
-#          if "export_data" in context.user_data:
-#              data = context.user_data["export_data"]
-#              filename = context.user_data["export_filename"]
- 
-#              # Convert the DataFrame to an in-memory Excel file.
-#              output = io.BytesIO()
-#              with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-#                  data.to_excel(writer, sheet_name="Vocabulary", index=False)
-#              output.seek(0)  # Reset the pointer to the beginning of the file
- 
-#              await update.message.reply_document(
-#                  document=output,
-#                  filename=filename,
-#                  caption="📂 Here is your vocabulary data in Excel format."
-#              )
-#              user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) exported vocabulary as Excel.")
-#          else:
-#              await update.message.reply_text("⚠️ No data found for export.")
-#              user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) attempted to export but no data was found.")
-#      elif response == "no":
-#          if "export_data" in context.user_data:
-#              data = context.user_data["export_data"]
-#              full_vocab = data.to_string(index=False)
-#              # Send the full vocabulary as text (using Markdown formatting for a code block)
-#              await update.message.reply_text(
-#                  f"Here is the full vocabulary:\n```\n{full_vocab}\n```",
-#                  parse_mode="Markdown",
-#                  reply_markup=ReplyKeyboardRemove()
-#              )
-#             await update.message.reply_text(
-#                  f"Thank You",
-#                  parse_mode="Markdown",
-#                  reply_markup=ReplyKeyboardRemove()
-#              )
-#             user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) viewed vocabulary as text.")
-#          else:
-#              await update.message.reply_text("⚠️ No data found.")
-#              user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) attempted to view text but no data was found.")
-#      else:
-#          await update.message.reply_text("⚠️ Invalid choice. Please reply with 'Yes' or 'No'.")
-#          return EXPORT_CONFIRMATION
- 
-#      return ConversationHandler.END
+
  
 #/theme
 
