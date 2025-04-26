@@ -6,8 +6,8 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 import json
 import logging
-from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackContext, ContextTypes
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackContext, ContextTypes , CallbackQueryHandler
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove , InlineKeyboardButton, InlineKeyboardMarkup
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -21,6 +21,7 @@ import os
 import asyncio
 import threading
 from googleapiclient.errors import HttpError
+from telegram.constants import ParseMode
 
 # Ensure an event loop exists for the current thread
 try:
@@ -1678,7 +1679,9 @@ try :
     await update.message.reply_text(response, parse_mode='Markdown')
 
 
- COMMENT = 1
+ #/comment
+
+ COMMENT, REPLY = range(2)
 
 # Step 1: Command to start commenting
  async def start_comment(update: Update, context: CallbackContext) -> int:
@@ -1690,30 +1693,45 @@ try :
         "Please type your comment, recommendation, or thoughts below. You can also type /cancel to exit."
     )
     return COMMENT
+ 
 
-# Step 2: Process the comment
+
+
  async def process_comment(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
     comment = update.message.text.strip()
-    
-    admin_id = st.secrets["ADMIN_ID"]
-    comfile_id = st.secrets["COMFILE_ID"]  # Google Doc ID to store comments
+
+    admin_id = os.getenv("ADMIN_ID")
+    comfile_id = os.getenv("COMFILE_ID")  # Google Doc ID to store comments
 
     # Build the full comment message
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    comment_entry = f"{timestamp} - {user.full_name} (@{user.username}, ID: {user.id}) said:\n{comment}\n\n"
+    user_id = user.id
+    chat_id = update.effective_chat.id
+    comment_entry = f"{timestamp} - {user.full_name} (@{user.username}, ID: {user.id}, ChatID: {chat_id}) said:\n{comment}\n\n"
 
-    # Send comment to admin
+    # Send comment to admin with an inline button
     if admin_id:
         try:
             admin_id = int(admin_id)
+
+            # Creating an inline button for replying
+            reply_button = InlineKeyboardButton(
+                text="Reply to User",
+                callback_data=f"reply_{chat_id}"  # Encodes the chat_id in callback_data
+            )
+            reply_markup = InlineKeyboardMarkup([[reply_button]])
+
+            # Send message with the inline button
             await context.bot.send_message(
                 admin_id,
-                # f"📝 New comment from an {user.full_name} (@{user.username}, ID: {user.id}:\n\n{comment}"
-                f"📝 New comment from an user:\n\n{comment}"
+                f"📝 New comment from User:\n\n"
+                f"{comment}\n\n"
+                f"👉 Click the button below to reply to this user.",
+                reply_markup=reply_markup
             )
         except ValueError:
-            user_logger.error("Invalid admin ID in environment variables.")
+            logging.error("Invalid admin ID in environment variables.")
 
     # Append comment to Google Doc
     try:
@@ -1738,9 +1756,87 @@ try :
 
     # Confirm to the user
     await update.message.reply_text("✅ Thank you for your feedback! We appreciate your thoughts.")
+
+    # Log user's comment
     user_logger.info(f"Comment from {user.full_name} (@{user.username}, ID: {user.id}): {comment}")
 
     return ConversationHandler.END
+
+
+ # Function to handle the reply action when button is clicked
+ async def reply_to_user(update: Update, context: CallbackContext) -> int:
+    """Sends the actual reply to the user."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    target_user_id = int(data.split("_")[1])
+
+    context.user_data["target_user_id"] = target_user_id
+
+    await query.message.reply_text(
+        f"✏️ Type your reply to the User",
+        parse_mode=ParseMode.HTML
+    )
+
+    return REPLY
+ 
+
+
+ 
+ async def send_reply_to_user(update: Update, context: CallbackContext) -> int:
+    """Handles sending the admin's reply after they type the message."""
+    user_message = update.message.text
+    target_user_id = context.user_data.get("target_user_id")
+
+    if not target_user_id:
+        await update.message.reply_text("❌ No target user found to send the reply.")
+        return ConversationHandler.END
+
+    try:
+        await context.bot.send_message(
+            chat_id=target_user_id,
+            text=f"💬 Admin's reply:\n\n{user_message}",
+            parse_mode=ParseMode.HTML
+        )
+        await update.message.reply_text("✅ Your reply has been sent to the user.")
+    except Exception as e:
+        logging.error(f"❌ Failed to send reply: {e}")
+        await update.message.reply_text(f"❌ Failed to send reply: {e}")
+
+    return ConversationHandler.END
+
+
+ # Admin reply function (keeps your original implementation)
+ async def admin_reply(update: Update, context: CallbackContext) -> None:
+    user = update.effective_user
+    admin_id = int(os.getenv("ADMIN_ID"))
+
+    if user.id != admin_id:
+        await update.message.reply_text("❌ You are not authorized to use this command.")
+        return
+
+    try:
+        args = context.args
+        if len(args) < 2:
+            await update.message.reply_text("Usage: /reply <user_id> <your message>")
+            return
+
+        target_user_id = int(args[0])
+        reply_message = " ".join(args[1:])
+
+        await context.bot.send_message(
+            chat_id=target_user_id,
+            text=f"💬 Admin's reply:\n\n{reply_message}",
+            parse_mode=ParseMode.HTML
+        )
+
+        await update.message.reply_text(f"✅ Reply sent to user {target_user_id}.")
+    except Exception as e:
+        logging.error(f"❌ Failed to send reply: {e}")
+        await update.message.reply_text(f"❌ Failed to send reply: {e}")
+
+
 
  async def refresh_command(update: Update, context: CallbackContext) -> None:
     """
@@ -1867,6 +1963,8 @@ try :
      app.add_handler(CommandHandler("help", help_command))
      app.add_handler(CommandHandler("date", date_command))
      app.add_handler(CommandHandler("refresh", refresh_command))
+     app.add_handler(CommandHandler("reply", admin_reply))
+
      app.add_handler(tune_conv_handler)
      app.add_handler(last_conv_handler)
      app.add_handler(check_conv)
@@ -1874,6 +1972,10 @@ try :
      app.add_handler(search_conv_handler)
      app.add_handler(conv_handler)
      app.add_handler(comment_handler)
+
+
+     app.add_handler(CallbackQueryHandler(reply_to_user, pattern="^reply_"))
+     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_reply_to_user))
      
  
      user_logger.info("🤖 Bot is running...")
