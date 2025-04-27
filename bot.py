@@ -1694,15 +1694,12 @@ try :
 
     # Get Name/Index info
     song_info = isVocabulary(user_input)
-    if song_info:
+    if 'not found' not in song_info:
         response_parts.append(f"🎵 <b>Song Info:</b> {song_info}")
+        last_sung = Datefinder(user_input, song_type, first=True)
+        response_parts.append(f"🗓️ <b>Last Sung:</b> {last_sung}")
     else:
-        response_parts.append(f"Choir doesn't know the Song {user_input}")
-        return
-
-    # Last Sung
-    last_sung = Datefinder(user_input, song_type, first=True)
-    response_parts.append(f"🗓️ <b>Last Sung:</b> {last_sung}")
+        response_parts.append(f"Choir doesn't know {f'{user_input}: {IndexFinder(user_input)}'}")
 
 
     # Send the reply
