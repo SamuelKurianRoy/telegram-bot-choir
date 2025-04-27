@@ -1048,8 +1048,7 @@ try :
     welcome_text = (f"Hello {user.full_name if user.full_name else user.username}\n\n"
     "🎵 <b>Welcome to the Choir Bot!</b>\n\n"
     "This bot helps you quickly find details about choir songs!\n"
-    "Simply type a song code like <b>H-27</b>, <b>L-5</b>, or <b>C-12</b> and get instant info, including the last sung date.\n\n"
-    "<b><i>S.D.G</i></b>\n\n"
+    "Simply type a song like <b>H-27</b>, <b>L-5</b>, or <b>C-12</b> and get instant info, including the last sung date.\n\n"
     "Use <b>/help</b> to explore all commands."
 )
 
