@@ -1955,6 +1955,14 @@ try :
     },
     fallbacks=[CommandHandler("cancel", cancel)],
 )
+     
+     reply_conv_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(reply_to_user, pattern="^reply_")],
+    states={
+        REPLY: [MessageHandler(filters.TEXT & ~filters.COMMAND, send_reply_to_user)]
+    },
+    fallbacks=[CommandHandler("cancel", cancel)]
+)
  
  
  
@@ -1972,11 +1980,8 @@ try :
      app.add_handler(search_conv_handler)
      app.add_handler(conv_handler)
      app.add_handler(comment_handler)
+     app.add_handler(reply_conv_handler)
 
-
-     app.add_handler(CallbackQueryHandler(reply_to_user, pattern="^reply_"))
-     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_reply_to_user))
-     
  
      user_logger.info("🤖 Bot is running...")
      await app.run_polling(stop_signals=[])
