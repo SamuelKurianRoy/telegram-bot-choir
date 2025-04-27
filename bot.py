@@ -1046,14 +1046,12 @@ try :
 
     # Proceed with regular welcome message
     welcome_text = (f"Hello {user.full_name if user.full_name else user.username}\n\n"
-        "🎵 <b>Welcome to the Choir Bot!</b>\n\n"
-        "&quot;<code>Bach gave us God's word.</code>\n"
-        "<code>Mozart gave us God's laughter.</code>\n"
-        "<code>Beethoven gave us God's fire.</code>\n"
-        "<code>God gave us Music so that we may pray without words.</code>&quot;\n\n"
-        "<b><i>S.D.G</i></b>\n\n"
-        "Use <b>/help</b> to know more about all available commands."
-    )
+    "🎵 <b>Welcome to the Choir Bot!</b>\n\n"
+    "This bot helps you quickly find details about choir songs!\n"
+    "Simply type a song code like <b>H-27</b>, <b>L-5</b>, or <b>C-12</b> and get instant info, including the last sung date.\n\n"
+    "<b><i>S.D.G</i></b>\n\n"
+    "Use <b>/help</b> to explore all commands."
+)
 
     await update.message.reply_text(welcome_text, parse_mode="HTML")
 
