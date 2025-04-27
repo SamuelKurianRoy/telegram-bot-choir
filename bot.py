@@ -796,7 +796,7 @@ try :
             # build the tune_info multiline string
             tune_info = ""
             if notation_block:
-                tune_info = "\nKnown tunes:\n" + notation_block
+                tune_info = "\n🎶 Tune:\n" + notation_block
 
             # choose the correct message template
             if in_vocab:
@@ -1679,6 +1679,41 @@ try :
     await update.message.reply_text(response, parse_mode='Markdown')
 
 
+
+ #Song Info Function
+ async def handle_song_code(update: Update, context: CallbackContext) -> None:
+    user_input_raw = update.message.text
+    user_input = standardize_hlc_value(user_input_raw)
+    song_type, _, song_number = user_input.partition('-')
+
+    # Validate basic format again if needed
+    if song_type not in ['H', 'L', 'C'] or not song_number.isdigit():
+        return  # Ignore bad formats silently
+
+    response_parts = []
+
+    # Get Name/Index info
+    song_info = isVocabulary(user_input)
+    if song_info:
+        response_parts.append(f"🎵 <b>Song Info:</b> {song_info}")
+    else:
+        response_parts.append(f"Choir doesn't know the Song {user_input}")
+        return
+
+    # Last Sung
+    last_sung = Datefinder(user_input, song_type, first=True)
+    response_parts.append(f"🗓️ <b>Last Sung:</b> {last_sung}")
+
+
+    # Send the reply
+    await update.message.reply_text(
+    "\n".join(response_parts),
+    parse_mode="HTML",
+    disable_web_page_preview=True
+)
+
+
+
  #/comment
 
  COMMENT, REPLY = range(2)
@@ -1981,6 +2016,8 @@ try :
      app.add_handler(conv_handler)
      app.add_handler(comment_handler)
      app.add_handler(reply_conv_handler)
+
+     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
 
  
      user_logger.info("🤖 Bot is running...")
