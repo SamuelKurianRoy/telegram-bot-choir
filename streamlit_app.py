@@ -7,7 +7,7 @@ import json
 import logging
 import datetime
 from pathlib import Path
-from run_bot import start_bot_in_background
+from run_bot import start_bot_in_background, stop_bot_in_background, stop_all_bot_instances
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseDownload
@@ -228,26 +228,9 @@ def stop_bot():
     """Stop the bot process"""
     if st.session_state.get("bot_started", False):
         try:
-            # Find and terminate all bot processes
-            killed = False
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-                try:
-                    # Check if this is a python process running our bot
-                    if proc.info['name'] == 'python' and proc.info['cmdline'] and any('bot.py' in cmd for cmd in proc.info['cmdline']):
-                        # Skip our own process
-                        if proc.pid != os.getpid():
-                            st.info(f"Killing bot process with PID {proc.pid}")
-                            # Use SIGKILL directly for immediate termination
-                            os.kill(proc.pid, signal.SIGKILL)
-                            killed = True
-                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                    continue
+            # Call the stop function from run_bot.py
+            success = stop_bot_in_background()
             
-            # Remove lock file if it exists
-            lock_file = "/tmp/telegram_bot.lock"
-            if os.path.exists(lock_file):
-                os.remove(lock_file)
-                
             # Update session state
             st.session_state["bot_started"] = False
             st.session_state["last_stopped"] = datetime.datetime.now()
@@ -261,7 +244,7 @@ def stop_bot():
                 upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
                 upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
             
-            return killed or True  # Return True even if no processes were killed
+            return success
         except Exception as e:
             st.error(f"Failed to stop bot: {e}")
     return False
@@ -301,26 +284,10 @@ def start_bot():
 def emergency_stop_bot():
     """Forcefully terminate any running bot instances"""
     try:
-        # Find all python processes
-        killed_processes = 0
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                # Check if this is a python process running our bot
-                if proc.info['name'] == 'python' and proc.info['cmdline'] and any('bot.py' in cmd for cmd in proc.info['cmdline']):
-                    # Skip our own process
-                    if proc.pid != os.getpid():
-                        st.warning(f"Killing bot process with PID {proc.pid}")
-                        # Use SIGKILL directly
-                        os.kill(proc.pid, signal.SIGKILL)
-                        killed_processes += 1
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                continue
-                    
-        # Remove lock file if it exists
-        lock_file = "/tmp/telegram_bot.lock"
-        if os.path.exists(lock_file):
-            os.remove(lock_file)
-            
+        # Call the stop_all_bot_instances function from run_bot.py
+        success = stop_all_bot_instances()
+        
+        # Update session state
         st.session_state["bot_started"] = False
         st.session_state["last_stopped"] = datetime.datetime.now()
         
@@ -328,14 +295,26 @@ def emergency_stop_bot():
         bot_logger, _ = setup_logging()
         bot_logger.info("Bot forcefully terminated from Streamlit interface")
         
-        if killed_processes > 0:
-            return True
-        else:
-            st.info("No bot processes found to terminate.")
-            return True
+        return success
     except Exception as e:
         st.error(f"Failed to emergency stop bot: {e}")
         return False
+
+def debug_bot_processes():
+    """Debug function to list all running Python processes"""
+    processes = []
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            if proc.info['name'] == 'python' and proc.info['cmdline']:
+                cmdline = ' '.join(proc.info['cmdline'])
+                processes.append({
+                    'pid': proc.pid,
+                    'cmdline': cmdline,
+                    'is_bot': 'bot.py' in cmdline
+                })
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    return processes
 
 # Initialize logging
 bot_logger, user_logger = setup_logging()
@@ -503,6 +482,18 @@ if page == "Dashboard":
         st.code(user_log_recent, language="text")
     else:
         st.info("No recent user activity found.")
+
+    # Add debug section
+    st.markdown("<h2 class='sub-header'>Debug Information</h2>", unsafe_allow_html=True)
+    if st.button("Show Running Python Processes"):
+        processes = debug_bot_processes()
+        if processes:
+            st.write("Running Python processes:")
+            for proc in processes:
+                st.write(f"PID: {proc['pid']}, Is Bot: {proc['is_bot']}")
+                st.code(proc['cmdline'], language="bash")
+        else:
+            st.write("No Python processes found.")
 
 elif page == "Logs":
     st.markdown("<h1 class='main-header'>Bot Logs</h1>", unsafe_allow_html=True)

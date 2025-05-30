@@ -45,43 +45,51 @@ def run_bot_wrapper():
         st.session_state["bot_started"] = False
 
 def stop_bot_in_background():
-    global bot_running
+    global bot_running, bot_thread
     
-    # Call the bot's stop function
-    success = bot_stop()
+    # First try to stop the bot gracefully
+    try:
+        success = bot_stop()
+    except Exception as e:
+        print(f"Error in bot_stop: {e}")
+        success = False
     
-    # Also terminate any running bot processes
-    stop_all_bot_instances()
+    # Then forcefully terminate any running bot processes
+    killed = stop_all_bot_instances()
     
     # Update flags
     bot_running = False
     st.session_state["bot_started"] = False
     
-    return success
+    return success or killed
 
 def stop_all_bot_instances():
     """Stop all running bot instances"""
     try:
+        killed = False
         # Find all python processes
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            # Check if this is a python process running our bot
-            if proc.info['name'] == 'python' and proc.info['cmdline'] and any('bot.py' in cmd for cmd in proc.info['cmdline']):
-                # Skip our own process
-                if proc.pid != os.getpid():
-                    try:
-                        proc.terminate()
-                        proc.wait(timeout=3)
-                        if proc.is_running():
-                            proc.kill()
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                        continue
+            try:
+                # Check if this is a python process running our bot
+                if proc.info['name'] == 'python' and proc.info['cmdline']:
+                    cmdline = ' '.join(proc.info['cmdline'])
+                    if 'bot.py' in cmdline:
+                        # Skip our own process
+                        if proc.pid != os.getpid():
+                            print(f"Killing bot process with PID {proc.pid}")
+                            # Use SIGKILL directly
+                            os.kill(proc.pid, signal.SIGKILL)
+                            killed = True
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, Exception) as e:
+                print(f"Error processing PID {proc.pid}: {e}")
+                continue
         
         # Remove lock file if it exists
         lock_file = "/tmp/telegram_bot.lock"
         if os.path.exists(lock_file):
             os.remove(lock_file)
             
-        return True
+        return killed or True  # Return True even if no processes were killed
     except Exception as e:
         print(f"Error stopping bot instances: {e}")
         return False
