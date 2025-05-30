@@ -308,6 +308,12 @@ def emergency_stop_bot():
         # Wait a bit for the bot to detect the signal
         time.sleep(2)
         
+        # Remove any existing lock file
+        lock_file = "/tmp/telegram_bot.lock"
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+            st.info(f"Removed lock file: {lock_file}")
+        
         # Call the stop_all_bot_instances function
         success = stop_all_bot_instances()
         
@@ -318,10 +324,6 @@ def emergency_stop_bot():
         # Log the emergency stop
         bot_logger, _ = setup_logging()
         bot_logger.info("Bot forcefully terminated from Streamlit interface")
-        
-        # Force a rerun to update the UI
-        time.sleep(1)
-        st.rerun()
         
         return success
     except Exception as e:

@@ -23,11 +23,13 @@ def start_bot_in_background(log_upload_interval=60):
     # Remove any existing stop signal file
     if os.path.exists(STOP_SIGNAL_FILE):
         os.remove(STOP_SIGNAL_FILE)
+        print(f"Removed stop signal file: {STOP_SIGNAL_FILE}")
     
     # Remove any existing lock file
     lock_file = "/tmp/telegram_bot.lock"
     if os.path.exists(lock_file):
         os.remove(lock_file)
+        print(f"Removed lock file: {lock_file}")
     
     # Wait a moment to ensure cleanup is complete
     time.sleep(1)
