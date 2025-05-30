@@ -12,6 +12,8 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseDownload
 from googleapiclient.errors import HttpError
+import subprocess
+import psutil
 
 # Set page config
 st.set_page_config(
@@ -247,6 +249,9 @@ def stop_bot():
 def start_bot():
     """Start the bot"""
     try:
+        # First check if there are any existing bot instances and terminate them
+        emergency_stop_bot()
+        
         # Initialize logging
         bot_logger, _ = setup_logging()
         bot_logger.info("Starting bot from Streamlit interface")
@@ -270,6 +275,36 @@ def start_bot():
         return True
     except Exception as e:
         st.error(f"Failed to start bot: {e}")
+        return False
+
+# Add this function to forcefully terminate any running bot instances
+def emergency_stop_bot():
+    """Forcefully terminate any running bot instances"""
+    try:
+        # Find all python processes
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            # Check if this is a python process running our bot
+            if proc.info['name'] == 'python' and proc.info['cmdline'] and any('bot.py' in cmd for cmd in proc.info['cmdline']):
+                # Skip our own process
+                if proc.pid != os.getpid():
+                    st.warning(f"Terminating bot process with PID {proc.pid}")
+                    proc.terminate()
+                    
+        # Remove lock file if it exists
+        lock_file = "/tmp/telegram_bot.lock"
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+            
+        st.session_state["bot_started"] = False
+        st.session_state["last_stopped"] = datetime.datetime.now()
+        
+        # Log the emergency stop
+        bot_logger, _ = setup_logging()
+        bot_logger.info("Bot emergency stopped from Streamlit interface")
+        
+        return True
+    except Exception as e:
+        st.error(f"Failed to emergency stop bot: {e}")
         return False
 
 # Initialize logging
@@ -300,6 +335,14 @@ with st.sidebar:
                 st.success("Bot started successfully!")
                 time.sleep(1)
                 st.rerun()
+    
+    # Add Emergency Stop button to sidebar
+    st.markdown("---")
+    if st.button("🚨 Emergency Stop", key="sidebar_emergency_stop"):
+        if emergency_stop_bot():
+            st.success("All bot instances forcefully terminated!")
+            time.sleep(1)
+            st.rerun()
     
     # Environment status
     st.markdown("### Environment")
@@ -359,6 +402,16 @@ if page == "Dashboard":
             "</div>",
             unsafe_allow_html=True
         )
+    
+    # Add Emergency Stop button
+    st.markdown("<h2 class='sub-header'>Emergency Controls</h2>", unsafe_allow_html=True)
+    st.warning("⚠️ Use only if the bot is stuck or multiple instances are running")
+    
+    if st.button("🚨 Emergency Stop", type="primary", key="emergency_stop"):
+        if emergency_stop_bot():
+            st.success("All bot instances forcefully terminated!")
+            time.sleep(1)
+            st.rerun()
     
     # Environment variables status
     st.markdown("<h2 class='sub-header'>Environment Status</h2>", unsafe_allow_html=True)
