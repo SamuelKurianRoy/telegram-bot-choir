@@ -64,7 +64,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state variables
+# Initialize session state variables if they don't exist
 if "bot_started" not in st.session_state:
     st.session_state["bot_started"] = False
 if "last_started" not in st.session_state:
@@ -226,16 +226,22 @@ def get_log_content(log_path, max_lines=100):
 
 def stop_bot():
     """Stop the bot process"""
-    if st.session_state["bot_started"]:
+    if st.session_state.get("bot_started", False):
         try:
             # Find and terminate all bot processes
+            killed = False
             for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-                # Check if this is a python process running our bot
-                if proc.info['name'] == 'python' and proc.info['cmdline'] and any('bot.py' in cmd for cmd in proc.info['cmdline']):
-                    # Skip our own process
-                    if proc.pid != os.getpid():
-                        proc.terminate()
-                        st.info(f"Terminated bot process with PID {proc.pid}")
+                try:
+                    # Check if this is a python process running our bot
+                    if proc.info['name'] == 'python' and proc.info['cmdline'] and any('bot.py' in cmd for cmd in proc.info['cmdline']):
+                        # Skip our own process
+                        if proc.pid != os.getpid():
+                            st.info(f"Killing bot process with PID {proc.pid}")
+                            # Use SIGKILL directly for immediate termination
+                            os.kill(proc.pid, signal.SIGKILL)
+                            killed = True
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    continue
             
             # Remove lock file if it exists
             lock_file = "/tmp/telegram_bot.lock"
@@ -248,14 +254,14 @@ def stop_bot():
             
             # Log the stop event
             bot_logger, _ = setup_logging()
-            bot_logger.info("Bot stopped from Streamlit interface")
+            bot_logger.info("Bot forcefully stopped from Streamlit interface")
             
             # Upload logs to Google Drive
             if "BFILE_ID" in st.secrets and "UFILE_ID" in st.secrets:
                 upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
                 upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
             
-            return True
+            return killed or True  # Return True even if no processes were killed
         except Exception as e:
             st.error(f"Failed to stop bot: {e}")
     return False
@@ -303,14 +309,9 @@ def emergency_stop_bot():
                 if proc.info['name'] == 'python' and proc.info['cmdline'] and any('bot.py' in cmd for cmd in proc.info['cmdline']):
                     # Skip our own process
                     if proc.pid != os.getpid():
-                        st.warning(f"Terminating bot process with PID {proc.pid}")
-                        # Try SIGTERM first
-                        proc.terminate()
-                        # Wait a moment
-                        proc.wait(timeout=3)
-                        # If still running, use SIGKILL
-                        if proc.is_running():
-                            proc.kill()
+                        st.warning(f"Killing bot process with PID {proc.pid}")
+                        # Use SIGKILL directly
+                        os.kill(proc.pid, signal.SIGKILL)
                         killed_processes += 1
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
@@ -325,7 +326,7 @@ def emergency_stop_bot():
         
         # Log the emergency stop
         bot_logger, _ = setup_logging()
-        bot_logger.info("Bot emergency stopped from Streamlit interface")
+        bot_logger.info("Bot forcefully terminated from Streamlit interface")
         
         if killed_processes > 0:
             return True

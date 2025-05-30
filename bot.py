@@ -2044,8 +2044,17 @@ try :
  
  async def main():
      """Starts the bot and registers command handlers."""
+     global bot_should_run
+    
+     # Create the Application
      app = Application.builder().token(TOKEN).build()
- 
+    
+     # Add a shutdown handler
+     async def shutdown(app):
+         """Shutdown the bot gracefully"""
+         app.stop()
+         
+     # Register handlers
      conv_handler = ConversationHandler(
          entry_points=[CommandHandler("vocabulary", start_vocabulary)],
          states={
@@ -2053,7 +2062,7 @@ try :
          },
          fallbacks=[CommandHandler("cancel", cancel)]
      )
- 
+
      search_conv_handler = ConversationHandler(
      entry_points=[CommandHandler("search", search_start)],
      states={
@@ -2064,7 +2073,7 @@ try :
          NUMBER_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_by_number)],
      },
      fallbacks=[CommandHandler("cancel", cancel)],
- )
+     )
      theme_handler = ConversationHandler(
     entry_points=[CommandHandler("theme", filter_theme)],
     states={
@@ -2137,9 +2146,22 @@ try :
 
      app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
 
- 
+     # Add a check for the bot_should_run flag
+     async def check_should_run():
+         while True:
+             if not bot_should_run:
+                 await shutdown(app)
+                 break
+             await asyncio.sleep(1)
+     
+     # Start the check_should_run task
+     asyncio.create_task(check_should_run())
+     
+     # Log startup
      user_logger.info("🤖 Bot is running...")
-     await app.run_polling(stop_signals=[])
+     
+     # Start the bot with custom stop signals
+     await app.run_polling(stop_signals=None)
 
  
 #  def start_bot_in_thread():
