@@ -78,9 +78,6 @@ if "logs_initialized" not in st.session_state:
 
 # Setup logging (using the same configuration as in bot.py)
 def setup_logging():
-    if st.session_state["logs_initialized"]:
-        return
-    
     # --- Bot Logger setup with handler check for Streamlit re-runs ---
     bot_logger = logging.getLogger("telegram_bot")
     if not bot_logger.handlers:
