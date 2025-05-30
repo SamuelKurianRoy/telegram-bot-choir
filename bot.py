@@ -31,25 +31,105 @@ bot_should_run = True
 # Global lock file path
 LOCK_FILE = "/tmp/telegram_bot.lock"
 
-# Add a function to check if another instance is running
-def is_bot_running():
-    """Check if another instance of the bot is already running."""
+def acquire_lock():
+    """Try to acquire a lock file to ensure only one bot instance runs."""
     try:
-        # Try to create/open the lock file
-        lock_file = open(LOCK_FILE, 'w')
-        # Try to acquire an exclusive lock (non-blocking)
-        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        # If we got here, no other instance is running
-        return False, lock_file
-    except IOError as e:
-        # Lock already held by another process
-        if e.errno == errno.EACCES or e.errno == errno.EAGAIN:
-            return True, None
-        # Some other error
-        raise
+        # Check if the lock file exists
+        if os.path.exists(LOCK_FILE):
+            # Try to read the PID from the file
+            with open(LOCK_FILE, 'r') as f:
+                pid = f.read().strip()
+                
+                # Check if the process with that PID is still running
+                try:
+                    pid = int(pid)
+                    # Try to send signal 0 to the process (doesn't actually send a signal)
+                    # This will raise an exception if the process doesn't exist
+                    os.kill(pid, 0)
+                    # If we get here, the process exists
+                    return False
+                except (ValueError, ProcessLookupError):
+                    # Process doesn't exist, we can take over the lock
+                    pass
+                except Exception as e:
+                    # Some other error
+                    bot_logger.error(f"Error checking process: {e}")
+                    return False
+        
+        # Create the lock file with our PID
+        with open(LOCK_FILE, 'w') as f:
+            f.write(str(os.getpid()))
+        
+        return True
     except Exception as e:
-        bot_logger.error(f"Error checking if bot is running: {e}")
-        return False, None
+        bot_logger.error(f"Error acquiring lock: {e}")
+        return False
+
+def release_lock():
+    """Release the lock file."""
+    try:
+        if os.path.exists(LOCK_FILE):
+            # Read the PID from the file
+            with open(LOCK_FILE, 'r') as f:
+                pid = f.read().strip()
+                
+                # Only delete the file if it contains our PID
+                if pid == str(os.getpid()):
+                    os.remove(LOCK_FILE)
+                    return True
+        return False
+    except Exception as e:
+        bot_logger.error(f"Error releasing lock: {e}")
+        return False
+
+def run_bot():
+    """Starts the bot."""
+    global bot_should_run
+    
+    # Reset the flag when starting
+    bot_should_run = True
+    
+    # Try to acquire the lock
+    if not acquire_lock():
+        bot_logger.warning("Another instance of the bot is already running. Aborting.")
+        print("⚠️ Another instance of the bot is already running. Aborting.")
+        return False
+    
+    try:
+        # Run the bot in the current thread
+        asyncio.run(main())
+        return True
+    except KeyboardInterrupt:
+        print("\n🛑 Bot stopped manually by user (Ctrl + C).")
+        bot_logger.info(f"\nBot was stopped by the user\n\n")
+        try:
+            upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
+            upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
+        except Exception as e:
+            print(f"Couldn't save log files due to Error: {e}")
+        return True
+    except Exception as e:
+        print(f"\n❌ An unexpected error occurred: {e}")
+        bot_logger.error(f"\n❌ An unexpected error occurred: {e}")
+        bot_logger.info("\n")
+        try:
+            upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
+            upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
+        except Exception as e:
+            print(f"Couldn't save log files due to Error: {e}")
+        return False
+    finally:
+        # Release the lock
+        release_lock()
+
+def stop_bot():
+    """Stops the bot gracefully."""
+    global bot_should_run
+    bot_should_run = False
+    bot_logger.info("Bot stop requested")
+    # Release the lock
+    release_lock()
+    return True
 
 # Ensure an event loop exists for the current thread
 try:
