@@ -226,7 +226,7 @@ def stop_bot():
     """Stop the bot process"""
     if st.session_state["bot_started"]:
         try:
-            os.kill(os.getpid(), signal.SIGINT)
+            # Instead of killing the process, just update the state
             st.session_state["bot_started"] = False
             st.session_state["last_stopped"] = datetime.datetime.now()
             
