@@ -228,7 +228,21 @@ def stop_bot():
     """Stop the bot process"""
     if st.session_state["bot_started"]:
         try:
-            # Instead of killing the process, just update the state
+            # Find and terminate all bot processes
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                # Check if this is a python process running our bot
+                if proc.info['name'] == 'python' and proc.info['cmdline'] and any('bot.py' in cmd for cmd in proc.info['cmdline']):
+                    # Skip our own process
+                    if proc.pid != os.getpid():
+                        proc.terminate()
+                        st.info(f"Terminated bot process with PID {proc.pid}")
+            
+            # Remove lock file if it exists
+            lock_file = "/tmp/telegram_bot.lock"
+            if os.path.exists(lock_file):
+                os.remove(lock_file)
+                
+            # Update session state
             st.session_state["bot_started"] = False
             st.session_state["last_stopped"] = datetime.datetime.now()
             
@@ -282,13 +296,24 @@ def emergency_stop_bot():
     """Forcefully terminate any running bot instances"""
     try:
         # Find all python processes
+        killed_processes = 0
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            # Check if this is a python process running our bot
-            if proc.info['name'] == 'python' and proc.info['cmdline'] and any('bot.py' in cmd for cmd in proc.info['cmdline']):
-                # Skip our own process
-                if proc.pid != os.getpid():
-                    st.warning(f"Terminating bot process with PID {proc.pid}")
-                    proc.terminate()
+            try:
+                # Check if this is a python process running our bot
+                if proc.info['name'] == 'python' and proc.info['cmdline'] and any('bot.py' in cmd for cmd in proc.info['cmdline']):
+                    # Skip our own process
+                    if proc.pid != os.getpid():
+                        st.warning(f"Terminating bot process with PID {proc.pid}")
+                        # Try SIGTERM first
+                        proc.terminate()
+                        # Wait a moment
+                        proc.wait(timeout=3)
+                        # If still running, use SIGKILL
+                        if proc.is_running():
+                            proc.kill()
+                        killed_processes += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
                     
         # Remove lock file if it exists
         lock_file = "/tmp/telegram_bot.lock"
@@ -302,7 +327,11 @@ def emergency_stop_bot():
         bot_logger, _ = setup_logging()
         bot_logger.info("Bot emergency stopped from Streamlit interface")
         
-        return True
+        if killed_processes > 0:
+            return True
+        else:
+            st.info("No bot processes found to terminate.")
+            return True
     except Exception as e:
         st.error(f"Failed to emergency stop bot: {e}")
         return False
