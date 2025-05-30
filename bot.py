@@ -23,6 +23,9 @@ import threading
 from googleapiclient.errors import HttpError
 from telegram.constants import ParseMode
 
+# Add a global variable to control the bot's running state
+bot_should_run = True
+
 # Ensure an event loop exists for the current thread
 try:
     asyncio.get_running_loop()
@@ -692,8 +695,9 @@ try :
          return dfC['Convention Index'].iloc[no - 1]
      else:
          return "Invalid option. Use 'hymn' or 'lyric'."
-     
 
+
+ 
  def getNotation(p):
   p=int(str(p))
   if p<=0:
@@ -1702,9 +1706,26 @@ try :
     # Send the reply
     await update.message.reply_text(
     "\n".join(response_parts),
-    parse_mode="HTML",
-    disable_web_page_preview=True
+    parse_mode="HTML", disable_web_page_preview=True
 )
+# Add a new function to run the bot asynchronously
+ async def run_bot_async():
+    """Runs the bot asynchronously."""
+    try:
+        await main()
+    except Exception as e:
+        bot_logger.error(f"Error in bot: {e}")
+        global bot_should_run
+        bot_should_run = False
+
+# Add a function to stop the bot
+ def stop_bot():
+    """Stops the bot gracefully."""
+    global bot_should_run
+    bot_should_run = False
+    bot_logger.info("Bot stop requested")
+    return True
+    
 
 
 
