@@ -22,9 +22,34 @@ import asyncio
 import threading
 from googleapiclient.errors import HttpError
 from telegram.constants import ParseMode
+import fcntl
+import errno
 
 # Add a global variable to control the bot's running state
 bot_should_run = True
+
+# Global lock file path
+LOCK_FILE = "/tmp/telegram_bot.lock"
+
+# Add a function to check if another instance is running
+def is_bot_running():
+    """Check if another instance of the bot is already running."""
+    try:
+        # Try to create/open the lock file
+        lock_file = open(LOCK_FILE, 'w')
+        # Try to acquire an exclusive lock (non-blocking)
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # If we got here, no other instance is running
+        return False, lock_file
+    except IOError as e:
+        # Lock already held by another process
+        if e.errno == errno.EACCES or e.errno == errno.EAGAIN:
+            return True, None
+        # Some other error
+        raise
+    except Exception as e:
+        bot_logger.error(f"Error checking if bot is running: {e}")
+        return False, None
 
 # Ensure an event loop exists for the current thread
 try:
