@@ -20,6 +20,18 @@ def start_bot_in_background(log_upload_interval=60):
     # First, make sure no other instances are running
     stop_all_bot_instances()
     
+    # Remove any existing stop signal file
+    if os.path.exists(STOP_SIGNAL_FILE):
+        os.remove(STOP_SIGNAL_FILE)
+    
+    # Remove any existing lock file
+    lock_file = "/tmp/telegram_bot.lock"
+    if os.path.exists(lock_file):
+        os.remove(lock_file)
+    
+    # Wait a moment to ensure cleanup is complete
+    time.sleep(1)
+    
     # Set the flag to True
     bot_running = True
     
@@ -32,7 +44,7 @@ def start_bot_in_background(log_upload_interval=60):
     bot_thread.start()
     
     # Wait a bit to see if the bot started successfully
-    time.sleep(2)
+    time.sleep(3)
     
     # Check if the bot is still running
     if not bot_running:
@@ -50,8 +62,15 @@ def run_bot_wrapper(log_upload_interval=60):
     # Set environment variable for log upload interval
     os.environ["LOG_UPLOAD_INTERVAL"] = str(log_upload_interval * 60)  # Convert minutes to seconds
     
-    success = run_bot()
-    if not success:
+    try:
+        print("Starting bot...")
+        success = run_bot()
+        if not success:
+            print("Bot failed to start or was stopped")
+            bot_running = False
+            st.session_state["bot_started"] = False
+    except Exception as e:
+        print(f"Error running bot: {e}")
         bot_running = False
         st.session_state["bot_started"] = False
 
@@ -89,7 +108,12 @@ def stop_all_bot_instances():
             f.write(str(time.time()))
         
         # Wait a bit for the bot to detect the signal
-        time.sleep(3)
+        time.sleep(2)
+        
+        # Remove any existing lock file
+        lock_file = "/tmp/telegram_bot.lock"
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
         
         # Now forcefully kill any remaining processes
         killed = False
@@ -107,11 +131,9 @@ def stop_all_bot_instances():
             except Exception as e:
                 continue
         
-        # Remove lock file if it exists
-        lock_file = "/tmp/telegram_bot.lock"
-        if os.path.exists(lock_file):
-            os.remove(lock_file)
-            
+        # Wait a moment to ensure processes are terminated
+        time.sleep(1)
+        
         return killed or True
     except Exception as e:
         print(f"Error stopping bot instances: {e}")

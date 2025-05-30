@@ -37,32 +37,43 @@ STOP_SIGNAL_FILE = "/tmp/telegram_bot_stop_signal"
 def acquire_lock():
     """Try to acquire a lock file to ensure only one bot instance runs."""
     try:
-        # Check if the lock file exists
+        # First, check if the lock file exists
         if os.path.exists(LOCK_FILE):
-            # Try to read the PID from the file
-            with open(LOCK_FILE, 'r') as f:
-                pid = f.read().strip()
-                
-                # Check if the process with that PID is still running
+            try:
+                # Try to read the PID from the file
+                with open(LOCK_FILE, 'r') as f:
+                    pid_str = f.read().strip()
+                    
+                    # Check if the process with that PID is still running
+                    try:
+                        pid = int(pid_str)
+                        # Try to send signal 0 to the process (doesn't actually send a signal)
+                        # This will raise an exception if the process doesn't exist
+                        os.kill(pid, 0)
+                        # If we get here, the process exists
+                        bot_logger.warning(f"Bot is already running with PID {pid}")
+                        return False
+                    except (ValueError, ProcessLookupError):
+                        # Process doesn't exist, we can take over the lock
+                        bot_logger.info(f"Found stale lock file for PID {pid_str}, taking over")
+                        os.remove(LOCK_FILE)
+                    except Exception as e:
+                        # Some other error
+                        bot_logger.error(f"Error checking process: {e}")
+                        return False
+            except Exception as e:
+                # Error reading the file, try to remove it
+                bot_logger.error(f"Error reading lock file: {e}")
                 try:
-                    pid = int(pid)
-                    # Try to send signal 0 to the process (doesn't actually send a signal)
-                    # This will raise an exception if the process doesn't exist
-                    os.kill(pid, 0)
-                    # If we get here, the process exists
-                    return False
-                except (ValueError, ProcessLookupError):
-                    # Process doesn't exist, we can take over the lock
+                    os.remove(LOCK_FILE)
+                except Exception:
                     pass
-                except Exception as e:
-                    # Some other error
-                    bot_logger.error(f"Error checking process: {e}")
-                    return False
         
         # Create the lock file with our PID
         with open(LOCK_FILE, 'w') as f:
             f.write(str(os.getpid()))
         
+        bot_logger.info(f"Lock acquired for PID {os.getpid()}")
         return True
     except Exception as e:
         bot_logger.error(f"Error acquiring lock: {e}")
@@ -95,16 +106,22 @@ def run_bot():
     # Remove any existing stop signal file
     if os.path.exists(STOP_SIGNAL_FILE):
         os.remove(STOP_SIGNAL_FILE)
+        bot_logger.info("Removed existing stop signal file")
     
     # Try to acquire the lock
+    bot_logger.info("Attempting to acquire lock...")
     if not acquire_lock():
         bot_logger.warning("Another instance of the bot is already running. Aborting.")
         print("⚠️ Another instance of the bot is already running. Aborting.")
         return False
     
+    bot_logger.info("Bot starting with PID " + str(os.getpid()))
+    
     try:
         # Run the bot in the current thread
+        bot_logger.info("Starting main bot function...")
         asyncio.run(main())
+        bot_logger.info("Bot stopped normally")
         return True
     except KeyboardInterrupt:
         print("\n🛑 Bot stopped manually by user (Ctrl + C).")
@@ -127,6 +144,7 @@ def run_bot():
         return False
     finally:
         # Release the lock
+        bot_logger.info("Releasing lock...")
         release_lock()
 
 def stop_bot():
@@ -1745,6 +1763,16 @@ try :
     try:
         interval_seconds = int(os.environ.get("LOG_UPLOAD_INTERVAL", 3600))
     except ValueError:
+        interval_seconds = 3600  # Default to 1 hour if not a valid integer
+
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
+            upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
+            bot_logger.info("Logs uploaded successfully")
+        except Exception as e:
+            bot_logger.error(f"Error uploading logs: {e}")
         interval_seconds = 3600  # Default: 1 hour
     
     minutes = interval_seconds // 60

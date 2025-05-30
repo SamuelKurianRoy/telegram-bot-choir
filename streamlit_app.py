@@ -264,6 +264,7 @@ def start_bot():
     """Start the bot"""
     try:
         # First check if there are any existing bot instances and terminate them
+        st.info("Stopping any existing bot instances...")
         emergency_stop_bot()
         
         # Initialize logging
@@ -271,6 +272,7 @@ def start_bot():
         bot_logger.info("Starting bot from Streamlit interface")
         
         # Initialize Google Drive service
+        st.info("Initializing Google Drive service...")
         drive_service, success, message = setup_google_drive()
         if not success:
             st.error(message)
@@ -280,9 +282,10 @@ def start_bot():
         log_upload_interval = st.session_state.get("log_upload_interval", 60)
         
         # Start the bot
+        st.info(f"Starting bot with log upload interval of {log_upload_interval} minutes...")
         success = start_bot_in_background(log_upload_interval)
         if not success:
-            st.warning("Another instance of the bot is already running. Please stop it first.")
+            st.warning("Failed to start the bot. Check the logs for details.")
             return False
             
         st.session_state["bot_started"] = True
