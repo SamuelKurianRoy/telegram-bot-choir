@@ -31,6 +31,9 @@ bot_should_run = True
 # Global lock file path
 LOCK_FILE = "/tmp/telegram_bot.lock"
 
+# Add at the top of the file
+STOP_SIGNAL_FILE = "/tmp/telegram_bot_stop_signal"
+
 def acquire_lock():
     """Try to acquire a lock file to ensure only one bot instance runs."""
     try:
@@ -89,6 +92,10 @@ def run_bot():
     # Reset the flag when starting
     bot_should_run = True
     
+    # Remove any existing stop signal file
+    if os.path.exists(STOP_SIGNAL_FILE):
+        os.remove(STOP_SIGNAL_FILE)
+    
     # Try to acquire the lock
     if not acquire_lock():
         bot_logger.warning("Another instance of the bot is already running. Aborting.")
@@ -123,13 +130,23 @@ def run_bot():
         release_lock()
 
 def stop_bot():
-    """Stops the bot gracefully."""
+    """Stops the bot gracefully by creating a stop signal file."""
     global bot_should_run
     bot_should_run = False
+    
+    # Create a stop signal file
+    with open(STOP_SIGNAL_FILE, 'w') as f:
+        f.write(str(datetime.now()))
+    
     bot_logger.info("Bot stop requested")
     # Release the lock
     release_lock()
     return True
+
+# Add this function to check for stop signal
+def check_stop_signal():
+    """Check if a stop signal file exists."""
+    return os.path.exists(STOP_SIGNAL_FILE)
 
 # Ensure an event loop exists for the current thread
 try:
@@ -1720,6 +1737,87 @@ try :
             except:
                 return None
         return None
+
+# Add this function to periodically upload logs
+ async def periodic_log_upload():
+    """Periodically upload logs to Google Drive."""
+    # Get interval from environment variable or use default (1 hour)
+    try:
+        interval_seconds = int(os.environ.get("LOG_UPLOAD_INTERVAL", 3600))
+    except ValueError:
+        interval_seconds = 3600  # Default: 1 hour
+    
+    minutes = interval_seconds // 60
+    bot_logger.info(f"Periodic log upload scheduled every {minutes} minutes")
+    
+    while True:
+        try:
+            # Wait for the specified interval
+            await asyncio.sleep(interval_seconds)
+            
+            # Check if we should still be running
+            if not bot_should_run or check_stop_signal():
+                break
+                
+            # Log the upload attempt
+            bot_logger.info(f"Performing scheduled log upload (every {minutes} minutes)")
+            
+            # Upload logs to Google Drive
+            try:
+                upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
+                upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
+                bot_logger.info("Scheduled log upload completed successfully")
+            except Exception as e:
+                bot_logger.error(f"Scheduled log upload failed: {e}")
+                
+        except asyncio.CancelledError:
+            # Task was cancelled
+            break
+        except Exception as e:
+            bot_logger.error(f"Error in periodic log upload task: {e}")
+            # Wait a bit before retrying
+            await asyncio.sleep(60)
+
+# Modify the main function to check for stop signal
+ async def main():
+    """Starts the bot and registers command handlers."""
+    global bot_should_run
+    
+    # Create the Application
+    app = Application.builder().token(TOKEN).build()
+    
+    # Register handlers
+    # ... (existing handlers)
+    
+    # Add a check for the stop signal file
+    async def check_should_run():
+        while True:
+            if check_stop_signal() or not bot_should_run:
+                print("Stop signal detected, shutting down bot...")
+                bot_logger.info("Stop signal detected, shutting down bot...")
+                await app.stop()
+                break
+            await asyncio.sleep(1)
+    
+    # Start the check_should_run task
+    asyncio.create_task(check_should_run())
+    
+    # Start the periodic log upload task (every 1 hour)
+    log_upload_task = asyncio.create_task(periodic_log_upload())
+    
+    # Log startup
+    user_logger.info("🤖 Bot is running...")
+    
+    try:
+        # Start the bot with custom stop signals
+        await app.run_polling(stop_signals=None)
+    finally:
+        # Cancel the periodic log upload task when the bot stops
+        log_upload_task.cancel()
+        try:
+            await log_upload_task
+        except asyncio.CancelledError:
+            pass
 
     # Group by year: Expect hymn_list to contain raw hymn numbers.
     def group_by_year(hymn_list):

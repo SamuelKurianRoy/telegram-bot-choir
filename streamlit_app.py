@@ -15,6 +15,9 @@ from googleapiclient.errors import HttpError
 import subprocess
 import psutil
 
+# Add at the top of the file
+STOP_SIGNAL_FILE = "/tmp/telegram_bot_stop_signal"
+
 # Set page config
 st.set_page_config(
     page_title="Railway Choir Bot",
@@ -228,6 +231,10 @@ def stop_bot():
     """Stop the bot process"""
     if st.session_state.get("bot_started", False):
         try:
+            # Create a stop signal file
+            with open(STOP_SIGNAL_FILE, 'w') as f:
+                f.write(str(datetime.datetime.now()))
+            
             # Call the stop function from run_bot.py
             success = stop_bot_in_background()
             
@@ -237,12 +244,16 @@ def stop_bot():
             
             # Log the stop event
             bot_logger, _ = setup_logging()
-            bot_logger.info("Bot forcefully stopped from Streamlit interface")
+            bot_logger.info("Bot stopped from Streamlit interface")
             
             # Upload logs to Google Drive
             if "BFILE_ID" in st.secrets and "UFILE_ID" in st.secrets:
                 upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
                 upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
+            
+            # Force a rerun to update the UI
+            time.sleep(1)
+            st.rerun()
             
             return success
         except Exception as e:
@@ -265,8 +276,11 @@ def start_bot():
             st.error(message)
             return False
         
+        # Get log upload interval from session state (default to 60 minutes)
+        log_upload_interval = st.session_state.get("log_upload_interval", 60)
+        
         # Start the bot
-        success = start_bot_in_background()
+        success = start_bot_in_background(log_upload_interval)
         if not success:
             st.warning("Another instance of the bot is already running. Please stop it first.")
             return False
@@ -274,7 +288,7 @@ def start_bot():
         st.session_state["bot_started"] = True
         st.session_state["last_started"] = datetime.datetime.now()
         
-        bot_logger.info("Bot started successfully")
+        bot_logger.info(f"Bot started successfully with log upload interval of {log_upload_interval} minutes")
         return True
     except Exception as e:
         st.error(f"Failed to start bot: {e}")
@@ -284,7 +298,14 @@ def start_bot():
 def emergency_stop_bot():
     """Forcefully terminate any running bot instances"""
     try:
-        # Call the stop_all_bot_instances function from run_bot.py
+        # Create a stop signal file
+        with open(STOP_SIGNAL_FILE, 'w') as f:
+            f.write(str(datetime.datetime.now()))
+        
+        # Wait a bit for the bot to detect the signal
+        time.sleep(2)
+        
+        # Call the stop_all_bot_instances function
         success = stop_all_bot_instances()
         
         # Update session state
@@ -294,6 +315,10 @@ def emergency_stop_bot():
         # Log the emergency stop
         bot_logger, _ = setup_logging()
         bot_logger.info("Bot forcefully terminated from Streamlit interface")
+        
+        # Force a rerun to update the UI
+        time.sleep(1)
+        st.rerun()
         
         return success
     except Exception as e:
@@ -579,6 +604,45 @@ elif page == "Logs":
     if st.session_state["bot_started"]:
         if st.button("Refresh Logs"):
             st.rerun()
+
+elif page == "Settings":
+    st.markdown("<h1 class='main-header'>Bot Settings</h1>", unsafe_allow_html=True)
+    
+    # Log upload settings
+    st.subheader("Log Upload Settings")
+    
+    # Initialize session state for log upload interval if it doesn't exist
+    if "log_upload_interval" not in st.session_state:
+        st.session_state["log_upload_interval"] = 60  # Default: 60 minutes
+    
+    # Log upload interval slider
+    log_upload_interval = st.slider(
+        "Log Upload Interval (minutes)",
+        min_value=15,
+        max_value=240,
+        value=st.session_state["log_upload_interval"],
+        step=15,
+        help="How often the bot should upload logs to Google Drive"
+    )
+    
+    # Update session state if changed
+    if log_upload_interval != st.session_state["log_upload_interval"]:
+        st.session_state["log_upload_interval"] = log_upload_interval
+        st.success(f"Log upload interval set to {log_upload_interval} minutes")
+        st.info("This setting will take effect the next time the bot is started")
+    
+    # Manual log upload button
+    if st.button("Upload Logs Now"):
+        if "BFILE_ID" in st.secrets and "UFILE_ID" in st.secrets:
+            success1, msg1 = upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
+            success2, msg2 = upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
+            
+            if success1 and success2:
+                st.success("Logs uploaded successfully!")
+            else:
+                st.error(f"Error uploading logs: {msg1}, {msg2}")
+        else:
+            st.error("BFILE_ID or UFILE_ID not configured in secrets")
 
 # Bot information
 st.header("Bot Information")

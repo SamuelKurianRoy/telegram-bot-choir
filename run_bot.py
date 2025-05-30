@@ -7,11 +7,14 @@ import os
 import signal
 import psutil
 
+# Add at the top of the file
+STOP_SIGNAL_FILE = "/tmp/telegram_bot_stop_signal"
+
 # Global flag to control the bot thread
 bot_running = False
 bot_thread = None
 
-def start_bot_in_background():
+def start_bot_in_background(log_upload_interval=60):
     global bot_running, bot_thread
     
     # First, make sure no other instances are running
@@ -21,7 +24,11 @@ def start_bot_in_background():
     bot_running = True
     
     # Create and start the thread
-    bot_thread = threading.Thread(target=run_bot_wrapper, daemon=True)
+    bot_thread = threading.Thread(
+        target=run_bot_wrapper, 
+        args=(log_upload_interval,),
+        daemon=True
+    )
     bot_thread.start()
     
     # Wait a bit to see if the bot started successfully
@@ -37,8 +44,12 @@ def start_bot_in_background():
     st.session_state["bot_started"] = True
     return True
 
-def run_bot_wrapper():
+def run_bot_wrapper(log_upload_interval=60):
     global bot_running
+    
+    # Set environment variable for log upload interval
+    os.environ["LOG_UPLOAD_INTERVAL"] = str(log_upload_interval * 60)  # Convert minutes to seconds
+    
     success = run_bot()
     if not success:
         bot_running = False
@@ -47,12 +58,19 @@ def run_bot_wrapper():
 def stop_bot_in_background():
     global bot_running, bot_thread
     
-    # First try to stop the bot gracefully
+    # Create a stop signal file
+    with open(STOP_SIGNAL_FILE, 'w') as f:
+        f.write(str(time.time()))
+    
+    # Call the bot's stop function
     try:
         success = bot_stop()
     except Exception as e:
         print(f"Error in bot_stop: {e}")
         success = False
+    
+    # Wait a bit for the bot to stop
+    time.sleep(3)
     
     # Then forcefully terminate any running bot processes
     killed = stop_all_bot_instances()
@@ -66,22 +84,27 @@ def stop_bot_in_background():
 def stop_all_bot_instances():
     """Stop all running bot instances"""
     try:
+        # Create a stop signal file
+        with open(STOP_SIGNAL_FILE, 'w') as f:
+            f.write(str(time.time()))
+        
+        # Wait a bit for the bot to detect the signal
+        time.sleep(3)
+        
+        # Now forcefully kill any remaining processes
         killed = False
-        # Find all python processes
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
-                # Check if this is a python process running our bot
                 if proc.info['name'] == 'python' and proc.info['cmdline']:
                     cmdline = ' '.join(proc.info['cmdline'])
-                    if 'bot.py' in cmdline:
-                        # Skip our own process
-                        if proc.pid != os.getpid():
-                            print(f"Killing bot process with PID {proc.pid}")
-                            # Use SIGKILL directly
+                    if 'bot.py' in cmdline and proc.pid != os.getpid():
+                        print(f"Killing bot process with PID {proc.pid}")
+                        try:
                             os.kill(proc.pid, signal.SIGKILL)
                             killed = True
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, Exception) as e:
-                print(f"Error processing PID {proc.pid}: {e}")
+                        except Exception as e:
+                            print(f"Failed to kill process {proc.pid}: {e}")
+            except Exception as e:
                 continue
         
         # Remove lock file if it exists
@@ -89,7 +112,7 @@ def stop_all_bot_instances():
         if os.path.exists(lock_file):
             os.remove(lock_file)
             
-        return killed or True  # Return True even if no processes were killed
+        return killed or True
     except Exception as e:
         print(f"Error stopping bot instances: {e}")
         return False
