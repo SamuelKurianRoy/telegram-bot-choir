@@ -258,7 +258,11 @@ def start_bot():
             return False
         
         # Start the bot
-        start_bot_in_background()
+        success = start_bot_in_background()
+        if not success:
+            st.warning("Another instance of the bot is already running. Please stop it first.")
+            return False
+            
         st.session_state["bot_started"] = True
         st.session_state["last_started"] = datetime.datetime.now()
         

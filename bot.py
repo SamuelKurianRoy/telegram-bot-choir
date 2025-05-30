@@ -1937,7 +1937,6 @@ try :
  
  
  
- 
  async def main():
      """Starts the bot and registers command handlers."""
      app = Application.builder().token(TOKEN).build()
@@ -2016,7 +2015,6 @@ try :
  
  
  
- 
      app.add_handler(CommandHandler("start", start))
      app.add_handler(CommandHandler("help", help_command))
      app.add_handler(CommandHandler("date", date_command))
@@ -2057,7 +2055,7 @@ try :
  nest_asyncio.apply()  # patch asyncio to allow nested event loops
  
  def run_bot():
-    asyncio.run(main())
+    return asyncio.run(run_bot_async())
 
 
 
