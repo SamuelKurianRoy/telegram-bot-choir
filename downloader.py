@@ -37,6 +37,10 @@ class AudioDownloader:
     """Audio downloader class for YouTube and Spotify"""
 
     def __init__(self, temp_dir: str = "temp"):
+        # Detect if running on Streamlit Cloud
+        self.is_streamlit_cloud = self._detect_streamlit_cloud()
+        logger.info(f"Running on Streamlit Cloud: {self.is_streamlit_cloud}")
+
         self.temp_dir = Path(temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
 
@@ -62,6 +66,42 @@ class AudioDownloader:
                 os.environ["FFMPEG_BINARY"] = str(ffmpeg_exe)
                 logger.info(f"Set FFMPEG_BINARY environment variable: {ffmpeg_exe}")
 
+        # For Streamlit Cloud, ensure FFmpeg is configured for spotdl
+        if self.is_streamlit_cloud and self.ffmpeg_path == "system":
+            os.environ["FFMPEG_BINARY"] = "ffmpeg"
+            logger.info("Configured spotdl to use system FFmpeg on Streamlit Cloud")
+
+    def _detect_streamlit_cloud(self) -> bool:
+        """Detect if running on Streamlit Cloud"""
+        # Check for Streamlit Cloud environment indicators
+        streamlit_indicators = [
+            os.environ.get("STREAMLIT_SHARING_MODE"),
+            os.environ.get("STREAMLIT_SERVER_PORT"),
+            "streamlit" in os.environ.get("HOME", "").lower(),
+            "app" in os.environ.get("HOME", "").lower(),
+        ]
+        return any(streamlit_indicators)
+
+    async def _test_ffmpeg_on_streamlit_cloud(self) -> bool:
+        """Test FFmpeg specifically for Streamlit Cloud environment"""
+        try:
+            # Simple test that should work on Streamlit Cloud
+            test_result = sp.run([
+                "ffmpeg", "-f", "lavfi", "-i", "testsrc=duration=0.1:size=32x32:rate=1",
+                "-f", "null", "-"
+            ], capture_output=True, text=True, timeout=10)
+
+            if test_result.returncode == 0:
+                logger.info("FFmpeg test passed on Streamlit Cloud")
+                return True
+            else:
+                logger.warning(f"FFmpeg test failed on Streamlit Cloud: {test_result.stderr}")
+                return False
+
+        except Exception as e:
+            logger.warning(f"FFmpeg test error on Streamlit Cloud: {e}")
+            return False
+
     async def _setup_ffmpeg(self) -> Optional[str]:
         """Setup FFmpeg using the complete logic from audio_downloader_bot.py"""
         try:
@@ -70,9 +110,18 @@ class AudioDownloader:
                 result = sp.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=10)
                 if result.returncode == 0:
                     logger.info("FFmpeg is already installed on the system")
-                    return "system"  # Indicates system FFmpeg should be used
-            except:
-                logger.info("FFmpeg not found in system PATH, checking local directory")
+                    if self.is_streamlit_cloud:
+                        logger.info("Running on Streamlit Cloud with system FFmpeg")
+                        # Test FFmpeg more thoroughly on Streamlit Cloud
+                        test_result = await self._test_ffmpeg_on_streamlit_cloud()
+                        if test_result:
+                            return "system"
+                        else:
+                            logger.warning("FFmpeg test failed on Streamlit Cloud")
+                    else:
+                        return "system"  # Indicates system FFmpeg should be used
+            except Exception as e:
+                logger.info(f"FFmpeg not found in system PATH: {e}, checking local directory")
 
             # Check for FFmpeg in the local repository directory
             ffmpeg_dir = Path.cwd() / "ffmpeg"
@@ -594,8 +643,12 @@ class AudioDownloader:
             return None
     
     async def download_spotify_audio(self, url: str, quality: str) -> Optional[Tuple[Path, Dict]]:
-        """Download Spotify audio using spotdl"""
+        """Download Spotify audio using spotdl with Streamlit Cloud optimizations"""
         try:
+            # On Streamlit Cloud, be more aggressive about using fallback
+            if self.is_streamlit_cloud:
+                logger.info("Running on Streamlit Cloud - testing spotdl with shorter timeout")
+
             # First test if spotdl is working
             spotdl_test = await self.test_spotdl_installation()
             logger.info(f"spotdl test result: {spotdl_test}")
@@ -648,16 +701,25 @@ class AudioDownloader:
             else:
                 logger.warning("No FFmpeg configured - spotdl may fail")
             
-            # Run spotdl with timeout
+            # Run spotdl with timeout (shorter timeout for Streamlit Cloud)
             logger.info(f"Running spotdl command: {' '.join(spotdl_cmd)}")
             logger.info(f"Working directory: {output_dir}")
             logger.info(f"FFmpeg path configured: {self.ffmpeg_path}")
+            logger.info(f"Streamlit Cloud mode: {self.is_streamlit_cloud}")
 
             # Check if output directory exists and is writable
             if not output_dir.exists():
                 logger.error(f"Output directory does not exist: {output_dir}")
                 output_dir.mkdir(parents=True, exist_ok=True)
                 logger.info(f"Created output directory: {output_dir}")
+
+            # Adjust timeouts for Streamlit Cloud
+            if self.is_streamlit_cloud:
+                process_timeout = 180  # 3 minutes for Streamlit Cloud
+                async_timeout = 200    # 3.3 minutes
+            else:
+                process_timeout = 300  # 5 minutes for local
+                async_timeout = 320    # 5.3 minutes
 
             result = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(
@@ -666,11 +728,11 @@ class AudioDownloader:
                         spotdl_cmd,
                         capture_output=True,
                         text=True,
-                        timeout=300,
+                        timeout=process_timeout,
                         cwd=str(output_dir)
                     )
                 ),
-                timeout=320
+                timeout=async_timeout
             )
 
             # Log detailed output for debugging
