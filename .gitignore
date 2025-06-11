@@ -1,6 +1,20 @@
-.streamlit/ 
+.streamlit/
 *.json
 user_log.txt
 bot_log.txt
 comments.txt
 __pycache__/
+
+# Download feature documentation and setup files
+DOWNLOAD_FEATURE_SUMMARY.md
+DOWNLOAD_SETUP_GUIDE.md
+DOWNLOAD_FEATURE_README.md
+test_downloader.py
+
+# Download temporary files and logs
+temp/
+download_log.txt
+*.mp3
+*.mp4
+*.wav
+*.m4a

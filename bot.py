@@ -235,6 +235,8 @@ try :
     user_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
     user_logger.addHandler(user_handler)
 
+
+
  
  # Optional: suppress noisy loggers
  logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -429,6 +431,7 @@ try :
  
  BFILE_ID = st.secrets["BFILE_ID"]
  UFILE_ID = st.secrets["UFILE_ID"]
+ YFILE_ID = st.secrets["YFILE_ID"]  # For download logs
  creds = service_account.Credentials.from_service_account_file(KEY_PATH, scopes=SCOPES)
  docs_service = build("docs", "v1", credentials=creds)
  print("reached before log")
@@ -506,6 +509,36 @@ try :
 
  upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
  upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
+
+ # Function to append download entries to Google Doc (similar to comment function)
+ def append_download_to_google_doc(yfile_id: str, download_entry: str):
+    """
+    Appends a download entry directly to a Google Docs file.
+    Similar to how comments are handled.
+
+    Parameters:
+        yfile_id (str): Google Docs file ID for download logs
+        download_entry (str): The download entry to append
+    """
+    try:
+        doc = docs_service.documents().get(documentId=yfile_id).execute()
+        end_index = doc.get("body").get("content")[-1].get("endIndex", 1)
+
+        requests = [{
+            "insertText": {
+                "location": {"index": end_index - 1},
+                "text": download_entry
+            }
+        }]
+
+        docs_service.documents().batchUpdate(
+            documentId=yfile_id,
+            body={"requests": requests}
+        ).execute()
+
+        print("✅ Download entry appended to Google Doc.")
+    except Exception as e:
+        logging.error(f"❌ Failed to append download entry to Google Doc ({yfile_id}): {e}")
 
  
  
@@ -1492,6 +1525,16 @@ try :
     )
 
     try:
+        # Log download request to Google Doc (similar to comment function)
+        yfile_id = os.getenv("YFILE_ID")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        chat_id = update.effective_chat.id
+
+        download_request_entry = f"{timestamp} - {user.full_name} (@{user.username}, ID: {user.id}, ChatID: {chat_id}) requested download:\nPlatform: {platform} | Quality: {quality} | URL: {url}\n\n"
+
+        if yfile_id:
+            append_download_to_google_doc(yfile_id, download_request_entry)
+
         # Initialize downloader
         downloader = AudioDownloader()
 
@@ -1499,6 +1542,12 @@ try :
         result = await downloader.download_audio(url, quality)
 
         if result is None:
+            # Log failed download to Google Doc
+            download_failed_entry = f"{timestamp} - DOWNLOAD FAILED for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | URL: {url}\n\n"
+
+            if yfile_id:
+                append_download_to_google_doc(yfile_id, download_failed_entry)
+
             await update.message.reply_text(
                 "❌ Download failed. Please try again or contact the administrator."
             )
@@ -1529,6 +1578,12 @@ try :
         # Log successful download
         user_logger.info(f"Download completed for {user.full_name} ({user.id}): {file_info['title']}")
 
+        # Log successful download to Google Doc
+        download_success_entry = f"{timestamp} - DOWNLOAD SUCCESS for {user.full_name} (@{user.username}, ID: {user.id}):\nTitle: {file_info['title']} | Artist: {file_info['artist']} | Platform: {file_info['platform']} | Size: {file_info['size_mb']:.1f}MB | Quality: {quality}\nURL: {url}\n\n"
+
+        if yfile_id:
+            append_download_to_google_doc(yfile_id, download_success_entry)
+
         # Clean up the file
         downloader.cleanup_file(file_path)
 
@@ -1541,6 +1596,13 @@ try :
 
     except Exception as e:
         bot_logger.error(f"Download error for user {user.id}: {e}")
+
+        # Log error to Google Doc
+        download_error_entry = f"{timestamp} - DOWNLOAD ERROR for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | Error: {str(e)}\nURL: {url}\n\n"
+
+        if yfile_id:
+            append_download_to_google_doc(yfile_id, download_error_entry)
+
         await update.message.reply_text(
             "❌ An error occurred during download. Please try again later."
         )
@@ -2019,6 +2081,7 @@ try :
             try:
                 upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
                 upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
+                # Note: Download logs are directly appended to YFILE_ID Google Doc, no file upload needed
                 bot_logger.info("Scheduled log upload completed successfully")
             except Exception as e:
                 bot_logger.error(f"Scheduled log upload failed: {e}")
@@ -2335,8 +2398,9 @@ try :
         dfcleaning()
         df = standardize_song_columns()
         try:
-         upload_log_to_google_doc("bot_log.txt", os.getenv("BFILE_ID"))
-         upload_log_to_google_doc("user_log.txt", os.getenv("UFILE_ID"))
+         upload_log_to_google_doc(os.getenv("BFILE_ID"), "bot_log.txt")
+         upload_log_to_google_doc(os.getenv("UFILE_ID"), "user_log.txt")
+         # Note: Download logs are directly appended to YFILE_ID Google Doc, no file upload needed
         except Exception as e:
          print(f"Couldn't save log files due to Error: {e}")
         await update.message.reply_text("Datasets reloaded successfully!")
@@ -2344,8 +2408,9 @@ try :
         await update.message.reply_text(f"Error reloading datasets: {e}")
         logging.error(f"Error in /refresh command: {e}")
         try:
-         upload_log_to_google_doc("bot_log.txt", os.getenv("BFILE_ID"))
-         upload_log_to_google_doc("user_log.txt", os.getenv("UFILE_ID"))
+         upload_log_to_google_doc(os.getenv("BFILE_ID"), "bot_log.txt")
+         upload_log_to_google_doc(os.getenv("UFILE_ID"), "user_log.txt")
+         # Note: Download logs are directly appended to YFILE_ID Google Doc, no file upload needed
         except Exception as e:
          print(f"Couldn't save log files due to Error: {e}")
 
@@ -2517,8 +2582,9 @@ except KeyboardInterrupt:
     print("\n🛑 Bot stopped manually by user (Ctrl + C).")
     bot_logger.info(f"\nBot was stoped by the user\n\n")
     try:
-        upload_log_to_google_doc("bot_log.txt", os.getenv("BFILE_ID"))
-        upload_log_to_google_doc("user_log.txt", os.getenv("UFILE_ID"))
+        upload_log_to_google_doc(os.getenv("BFILE_ID"), "bot_log.txt")
+        upload_log_to_google_doc(os.getenv("UFILE_ID"), "user_log.txt")
+        # Note: Download logs are directly appended to YFILE_ID Google Doc, no file upload needed
         sys.exit(0)
     except Exception as e:
         print(f"Couldn't save log files due to Error: {e}")
@@ -2528,8 +2594,9 @@ except Exception as e:
     bot_logger.error(f"\n❌ An unexpected error occurred: {e}")
     bot_logger.info("\n")
     try:
-        upload_log_to_google_doc("bot_log.txt", os.getenv("BFILE_ID"))
-        upload_log_to_google_doc("user_log.txt", os.getenv("UFILE_ID"))
+        upload_log_to_google_doc(os.getenv("BFILE_ID"), "bot_log.txt")
+        upload_log_to_google_doc(os.getenv("UFILE_ID"), "user_log.txt")
+        # Note: Download logs are directly appended to YFILE_ID Google Doc, no file upload needed
         sys.exit(1)
     except Exception as e:
         print(f"Couldn't save log files due to Error: {e}")
