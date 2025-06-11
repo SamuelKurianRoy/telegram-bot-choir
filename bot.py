@@ -22,6 +22,14 @@ import asyncio
 from googleapiclient.errors import HttpError
 from telegram.constants import ParseMode
 
+# Import audio downloader
+try:
+    from downloader import AudioDownloader
+    DOWNLOADER_AVAILABLE = True
+except ImportError:
+    DOWNLOADER_AVAILABLE = False
+    print("⚠️ Audio downloader not available. Install yt-dlp and spotdl to enable /download command.")
+
 # Add a global variable to control the bot's running state
 bot_should_run = True
 
@@ -1221,6 +1229,10 @@ try :
     "• **/vocabulary**\n"
     "  - *Description:* Starts the vocabulary export conversation.\n"
     "  - *Example:* Type `/vocabulary` and follow the instructions.\n\n"
+    "• **/download**\n"
+    "  - *Description:* Download audio from YouTube, Spotify, or SoundCloud links. The bot will extract the audio and send it to you as an MP3 file.\n"
+    "  - *Supported platforms:* YouTube, Spotify, SoundCloud\n"
+    "  - *Example:* Type `/download`, then paste a YouTube or Spotify link, and select your preferred audio quality.\n\n"
     "• **/comment**\n"
     "  - *Description:* Allows you to submit comments, recommendations, or feedback directly to the bot administrator.\n"
     "  - *Example:* Type `/comment Your message here` and the bot will forward it to the administrator for review.\n\n"
@@ -1312,6 +1324,9 @@ try :
 
  # States
  ENTER_LAST_SONG, ASK_SHOW_ALL = range(2)
+
+# Download command states
+ ENTER_URL, SELECT_QUALITY = range(2, 4)
  
  # /last entry point
  async def last_sung_start(update: Update, context: CallbackContext) -> int:
@@ -1369,8 +1384,169 @@ try :
          )
  
      return ConversationHandler.END
- 
- 
+
+
+# /download command handlers
+ async def download_start(update: Update, context: CallbackContext) -> int:
+    """Start the download conversation"""
+    user = update.effective_user
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) used /download")
+
+    if not DOWNLOADER_AVAILABLE:
+        await update.message.reply_text(
+            "❌ Audio download feature is not available. Please contact the administrator.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
+    if not await is_authorized(update):
+        user_logger.warning(f"Unauthorized access attempt to /download by {user.full_name} (@{user.username}, ID: {user.id})")
+        return ConversationHandler.END
+
+    await update.message.reply_text(
+        "🎵 *Audio Downloader*\n\n"
+        "Please send me a YouTube or Spotify link to download the audio.\n\n"
+        "*Supported platforms:*\n"
+        "• YouTube (youtube.com, youtu.be)\n"
+        "• Spotify (spotify.com)\n"
+        "• SoundCloud (soundcloud.com)\n\n"
+        "Just paste the link and I'll download the audio for you!",
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ENTER_URL
+
+ async def download_url_input(update: Update, context: CallbackContext) -> int:
+    """Handle URL input for download"""
+    user_input = update.message.text.strip()
+    user = update.effective_user
+
+    # Initialize downloader
+    downloader = AudioDownloader()
+
+    # Check if URL is supported
+    if not downloader.is_supported_url(user_input):
+        await update.message.reply_text(
+            "❌ This URL is not supported. Please send a YouTube, Spotify, or SoundCloud link.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ENTER_URL
+
+    # Store URL in context
+    context.user_data["download_url"] = user_input
+    context.user_data["platform"] = downloader.detect_platform(user_input)
+
+    # Show quality selection
+    quality_keyboard = [
+        ["🔥 High Quality (320kbps)", "🎵 Medium Quality (192kbps)"],
+        ["💾 Low Quality (128kbps)", "❌ Cancel"]
+    ]
+
+    await update.message.reply_text(
+        f"🎯 *{context.user_data['platform']} link detected!*\n\n"
+        "Please select the audio quality:",
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardMarkup(quality_keyboard, one_time_keyboard=True, resize_keyboard=True)
+    )
+    return SELECT_QUALITY
+
+ async def download_quality_selection(update: Update, context: CallbackContext) -> int:
+    """Handle quality selection and start download"""
+    quality_text = update.message.text.strip()
+    user = update.effective_user
+
+    # Map quality selection
+    quality_map = {
+        "🔥 High Quality (320kbps)": "high",
+        "🎵 Medium Quality (192kbps)": "medium",
+        "💾 Low Quality (128kbps)": "low"
+    }
+
+    if quality_text == "❌ Cancel":
+        await update.message.reply_text(
+            "❌ Download cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
+    if quality_text not in quality_map:
+        await update.message.reply_text(
+            "❌ Invalid selection. Please choose a quality option.",
+            reply_markup=ReplyKeyboardMarkup([
+                ["🔥 High Quality (320kbps)", "🎵 Medium Quality (192kbps)"],
+                ["💾 Low Quality (128kbps)", "❌ Cancel"]
+            ], one_time_keyboard=True, resize_keyboard=True)
+        )
+        return SELECT_QUALITY
+
+    quality = quality_map[quality_text]
+    url = context.user_data.get("download_url")
+    platform = context.user_data.get("platform")
+
+    # Start download process
+    await update.message.reply_text(
+        f"🎵 Starting download from {platform}...\n"
+        f"Quality: {quality_text}\n\n"
+        "This may take a few minutes. Please wait...",
+        reply_markup=ReplyKeyboardRemove()
+    )
+
+    try:
+        # Initialize downloader
+        downloader = AudioDownloader()
+
+        # Download the audio
+        result = await downloader.download_audio(url, quality)
+
+        if result is None:
+            await update.message.reply_text(
+                "❌ Download failed. Please try again or contact the administrator."
+            )
+            return ConversationHandler.END
+
+        file_path, file_info = result
+
+        # Send the audio file
+        await update.message.reply_text(
+            f"✅ Download completed!\n\n"
+            f"🎵 *{file_info['title']}*\n"
+            f"👤 *Artist:* {file_info['artist']}\n"
+            f"📱 *Platform:* {file_info['platform']}\n"
+            f"📊 *Size:* {file_info['size_mb']:.1f} MB\n\n"
+            "Sending file...",
+            parse_mode="Markdown"
+        )
+
+        # Send the audio file
+        with open(file_path, 'rb') as audio_file:
+            await update.message.reply_audio(
+                audio=audio_file,
+                title=file_info['title'],
+                performer=file_info['artist'],
+                duration=file_info.get('duration', 0)
+            )
+
+        # Log successful download
+        user_logger.info(f"Download completed for {user.full_name} ({user.id}): {file_info['title']}")
+
+        # Clean up the file
+        downloader.cleanup_file(file_path)
+
+        await update.message.reply_text(
+            "🎉 Audio sent successfully!\n\n"
+            "Send another link to download more audio, or use /cancel to stop."
+        )
+
+        return ENTER_URL  # Allow user to download another file
+
+    except Exception as e:
+        bot_logger.error(f"Download error for user {user.id}: {e}")
+        await update.message.reply_text(
+            "❌ An error occurred during download. Please try again later."
+        )
+        return ConversationHandler.END
+
+
  # Telegram command handler for /tune command
 
  # States for ConversationHandler
@@ -2265,6 +2441,16 @@ try :
     },
     fallbacks=[CommandHandler("cancel", cancel)]
 )
+
+     # Download conversation handler
+     download_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("download", download_start)],
+    states={
+        ENTER_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, download_url_input)],
+        SELECT_QUALITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, download_quality_selection)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
  
  
  
@@ -2282,6 +2468,7 @@ try :
      app.add_handler(conv_handler)
      app.add_handler(comment_handler)
      app.add_handler(reply_conv_handler)
+     app.add_handler(download_conv_handler)
 
      app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
 
