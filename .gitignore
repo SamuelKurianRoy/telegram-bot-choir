@@ -10,6 +10,8 @@ DOWNLOAD_FEATURE_SUMMARY.md
 DOWNLOAD_SETUP_GUIDE.md
 DOWNLOAD_FEATURE_README.md
 test_downloader.py
+requirements_new.txt
+requirements_backup.txt
 
 # Download temporary files and logs
 temp/
