@@ -26,3 +26,5 @@ download_log.txt
 *.wav
 *.m4a
 audio_downloader_bot.py
+audio_downloader_streamlit_app.py
+audio_downloader_debug.py

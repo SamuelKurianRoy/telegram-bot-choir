@@ -23,6 +23,13 @@ try:
 except ImportError:
     requests = None
 
+try:
+    import tempfile
+    import tarfile
+except ImportError:
+    tempfile = None
+    tarfile = None
+
 # Setup logging
 logger = logging.getLogger(__name__)
 
@@ -33,8 +40,8 @@ class AudioDownloader:
         self.temp_dir = Path(temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
 
-        # Set FFmpeg path - check for local installation first
-        self.ffmpeg_path = self._find_ffmpeg_path()
+        # Set FFmpeg path - use the complete setup from audio_downloader_bot.py
+        self.ffmpeg_path = asyncio.run(self._setup_ffmpeg())
 
         # Configure FFmpeg in PATH if local installation found
         if self.ffmpeg_path and self.ffmpeg_path != "system":
@@ -55,8 +62,8 @@ class AudioDownloader:
                 os.environ["FFMPEG_BINARY"] = str(ffmpeg_exe)
                 logger.info(f"Set FFMPEG_BINARY environment variable: {ffmpeg_exe}")
 
-    def _find_ffmpeg_path(self) -> Optional[str]:
-        """Find FFmpeg installation path using the same logic as audio_downloader_bot.py"""
+    async def _setup_ffmpeg(self) -> Optional[str]:
+        """Setup FFmpeg using the complete logic from audio_downloader_bot.py"""
         try:
             # First, check if ffmpeg is already installed on the system
             try:
@@ -75,48 +82,167 @@ class AudioDownloader:
 
             if system == "windows":
                 ffmpeg_names = ["ffmpeg.exe"]
-                ffprobe_names = ["ffprobe.exe"]
             else:
                 ffmpeg_names = ["ffmpeg"]
-                ffprobe_names = ["ffprobe"]
 
-            # Check if both FFmpeg and FFprobe exist in the local directory
-            ffmpeg_found = False
-            ffprobe_found = False
-
+            # Check if FFmpeg exists in the local directory
             for name in ffmpeg_names:
                 ffmpeg_path = ffmpeg_dir / name
                 if ffmpeg_path.exists():
-                    ffmpeg_found = True
-                    break
+                    logger.info(f"Found local FFmpeg at: {ffmpeg_path}")
+                    # Make sure it's executable (Linux/Mac only)
+                    if system != "windows":
+                        try:
+                            os.chmod(ffmpeg_path, 0o755)
+                        except Exception as chmod_error:
+                            logger.warning(f"Could not make FFmpeg executable: {chmod_error}")
 
-            for name in ffprobe_names:
-                ffprobe_path = ffmpeg_dir / name
-                if ffprobe_path.exists():
-                    ffprobe_found = True
-                    break
+                    # Test if it works
+                    try:
+                        test_result = sp.run([str(ffmpeg_path), "-version"],
+                                           capture_output=True, text=True, timeout=10)
+                        if test_result.returncode == 0:
+                            logger.info("Local FFmpeg is working correctly")
+                            return str(ffmpeg_dir)
+                        else:
+                            logger.warning(f"Local FFmpeg test failed: {test_result.stderr}")
+                    except Exception as test_error:
+                        logger.warning(f"Could not test local FFmpeg: {test_error}")
 
-            if ffmpeg_found and ffprobe_found:
-                logger.info(f"Found local FFmpeg and FFprobe at: {ffmpeg_dir}")
-
-                # Test if FFmpeg works
+            # If we're on Linux and only have Windows executables, try to download Linux version
+            if system == "linux" and (ffmpeg_dir / "ffmpeg.exe").exists():
+                logger.info("Found Windows FFmpeg but running on Linux, downloading Linux version")
                 try:
-                    ffmpeg_exe = ffmpeg_dir / ffmpeg_names[0]
-                    test_result = sp.run([str(ffmpeg_exe), "-version"],
-                                       capture_output=True, text=True, timeout=10)
-                    if test_result.returncode == 0:
-                        logger.info("Local FFmpeg is working correctly")
+                    import requests
+                    import tempfile
+                    import tarfile
+
+                    # Try multiple sources for Linux FFmpeg (prioritize simple downloads)
+                    ffmpeg_urls = [
+                        # Direct static binary (most reliable)
+                        "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2023-12-09-12-49/ffmpeg-n6.1-2-g31f1a25352-linux64-gpl-6.1.tar.xz",
+                        # Alternative static binary
+                        "https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz",
+                    ]
+
+                    success = False
+                    for ffmpeg_url in ffmpeg_urls:
+                        try:
+                            logger.info(f"Trying to download from: {ffmpeg_url}")
+                            response = requests.get(ffmpeg_url, stream=True, timeout=60)
+                            response.raise_for_status()
+
+                            # Save the Linux version
+                            linux_ffmpeg_path = ffmpeg_dir / "ffmpeg"
+
+                            if ffmpeg_url.endswith('.tar.xz'):
+                                # Handle compressed archives
+                                with tempfile.NamedTemporaryFile(delete=False, suffix='.tar.xz') as tmp_file:
+                                    for chunk in response.iter_content(chunk_size=8192):
+                                        tmp_file.write(chunk)
+                                    tmp_file.flush()
+
+                                    logger.info("Downloaded archive, extracting...")
+
+                                    try:
+                                        # Extract the archive
+                                        with tarfile.open(tmp_file.name, 'r:xz') as tar:
+                                            # Find ffmpeg binary in the archive
+                                            ffmpeg_member = None
+                                            for member in tar.getmembers():
+                                                if member.name.endswith('/ffmpeg') or member.name == 'ffmpeg':
+                                                    ffmpeg_member = member
+                                                    break
+
+                                            if ffmpeg_member:
+                                                # Extract just the ffmpeg binary
+                                                tar.extract(ffmpeg_member, path=str(ffmpeg_dir))
+
+                                                # Move to the correct location if needed
+                                                extracted_path = ffmpeg_dir / ffmpeg_member.name
+                                                final_path = ffmpeg_dir / "ffmpeg"
+
+                                                if extracted_path != final_path:
+                                                    extracted_path.rename(final_path)
+
+                                                logger.info(f"Successfully extracted FFmpeg to: {final_path}")
+                                            else:
+                                                logger.warning("FFmpeg binary not found in archive")
+                                                continue
+
+                                    except Exception as extract_error:
+                                        logger.warning(f"Failed to extract archive: {extract_error}")
+                                        continue
+                                    finally:
+                                        # Clean up temp file
+                                        try:
+                                            os.unlink(tmp_file.name)
+                                        except:
+                                            pass
+                            else:
+                                # Direct binary download
+                                with open(linux_ffmpeg_path, 'wb') as f:
+                                    for chunk in response.iter_content(chunk_size=8192):
+                                        f.write(chunk)
+
+                            # Make it executable
+                            os.chmod(linux_ffmpeg_path, 0o755)
+
+                            # Test the downloaded version
+                            test_result = sp.run([str(linux_ffmpeg_path), "-version"],
+                                               capture_output=True, text=True, timeout=10)
+                            if test_result.returncode == 0:
+                                logger.info("Downloaded Linux FFmpeg is working correctly")
+                                success = True
+                                break
+                            else:
+                                logger.warning("Downloaded FFmpeg is not working, trying next source")
+                                linux_ffmpeg_path.unlink(missing_ok=True)
+
+                        except Exception as url_error:
+                            logger.warning(f"Failed to download from {ffmpeg_url}: {url_error}")
+                            continue
+
+                    if success:
                         return str(ffmpeg_dir)
                     else:
-                        logger.warning(f"Local FFmpeg test failed: {test_result.stderr}")
-                except Exception as test_error:
-                    logger.warning(f"Could not test local FFmpeg: {test_error}")
+                        logger.error("All FFmpeg download attempts failed")
 
-            logger.warning("No working FFmpeg found. Audio conversion may fail.")
+                except Exception as download_error:
+                    logger.error(f"Failed to download Linux FFmpeg: {download_error}")
+
+            # Last resort: try to install FFmpeg using system package manager (for Streamlit Cloud)
+            if system == "linux":
+                logger.info("Attempting to install FFmpeg using system package manager...")
+                try:
+                    # Try apt-get (Ubuntu/Debian systems like Streamlit Cloud)
+                    install_result = sp.run(
+                        ["apt-get", "update", "&&", "apt-get", "install", "-y", "ffmpeg"],
+                        capture_output=True, text=True, timeout=120, shell=True
+                    )
+                    if install_result.returncode == 0:
+                        logger.info("Successfully installed FFmpeg via apt-get")
+                        # Test if it's now available
+                        test_result = sp.run(["ffmpeg", "-version"], capture_output=True, text=True)
+                        if test_result.returncode == 0:
+                            logger.info("System FFmpeg is now working")
+                            return "system"  # System FFmpeg is available
+                    else:
+                        logger.warning(f"Failed to install FFmpeg via apt-get: {install_result.stderr}")
+                except Exception as install_error:
+                    logger.warning(f"Could not install FFmpeg via package manager: {install_error}")
+
+            # If no working FFmpeg found, create directory and log the issue
+            ffmpeg_dir.mkdir(exist_ok=True)
+            logger.warning("No working FFmpeg found")
+            logger.info("Bot will work with limited functionality - some audio conversions may not be available")
+            logger.info("yt-dlp will try to download audio in native formats when possible")
+
+            # Return None to indicate FFmpeg is not available
             return None
 
         except Exception as e:
-            logger.error(f"Error finding FFmpeg: {e}")
+            logger.error(f"Error setting up FFmpeg: {e}")
             return None
 
     def detect_platform(self, url: str) -> str:
