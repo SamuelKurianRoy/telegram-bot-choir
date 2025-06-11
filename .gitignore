@@ -3,3 +3,4 @@
 user_log.txt
 bot_log.txt
 comments.txt
+__pycache__/
