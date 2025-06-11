@@ -39,26 +39,33 @@ class AudioDownloader:
     def _find_ffmpeg_path(self) -> Optional[str]:
         """Find FFmpeg installation path"""
         # Check local ffmpeg directory first
-        local_ffmpeg_paths = [
-            "./ffmpeg/ffmpeg.exe",  # Windows
-            "./ffmpeg/ffmpeg",      # Linux/Mac
-            "ffmpeg/ffmpeg.exe",    # Windows (relative)
-            "ffmpeg/ffmpeg",        # Linux/Mac (relative)
+        local_ffmpeg_dirs = [
+            "./ffmpeg",     # Local directory
+            "ffmpeg",       # Relative directory
         ]
 
-        for path in local_ffmpeg_paths:
-            if Path(path).exists():
-                logger.info(f"Found local FFmpeg at: {path}")
-                return str(Path(path).absolute())
+        for ffmpeg_dir in local_ffmpeg_dirs:
+            ffmpeg_dir_path = Path(ffmpeg_dir)
+            if ffmpeg_dir_path.exists():
+                # Check for both ffmpeg and ffprobe
+                ffmpeg_exe = ffmpeg_dir_path / "ffmpeg.exe" if os.name == 'nt' else ffmpeg_dir_path / "ffmpeg"
+                ffprobe_exe = ffmpeg_dir_path / "ffprobe.exe" if os.name == 'nt' else ffmpeg_dir_path / "ffprobe"
+
+                if ffmpeg_exe.exists() and ffprobe_exe.exists():
+                    logger.info(f"Found local FFmpeg directory at: {ffmpeg_dir_path.absolute()}")
+                    return str(ffmpeg_dir_path.absolute())
 
         # Check system PATH
         import shutil
         system_ffmpeg = shutil.which("ffmpeg")
-        if system_ffmpeg:
-            logger.info(f"Found system FFmpeg at: {system_ffmpeg}")
-            return system_ffmpeg
+        system_ffprobe = shutil.which("ffprobe")
 
-        logger.warning("FFmpeg not found. Audio conversion may fail.")
+        if system_ffmpeg and system_ffprobe:
+            ffmpeg_dir = str(Path(system_ffmpeg).parent)
+            logger.info(f"Found system FFmpeg directory at: {ffmpeg_dir}")
+            return ffmpeg_dir
+
+        logger.warning("FFmpeg and/or ffprobe not found. Audio conversion may fail.")
         return None
 
     def detect_platform(self, url: str) -> str:
@@ -177,7 +184,7 @@ class AudioDownloader:
 
             # Add FFmpeg location if found
             if self.ffmpeg_path:
-                ydl_opts['ffmpeg_location'] = str(Path(self.ffmpeg_path).parent)
+                ydl_opts['ffmpeg_location'] = self.ffmpeg_path
             
             # Download with timeout
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
