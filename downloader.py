@@ -295,6 +295,104 @@ class AudioDownloader:
             logger.error(f"Error setting up FFmpeg: {e}")
             return None
 
+    async def diagnose_ffmpeg_issue(self) -> Dict[str, str]:
+        """Diagnose FFmpeg issues and provide recommendations"""
+        diagnosis = {
+            'status': 'unknown',
+            'issue': '',
+            'recommendation': '',
+            'details': []
+        }
+
+        try:
+            # Check if FFmpeg path is set
+            if not self.ffmpeg_path:
+                diagnosis['status'] = 'not_found'
+                diagnosis['issue'] = 'FFmpeg not found or configured'
+                diagnosis['recommendation'] = 'Install FFmpeg or check installation'
+                return diagnosis
+
+            # Determine FFmpeg executable path
+            if self.ffmpeg_path == "system":
+                ffmpeg_exe = "ffmpeg"
+            else:
+                system = platform.system().lower()
+                if system == "windows":
+                    ffmpeg_exe = str(Path(self.ffmpeg_path) / "ffmpeg.exe")
+                else:
+                    ffmpeg_exe = str(Path(self.ffmpeg_path) / "ffmpeg")
+
+            # Test basic FFmpeg functionality
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: sp.run([ffmpeg_exe, "-version"], capture_output=True, text=True, timeout=10)
+                    ),
+                    timeout=15
+                )
+
+                if result.returncode != 0:
+                    diagnosis['status'] = 'version_failed'
+                    diagnosis['issue'] = f'FFmpeg version check failed (exit code {result.returncode})'
+                    diagnosis['details'].append(f'stderr: {result.stderr}')
+                    diagnosis['recommendation'] = 'FFmpeg binary may be corrupted or incompatible'
+                    return diagnosis
+
+                diagnosis['details'].append(f'Version check passed: {result.stdout.split()[2] if len(result.stdout.split()) > 2 else "unknown"}')
+
+            except Exception as version_error:
+                diagnosis['status'] = 'version_error'
+                diagnosis['issue'] = f'FFmpeg version check error: {version_error}'
+                diagnosis['recommendation'] = 'FFmpeg binary may not exist or be executable'
+                return diagnosis
+
+            # Test conversion capability (this is where exit code -11 typically occurs)
+            try:
+                test_result = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: sp.run([
+                            ffmpeg_exe, "-f", "lavfi", "-i", "testsrc=duration=1:size=320x240:rate=1",
+                            "-f", "null", "-"
+                        ], capture_output=True, text=True, timeout=15)
+                    ),
+                    timeout=20
+                )
+
+                if test_result.returncode == -11:
+                    diagnosis['status'] = 'segfault'
+                    diagnosis['issue'] = 'FFmpeg crashes with segmentation fault (exit code -11)'
+                    diagnosis['details'].append('This typically indicates binary incompatibility or missing dependencies')
+                    diagnosis['recommendation'] = 'Try reinstalling FFmpeg or use system package manager'
+                    return diagnosis
+                elif test_result.returncode != 0:
+                    diagnosis['status'] = 'conversion_failed'
+                    diagnosis['issue'] = f'FFmpeg conversion test failed (exit code {test_result.returncode})'
+                    diagnosis['details'].append(f'stderr: {test_result.stderr}')
+                    diagnosis['recommendation'] = 'FFmpeg may have missing codecs or dependencies'
+                    return diagnosis
+
+                diagnosis['details'].append('Conversion test passed')
+
+            except Exception as conv_error:
+                diagnosis['status'] = 'conversion_error'
+                diagnosis['issue'] = f'FFmpeg conversion test error: {conv_error}'
+                diagnosis['recommendation'] = 'FFmpeg may be unstable or have missing dependencies'
+                return diagnosis
+
+            # If we get here, FFmpeg seems to be working
+            diagnosis['status'] = 'working'
+            diagnosis['issue'] = 'No issues detected'
+            diagnosis['recommendation'] = 'FFmpeg appears to be working correctly'
+
+        except Exception as e:
+            diagnosis['status'] = 'diagnosis_error'
+            diagnosis['issue'] = f'Error during diagnosis: {e}'
+            diagnosis['recommendation'] = 'Unable to diagnose FFmpeg issues'
+
+        return diagnosis
+
     def detect_platform(self, url: str) -> str:
         """Detect the platform from URL"""
         url_lower = url.lower()
@@ -351,20 +449,92 @@ class AudioDownloader:
             return None
     
     async def extract_spotify_info(self, url: str) -> Optional[Dict]:
-        """Extract Spotify track info"""
+        """Extract Spotify track info using spotdl"""
         try:
             # Extract track ID from URL
             track_id_match = re.search(r'track/([a-zA-Z0-9]+)', url)
             if not track_id_match:
+                logger.warning(f"Could not extract track ID from Spotify URL: {url}")
                 return None
-                
-            # For now, return basic info - in production you'd use Spotify API
+
+            # Try to use spotdl to get metadata without downloading
+            try:
+                spotdl_cmd = ["spotdl", "meta", url, "--output", "{artist} - {name}"]
+
+                logger.info(f"Extracting Spotify metadata with: {' '.join(spotdl_cmd)}")
+                result = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: sp.run(
+                            spotdl_cmd,
+                            capture_output=True,
+                            text=True,
+                            timeout=30
+                        )
+                    ),
+                    timeout=35
+                )
+
+                if result.returncode == 0 and result.stdout:
+                    # Parse the output to extract artist and title
+                    output_lines = result.stdout.strip().split('\n')
+                    for line in output_lines:
+                        if ' - ' in line and not line.startswith('['):
+                            # This looks like "Artist - Title" format
+                            parts = line.split(' - ', 1)
+                            if len(parts) == 2:
+                                artist = parts[0].strip()
+                                title = parts[1].strip()
+                                logger.info(f"Extracted Spotify info: {artist} - {title}")
+                                return {
+                                    'title': title,
+                                    'artist': artist,
+                                    'duration': 0,
+                                    'platform': 'Spotify'
+                                }
+
+                logger.warning(f"Could not parse spotdl metadata output: {result.stdout}")
+
+            except Exception as spotdl_error:
+                logger.warning(f"spotdl metadata extraction failed: {spotdl_error}")
+
+            # Fallback: try to extract basic info from URL structure
+            # Some Spotify URLs contain track names in the path
+            try:
+                from urllib.parse import unquote
+                decoded_url = unquote(url)
+
+                # Look for patterns like /track/id?si=... or /track/id/name
+                if '/track/' in decoded_url:
+                    parts = decoded_url.split('/track/')[1]
+                    if '?' in parts:
+                        parts = parts.split('?')[0]
+
+                    # Sometimes track names are in the URL after the ID
+                    url_parts = parts.split('/')
+                    if len(url_parts) > 1:
+                        potential_title = url_parts[1].replace('-', ' ').replace('_', ' ')
+                        if potential_title:
+                            logger.info(f"Extracted title from URL structure: {potential_title}")
+                            return {
+                                'title': potential_title,
+                                'artist': 'Unknown Artist',
+                                'duration': 0,
+                                'platform': 'Spotify'
+                            }
+
+            except Exception as url_parse_error:
+                logger.warning(f"URL parsing fallback failed: {url_parse_error}")
+
+            # Final fallback - return basic info with track ID
+            track_id = track_id_match.group(1)
             return {
-                'title': 'Spotify Track',
+                'title': f'Spotify Track {track_id[:8]}',
                 'artist': 'Unknown Artist',
                 'duration': 0,
                 'platform': 'Spotify'
             }
+
         except Exception as e:
             logger.error(f"Error extracting Spotify info: {e}")
             return None
@@ -500,6 +670,7 @@ class AudioDownloader:
                 logger.warning("No FFmpeg configured - spotdl may fail")
             
             # Run spotdl with timeout
+            logger.info(f"Running spotdl command: {' '.join(spotdl_cmd)}")
             result = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(
                     None,
@@ -513,9 +684,33 @@ class AudioDownloader:
                 ),
                 timeout=320
             )
-            
+
+            # Log detailed output for debugging
+            logger.info(f"spotdl exit code: {result.returncode}")
+            if result.stdout:
+                logger.info(f"spotdl stdout: {result.stdout}")
+            if result.stderr:
+                logger.error(f"spotdl stderr: {result.stderr}")
+
             if result.returncode != 0:
+                logger.error(f"spotdl failed with exit code {result.returncode}")
+                logger.error(f"Command: {' '.join(spotdl_cmd)}")
+                logger.error(f"Working directory: {output_dir}")
+
+                # Check if it's an FFmpeg-related error
+                if result.stderr and ("ffmpeg" in result.stderr.lower() or "code -11" in result.stderr):
+                    logger.error("FFmpeg-related error detected. Running diagnostics...")
+
+                    # Run FFmpeg diagnostics
+                    diagnosis = await self.diagnose_ffmpeg_issue()
+                    logger.error(f"FFmpeg diagnosis: {diagnosis['status']} - {diagnosis['issue']}")
+                    logger.error(f"Recommendation: {diagnosis['recommendation']}")
+
+                    for detail in diagnosis['details']:
+                        logger.info(f"Diagnosis detail: {detail}")
+
                 # Try fallback to YouTube search
+                logger.info("Attempting fallback to YouTube search")
                 return await self.download_spotify_fallback(url, quality)
             
             # Find downloaded file
@@ -553,17 +748,46 @@ class AudioDownloader:
     async def download_spotify_fallback(self, url: str, quality: str) -> Optional[Tuple[Path, Dict]]:
         """Fallback: search for Spotify track on YouTube"""
         try:
-            # Extract basic info from Spotify URL (simplified)
-            # In production, you'd use Spotify API here
-            search_query = "spotify track"  # Placeholder
-            
+            logger.info(f"Attempting Spotify fallback for URL: {url}")
+
+            # First try to extract Spotify track info
+            spotify_info = await self.extract_spotify_info(url)
+            if not spotify_info:
+                logger.error("Could not extract Spotify track information for fallback")
+                return None
+
+            # Create search query from Spotify info
+            artist = spotify_info.get('artist', '').strip()
+            title = spotify_info.get('title', '').strip()
+
+            if not title:
+                logger.error("No title found in Spotify info for fallback search")
+                return None
+
+            # Build search query
+            if artist and artist != 'Unknown Artist':
+                search_query = f"{artist} {title}"
+            else:
+                search_query = title
+
+            logger.info(f"Searching YouTube for: {search_query}")
+
             # Search YouTube for the track
             youtube_url = await self.search_youtube(search_query)
             if youtube_url:
-                return await self.download_youtube_audio(youtube_url, quality)
-            
+                logger.info(f"Found YouTube alternative: {youtube_url}")
+                result = await self.download_youtube_audio(youtube_url, quality)
+
+                # If successful, update the platform info to indicate it's a Spotify fallback
+                if result:
+                    file_path, file_info = result
+                    file_info['platform'] = 'Spotify (via YouTube)'
+                    file_info['original_url'] = url
+                    return file_path, file_info
+
+            logger.warning("No suitable YouTube alternative found")
             return None
-            
+
         except Exception as e:
             logger.error(f"Spotify fallback failed: {e}")
             return None
