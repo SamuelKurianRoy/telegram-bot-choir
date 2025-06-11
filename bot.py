@@ -1655,6 +1655,46 @@ try :
 
     return THEME_SELECTION
 
+ # Helper function to send long messages in chunks
+ async def send_long_message(update, message_parts, parse_mode="Markdown", max_length=3500):
+    """
+    Sends a message, splitting it into multiple messages if it's too long.
+    """
+    full_message = "\n\n".join(message_parts)
+
+    if len(full_message) <= max_length:
+        await update.message.reply_text(
+            full_message,
+            parse_mode=parse_mode,
+            reply_markup=ReplyKeyboardRemove()
+        )
+    else:
+        # Split into chunks
+        current_chunk = ""
+        for part in message_parts:
+            if len(current_chunk + "\n\n" + part) <= max_length:
+                if current_chunk:
+                    current_chunk += "\n\n" + part
+                else:
+                    current_chunk = part
+            else:
+                # Send current chunk
+                if current_chunk:
+                    await update.message.reply_text(
+                        current_chunk,
+                        parse_mode=parse_mode,
+                        reply_markup=ReplyKeyboardRemove()
+                    )
+                current_chunk = part
+
+        # Send remaining chunk
+        if current_chunk:
+            await update.message.reply_text(
+                current_chunk,
+                parse_mode=parse_mode,
+                reply_markup=ReplyKeyboardRemove()
+            )
+
 # Step 2: Process the theme selection
  async def handle_theme_selection(update: Update, context: CallbackContext) -> int:
     """
@@ -1687,28 +1727,34 @@ try :
         else:
             unknown_hymns.append(hymn_no)
 
-    # Build display lines for known and unknown hymns
-    display_known = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]} - {dfH[dfH['Hymn no'] == h]['Tunes'].values[0]}" for h in known_hymns ]
-    display_unknown = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]}" for h in unknown_hymns]
+    # Limit the number of hymns displayed to prevent overly long messages
+    MAX_HYMNS_PER_CATEGORY = 50
 
-    message_parts = [f"🎼 *Hymns related to theme:* `{theme_input}`\n"]
+    # Build display lines for known and unknown hymns
+    display_known = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]} - {dfH[dfH['Hymn no'] == h]['Tunes'].values[0]}" for h in known_hymns[:MAX_HYMNS_PER_CATEGORY]]
+    display_unknown = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]}" for h in unknown_hymns[:MAX_HYMNS_PER_CATEGORY]]
+
+    message_parts = [f"🎼 *Hymns related to theme:* `{theme_input}`"]
 
     if display_known:
-        message_parts.append("✅ *Choir Knows:*\n" + "\n".join(display_known))
+        known_header = f"✅ *Choir Knows ({len(known_hymns)} total):*"
+        if len(known_hymns) > MAX_HYMNS_PER_CATEGORY:
+            known_header += f" _(showing first {MAX_HYMNS_PER_CATEGORY})_"
+        message_parts.append(known_header + "\n" + "\n".join(display_known))
     else:
         message_parts.append("❌ *No known hymns found in this theme.*")
 
     if display_unknown:
-        message_parts.append("\n❌ *Choir Doesn't Know:*\n" + "\n".join(display_unknown) +
+        unknown_header = f"❌ *Choir Doesn't Know ({len(unknown_hymns)} total):*"
+        if len(unknown_hymns) > MAX_HYMNS_PER_CATEGORY:
+            unknown_header += f" _(showing first {MAX_HYMNS_PER_CATEGORY})_"
+        message_parts.append(unknown_header + "\n" + "\n".join(display_unknown) +
                              "\n\n*Note:* A known song may appear here if not sung in the past 3 years.")
     else:
-        message_parts.append("\n🎉 *Choir knows all hymns in this theme!*")
+        message_parts.append("🎉 *Choir knows all hymns in this theme!*")
 
-    await update.message.reply_text(
-        "\n\n".join(message_parts),
-        parse_mode="Markdown",
-        reply_markup=ReplyKeyboardRemove()
-    )
+    # Use the helper function to send the message
+    await send_long_message(update, message_parts)
 
     # Store the raw hymn numbers for later processing in year filtering
     context.user_data["known_hymns"] = known_hymns
@@ -1765,14 +1811,29 @@ try :
 
     message_parts = [f"📅 *Theme:* `{theme}` – *Year:* {s_year}"]
 
-    if sung_known:
-        message_parts.append("\n✅ *Songs that were Sung:*\n" + "\n".join(sung_known))
-    if not_sung_known:
-        message_parts.append("\n❌ *Songs that were Not Sung:*\n" + "\n".join(not_sung_known))
-    if not_sung_unknown:
-        message_parts.append("\n🚫 *Songs Choir Doesn't Know:*\n" + "\n".join(not_sung_unknown))
+    # Limit the number of songs displayed to prevent overly long messages
+    MAX_SONGS_PER_CATEGORY = 30
 
-    await update.message.reply_text("\n\n".join(message_parts), parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
+    if sung_known:
+        sung_header = f"✅ *Songs that were Sung ({len(sung_known)} total):*"
+        if len(sung_known) > MAX_SONGS_PER_CATEGORY:
+            sung_header += f" _(showing first {MAX_SONGS_PER_CATEGORY})_"
+        message_parts.append(sung_header + "\n" + "\n".join(sung_known[:MAX_SONGS_PER_CATEGORY]))
+
+    if not_sung_known:
+        not_sung_header = f"❌ *Songs that were Not Sung ({len(not_sung_known)} total):*"
+        if len(not_sung_known) > MAX_SONGS_PER_CATEGORY:
+            not_sung_header += f" _(showing first {MAX_SONGS_PER_CATEGORY})_"
+        message_parts.append(not_sung_header + "\n" + "\n".join(not_sung_known[:MAX_SONGS_PER_CATEGORY]))
+
+    if not_sung_unknown:
+        unknown_header = f"🚫 *Songs Choir Doesn't Know ({len(not_sung_unknown)} total):*"
+        if len(not_sung_unknown) > MAX_SONGS_PER_CATEGORY:
+            unknown_header += f" _(showing first {MAX_SONGS_PER_CATEGORY})_"
+        message_parts.append(unknown_header + "\n" + "\n".join(not_sung_unknown[:MAX_SONGS_PER_CATEGORY]))
+
+    # Use the helper function to send the message
+    await send_long_message(update, message_parts)
     return ConversationHandler.END
 
 # Add this function to periodically upload logs
