@@ -1154,35 +1154,38 @@ class AudioDownloader:
                 downloader_logger.info(f"STARTING FALLBACK - Spotify URL: {url}")
                 return await self.download_spotify_fallback(url, quality)
             
-            # Find downloaded file - check for various audio formats
+            # Find downloaded file - check for various audio formats recursively
             audio_extensions = ["*.mp3", "*.m4a", "*.webm", "*.ogg", "*.wav"]
             downloaded_files = []
 
+            # First check the main directory
             for ext in audio_extensions:
                 files = list(output_dir.glob(ext))
                 downloaded_files.extend(files)
-                logger.info(f"Found {len(files)} files with extension {ext}")
+                logger.info(f"Found {len(files)} files with extension {ext} in main directory")
 
-            # Also check subdirectories (spotdl sometimes creates subdirs)
-            for subdir in output_dir.iterdir():
-                if subdir.is_dir():
-                    logger.info(f"Checking subdirectory: {subdir}")
-                    for ext in audio_extensions:
-                        subdir_files = list(subdir.glob(ext))
-                        downloaded_files.extend(subdir_files)
-                        logger.info(f"Found {len(subdir_files)} files with extension {ext} in {subdir}")
+            # Then check ALL subdirectories recursively (spotdl creates nested dirs)
+            for ext in audio_extensions:
+                recursive_files = list(output_dir.rglob(ext))  # rglob searches recursively
+                # Filter out files already found in main directory
+                new_files = [f for f in recursive_files if f not in downloaded_files]
+                downloaded_files.extend(new_files)
+                logger.info(f"Found {len(new_files)} additional files with extension {ext} in subdirectories")
 
             logger.info(f"Total downloaded files found: {len(downloaded_files)}")
             for file in downloaded_files:
                 logger.info(f"Downloaded file: {file} (size: {file.stat().st_size} bytes)")
+                downloader_logger.info(f"Downloaded file: {file} (size: {file.stat().st_size} bytes)")
 
             if not downloaded_files:
                 # List all files in output directory for debugging
                 all_files = list(output_dir.rglob("*"))
                 logger.error(f"No audio files found. All files in output directory:")
+                downloader_logger.error(f"No audio files found. All files in output directory:")
                 for file in all_files:
                     if file.is_file():
                         logger.error(f"  {file} (size: {file.stat().st_size} bytes)")
+                        downloader_logger.error(f"  {file} (size: {file.stat().st_size} bytes)")
                 raise FileNotFoundError("Download failed - no audio file found")
             
             # Use the first (and hopefully only) downloaded file
