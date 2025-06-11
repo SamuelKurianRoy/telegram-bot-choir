@@ -449,7 +449,7 @@ class AudioDownloader:
             return None
     
     async def extract_spotify_info(self, url: str) -> Optional[Dict]:
-        """Extract Spotify track info using spotdl"""
+        """Extract Spotify track info using web scraping approach (same as working audio_downloader_bot.py)"""
         try:
             # Extract track ID from URL
             track_id_match = re.search(r'track/([a-zA-Z0-9]+)', url)
@@ -457,49 +457,20 @@ class AudioDownloader:
                 logger.warning(f"Could not extract track ID from Spotify URL: {url}")
                 return None
 
-            # Try to use spotdl to get metadata without downloading
-            try:
-                spotdl_cmd = ["spotdl", "meta", url, "--output", "{artist} - {name}"]
+            track_id = track_id_match.group(1)
+            logger.info(f"Extracted Spotify track ID: {track_id}")
 
-                logger.info(f"Extracting Spotify metadata with: {' '.join(spotdl_cmd)}")
-                result = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: sp.run(
-                            spotdl_cmd,
-                            capture_output=True,
-                            text=True,
-                            timeout=30
-                        )
-                    ),
-                    timeout=35
-                )
-
-                if result.returncode == 0 and result.stdout:
-                    # Parse the output to extract artist and title
-                    output_lines = result.stdout.strip().split('\n')
-                    for line in output_lines:
-                        if ' - ' in line and not line.startswith('['):
-                            # This looks like "Artist - Title" format
-                            parts = line.split(' - ', 1)
-                            if len(parts) == 2:
-                                artist = parts[0].strip()
-                                title = parts[1].strip()
-                                logger.info(f"Extracted Spotify info: {artist} - {title}")
-                                return {
-                                    'title': title,
-                                    'artist': artist,
-                                    'duration': 0,
-                                    'platform': 'Spotify'
-                                }
-
-                logger.warning(f"Could not parse spotdl metadata output: {result.stdout}")
-
-            except Exception as spotdl_error:
-                logger.warning(f"spotdl metadata extraction failed: {spotdl_error}")
+            # Try to get metadata from Spotify's public endpoint (same approach as working version)
+            metadata = await self.get_spotify_track_info(track_id, url)
+            if metadata:
+                return {
+                    'title': metadata['title'],
+                    'artist': metadata['artist'],
+                    'duration': metadata.get('duration', 0),
+                    'platform': 'Spotify'
+                }
 
             # Fallback: try to extract basic info from URL structure
-            # Some Spotify URLs contain track names in the path
             try:
                 from urllib.parse import unquote
                 decoded_url = unquote(url)
@@ -527,7 +498,6 @@ class AudioDownloader:
                 logger.warning(f"URL parsing fallback failed: {url_parse_error}")
 
             # Final fallback - return basic info with track ID
-            track_id = track_id_match.group(1)
             return {
                 'title': f'Spotify Track {track_id[:8]}',
                 'artist': 'Unknown Artist',
@@ -538,7 +508,94 @@ class AudioDownloader:
         except Exception as e:
             logger.error(f"Error extracting Spotify info: {e}")
             return None
-    
+
+    async def get_spotify_track_info(self, track_id: str, track_url: str) -> Optional[Dict]:
+        """Get Spotify track metadata using web scraping (same approach as working audio_downloader_bot.py)"""
+        try:
+            import requests
+
+            # Try to get metadata from Spotify's public endpoint
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+
+            try:
+                response = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: requests.get(track_url, headers=headers, timeout=10)
+                    ),
+                    timeout=15
+                )
+
+                if response.status_code == 200:
+                    html = response.text
+
+                    # Try to extract metadata from HTML
+                    import re
+
+                    # Look for JSON-LD structured data
+                    json_ld_match = re.search(r'<script type="application/ld\+json"[^>]*>(.*?)</script>', html, re.DOTALL)
+                    if json_ld_match:
+                        try:
+                            import json
+                            json_data = json.loads(json_ld_match.group(1))
+
+                            if isinstance(json_data, list):
+                                json_data = json_data[0]
+
+                            if json_data.get('@type') == 'MusicRecording':
+                                title = json_data.get('name', '')
+                                artist = ''
+
+                                # Extract artist info
+                                by_artist = json_data.get('byArtist', {})
+                                if isinstance(by_artist, dict):
+                                    artist = by_artist.get('name', '')
+                                elif isinstance(by_artist, list) and by_artist:
+                                    artist = by_artist[0].get('name', '')
+
+                                if title and artist:
+                                    logger.info(f"Extracted from JSON-LD: {artist} - {title}")
+                                    return {
+                                        'title': title,
+                                        'artist': artist,
+                                        'duration': 0,
+                                        'album': '',
+                                        'url': track_url,
+                                        'track_id': track_id
+                                    }
+                        except Exception as json_error:
+                            logger.warning(f"Error parsing JSON-LD: {json_error}")
+
+                    # Fallback: try to extract from page title
+                    title_match = re.search(r'<title[^>]*>([^<]+)</title>', html)
+                    if title_match:
+                        title_text = title_match.group(1)
+                        # Remove " | Spotify" from the end
+                        title_text = title_text.replace(' | Spotify', '')
+
+                        # Try to split by common separators
+                        if ' - ' in title_text:
+                            parts = title_text.split(' - ', 1)
+                            return {
+                                'title': parts[0].strip(),
+                                'artist': parts[1].strip() if len(parts) > 1 else 'Unknown Artist',
+                                'duration': 0,
+                                'album': '',
+                                'url': track_url,
+                                'track_id': track_id
+                            }
+
+            except Exception as request_error:
+                logger.warning(f"Error fetching Spotify page: {request_error}")
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting Spotify track metadata: {e}")
+            return None
+
     async def download_audio(self, url: str, quality: str = "medium") -> Optional[Tuple[Path, Dict]]:
         """Download audio from URL"""
         platform = self.detect_platform(url)
