@@ -9,9 +9,9 @@ import time
 import asyncio
 import logging
 import subprocess as sp
+import platform
 from pathlib import Path
 from typing import Dict, Optional, Tuple
-from urllib.parse import urlparse
 
 try:
     import yt_dlp
@@ -36,37 +36,88 @@ class AudioDownloader:
         # Set FFmpeg path - check for local installation first
         self.ffmpeg_path = self._find_ffmpeg_path()
 
+        # Configure FFmpeg in PATH if local installation found
+        if self.ffmpeg_path and self.ffmpeg_path != "system":
+            # Add FFmpeg directory to PATH (same as audio_downloader_bot.py)
+            current_path = os.environ.get("PATH", "")
+            if self.ffmpeg_path not in current_path:
+                os.environ["PATH"] = self.ffmpeg_path + os.pathsep + current_path
+                logger.info(f"Added FFmpeg to PATH: {self.ffmpeg_path}")
+
+            # Configure spotdl to use local FFmpeg
+            system = platform.system().lower()
+            if system == "windows":
+                ffmpeg_exe = Path(self.ffmpeg_path) / "ffmpeg.exe"
+            else:
+                ffmpeg_exe = Path(self.ffmpeg_path) / "ffmpeg"
+
+            if ffmpeg_exe.exists():
+                os.environ["FFMPEG_BINARY"] = str(ffmpeg_exe)
+                logger.info(f"Set FFMPEG_BINARY environment variable: {ffmpeg_exe}")
+
     def _find_ffmpeg_path(self) -> Optional[str]:
-        """Find FFmpeg installation path"""
-        # Check local ffmpeg directory first
-        local_ffmpeg_dirs = [
-            "./ffmpeg",     # Local directory
-            "ffmpeg",       # Relative directory
-        ]
+        """Find FFmpeg installation path using the same logic as audio_downloader_bot.py"""
+        try:
+            # First, check if ffmpeg is already installed on the system
+            try:
+                result = sp.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    logger.info("FFmpeg is already installed on the system")
+                    return "system"  # Indicates system FFmpeg should be used
+            except:
+                logger.info("FFmpeg not found in system PATH, checking local directory")
 
-        for ffmpeg_dir in local_ffmpeg_dirs:
-            ffmpeg_dir_path = Path(ffmpeg_dir)
-            if ffmpeg_dir_path.exists():
-                # Check for both ffmpeg and ffprobe
-                ffmpeg_exe = ffmpeg_dir_path / "ffmpeg.exe" if os.name == 'nt' else ffmpeg_dir_path / "ffmpeg"
-                ffprobe_exe = ffmpeg_dir_path / "ffprobe.exe" if os.name == 'nt' else ffmpeg_dir_path / "ffprobe"
+            # Check for FFmpeg in the local repository directory
+            ffmpeg_dir = Path.cwd() / "ffmpeg"
 
-                if ffmpeg_exe.exists() and ffprobe_exe.exists():
-                    logger.info(f"Found local FFmpeg directory at: {ffmpeg_dir_path.absolute()}")
-                    return str(ffmpeg_dir_path.absolute())
+            # Determine platform and appropriate executable name
+            system = platform.system().lower()
 
-        # Check system PATH
-        import shutil
-        system_ffmpeg = shutil.which("ffmpeg")
-        system_ffprobe = shutil.which("ffprobe")
+            if system == "windows":
+                ffmpeg_names = ["ffmpeg.exe"]
+                ffprobe_names = ["ffprobe.exe"]
+            else:
+                ffmpeg_names = ["ffmpeg"]
+                ffprobe_names = ["ffprobe"]
 
-        if system_ffmpeg and system_ffprobe:
-            ffmpeg_dir = str(Path(system_ffmpeg).parent)
-            logger.info(f"Found system FFmpeg directory at: {ffmpeg_dir}")
-            return ffmpeg_dir
+            # Check if both FFmpeg and FFprobe exist in the local directory
+            ffmpeg_found = False
+            ffprobe_found = False
 
-        logger.warning("FFmpeg and/or ffprobe not found. Audio conversion may fail.")
-        return None
+            for name in ffmpeg_names:
+                ffmpeg_path = ffmpeg_dir / name
+                if ffmpeg_path.exists():
+                    ffmpeg_found = True
+                    break
+
+            for name in ffprobe_names:
+                ffprobe_path = ffmpeg_dir / name
+                if ffprobe_path.exists():
+                    ffprobe_found = True
+                    break
+
+            if ffmpeg_found and ffprobe_found:
+                logger.info(f"Found local FFmpeg and FFprobe at: {ffmpeg_dir}")
+
+                # Test if FFmpeg works
+                try:
+                    ffmpeg_exe = ffmpeg_dir / ffmpeg_names[0]
+                    test_result = sp.run([str(ffmpeg_exe), "-version"],
+                                       capture_output=True, text=True, timeout=10)
+                    if test_result.returncode == 0:
+                        logger.info("Local FFmpeg is working correctly")
+                        return str(ffmpeg_dir)
+                    else:
+                        logger.warning(f"Local FFmpeg test failed: {test_result.stderr}")
+                except Exception as test_error:
+                    logger.warning(f"Could not test local FFmpeg: {test_error}")
+
+            logger.warning("No working FFmpeg found. Audio conversion may fail.")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error finding FFmpeg: {e}")
+            return None
 
     def detect_platform(self, url: str) -> str:
         """Detect the platform from URL"""
@@ -182,9 +233,20 @@ class AudioDownloader:
                 'no_warnings': True,
             }
 
-            # Add FFmpeg location if found
-            if self.ffmpeg_path:
+            # Add FFmpeg location if found (using same logic as audio_downloader_bot.py)
+            if self.ffmpeg_path == "system":
+                # System FFmpeg is available, yt-dlp will find it automatically
+                logger.info("Using system FFmpeg for yt-dlp")
+            elif self.ffmpeg_path:
+                # Local FFmpeg directory
                 ydl_opts['ffmpeg_location'] = self.ffmpeg_path
+                logger.info(f"Using local FFmpeg for yt-dlp: {self.ffmpeg_path}")
+            else:
+                # If no FFmpeg available, try to download audio-only formats that don't need conversion
+                logger.warning("No FFmpeg available, trying audio-only formats")
+                ydl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio'
+                # Remove post-processors that require FFmpeg
+                ydl_opts['postprocessors'] = []
             
             # Download with timeout
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -241,9 +303,25 @@ class AudioDownloader:
                 "--output", str(output_dir)
             ]
 
-            # Add FFmpeg location if found
-            if self.ffmpeg_path:
-                spotdl_cmd.extend(["--ffmpeg", self.ffmpeg_path])
+            # Add FFmpeg path explicitly for spotdl (using same logic as audio_downloader_bot.py)
+            if self.ffmpeg_path == "system":
+                # For system FFmpeg, let spotdl find it automatically
+                logger.info("Using system FFmpeg for spotdl")
+            elif self.ffmpeg_path:
+                # For local FFmpeg, specify the path explicitly
+                system = platform.system().lower()
+                if system == "windows":
+                    ffmpeg_exe = Path(self.ffmpeg_path) / "ffmpeg.exe"
+                else:
+                    ffmpeg_exe = Path(self.ffmpeg_path) / "ffmpeg"
+
+                if ffmpeg_exe.exists():
+                    spotdl_cmd.extend(["--ffmpeg", str(ffmpeg_exe)])
+                    logger.info(f"Using local FFmpeg for spotdl: {ffmpeg_exe}")
+                else:
+                    logger.warning(f"FFmpeg not found at expected path: {ffmpeg_exe}")
+            else:
+                logger.warning("No FFmpeg configured - spotdl may fail")
             
             # Run spotdl with timeout
             result = await asyncio.wait_for(
