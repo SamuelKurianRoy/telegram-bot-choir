@@ -1727,33 +1727,24 @@ try :
         else:
             unknown_hymns.append(hymn_no)
 
-    # Limit the number of hymns displayed to prevent overly long messages
-    MAX_HYMNS_PER_CATEGORY = 50
-
-    # Build display lines for known and unknown hymns
-    display_known = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]} - {dfH[dfH['Hymn no'] == h]['Tunes'].values[0]}" for h in known_hymns[:MAX_HYMNS_PER_CATEGORY]]
-    display_unknown = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]}" for h in unknown_hymns[:MAX_HYMNS_PER_CATEGORY]]
+    # Build display lines for known and unknown hymns (show ALL, no limits)
+    display_known = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]} - {dfH[dfH['Hymn no'] == h]['Tunes'].values[0]}" for h in known_hymns]
+    display_unknown = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]}" for h in unknown_hymns]
 
     message_parts = [f"🎼 *Hymns related to theme:* `{theme_input}`"]
 
     if display_known:
-        known_header = f"✅ *Choir Knows ({len(known_hymns)} total):*"
-        if len(known_hymns) > MAX_HYMNS_PER_CATEGORY:
-            known_header += f" _(showing first {MAX_HYMNS_PER_CATEGORY})_"
-        message_parts.append(known_header + "\n" + "\n".join(display_known))
+        message_parts.append(f"✅ *Choir Knows ({len(known_hymns)} total):*\n" + "\n".join(display_known))
     else:
         message_parts.append("❌ *No known hymns found in this theme.*")
 
     if display_unknown:
-        unknown_header = f"❌ *Choir Doesn't Know ({len(unknown_hymns)} total):*"
-        if len(unknown_hymns) > MAX_HYMNS_PER_CATEGORY:
-            unknown_header += f" _(showing first {MAX_HYMNS_PER_CATEGORY})_"
-        message_parts.append(unknown_header + "\n" + "\n".join(display_unknown) +
+        message_parts.append(f"❌ *Choir Doesn't Know ({len(unknown_hymns)} total):*\n" + "\n".join(display_unknown) +
                              "\n\n*Note:* A known song may appear here if not sung in the past 3 years.")
     else:
         message_parts.append("🎉 *Choir knows all hymns in this theme!*")
 
-    # Use the helper function to send the message
+    # Use the helper function to send the message (will split automatically if too long)
     await send_long_message(update, message_parts)
 
     # Store the raw hymn numbers for later processing in year filtering
@@ -1811,28 +1802,16 @@ try :
 
     message_parts = [f"📅 *Theme:* `{theme}` – *Year:* {s_year}"]
 
-    # Limit the number of songs displayed to prevent overly long messages
-    MAX_SONGS_PER_CATEGORY = 30
-
     if sung_known:
-        sung_header = f"✅ *Songs that were Sung ({len(sung_known)} total):*"
-        if len(sung_known) > MAX_SONGS_PER_CATEGORY:
-            sung_header += f" _(showing first {MAX_SONGS_PER_CATEGORY})_"
-        message_parts.append(sung_header + "\n" + "\n".join(sung_known[:MAX_SONGS_PER_CATEGORY]))
+        message_parts.append(f"✅ *Songs that were Sung ({len(sung_known)} total):*\n" + "\n".join(sung_known))
 
     if not_sung_known:
-        not_sung_header = f"❌ *Songs that were Not Sung ({len(not_sung_known)} total):*"
-        if len(not_sung_known) > MAX_SONGS_PER_CATEGORY:
-            not_sung_header += f" _(showing first {MAX_SONGS_PER_CATEGORY})_"
-        message_parts.append(not_sung_header + "\n" + "\n".join(not_sung_known[:MAX_SONGS_PER_CATEGORY]))
+        message_parts.append(f"❌ *Songs that were Not Sung ({len(not_sung_known)} total):*\n" + "\n".join(not_sung_known))
 
     if not_sung_unknown:
-        unknown_header = f"🚫 *Songs Choir Doesn't Know ({len(not_sung_unknown)} total):*"
-        if len(not_sung_unknown) > MAX_SONGS_PER_CATEGORY:
-            unknown_header += f" _(showing first {MAX_SONGS_PER_CATEGORY})_"
-        message_parts.append(unknown_header + "\n" + "\n".join(not_sung_unknown[:MAX_SONGS_PER_CATEGORY]))
+        message_parts.append(f"🚫 *Songs Choir Doesn't Know ({len(not_sung_unknown)} total):*\n" + "\n".join(not_sung_unknown))
 
-    # Use the helper function to send the message
+    # Use the helper function to send the message (will split automatically if too long)
     await send_long_message(update, message_parts)
     return ConversationHandler.END
 
