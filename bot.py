@@ -1526,7 +1526,7 @@ try :
 
     try:
         # Log download request to Google Doc (similar to comment function)
-        yfile_id = os.getenv("YFILE_ID")
+        yfile_id = st.secrets["YFILE_ID"]
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         chat_id = update.effective_chat.id
 
@@ -2234,8 +2234,8 @@ try :
     user = update.effective_user
     comment = update.message.text.strip()
 
-    admin_id = os.getenv("ADMIN_ID")
-    comfile_id = os.getenv("COMFILE_ID")  # Google Doc ID to store comments
+    admin_id = st.secrets["ADMIN_ID"]
+    comfile_id = st.secrets["COMFILE_ID"]  # Google Doc ID to store comments
 
     # Build the full comment message
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2343,7 +2343,7 @@ try :
  # Admin reply function (keeps your original implementation)
  async def admin_reply(update: Update, context: CallbackContext) -> None:
     user = update.effective_user
-    admin_id = int(os.getenv("ADMIN_ID"))
+    admin_id = int(st.secrets["ADMIN_ID"])
 
     if user.id != admin_id:
         await update.message.reply_text("❌ You are not authorized to use this command.")
@@ -2398,8 +2398,8 @@ try :
         dfcleaning()
         df = standardize_song_columns()
         try:
-         upload_log_to_google_doc(os.getenv("BFILE_ID"), "bot_log.txt")
-         upload_log_to_google_doc(os.getenv("UFILE_ID"), "user_log.txt")
+         upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
+         upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
          # Note: Download logs are directly appended to YFILE_ID Google Doc, no file upload needed
         except Exception as e:
          print(f"Couldn't save log files due to Error: {e}")
@@ -2408,8 +2408,8 @@ try :
         await update.message.reply_text(f"Error reloading datasets: {e}")
         logging.error(f"Error in /refresh command: {e}")
         try:
-         upload_log_to_google_doc(os.getenv("BFILE_ID"), "bot_log.txt")
-         upload_log_to_google_doc(os.getenv("UFILE_ID"), "user_log.txt")
+         upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
+         upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
          # Note: Download logs are directly appended to YFILE_ID Google Doc, no file upload needed
         except Exception as e:
          print(f"Couldn't save log files due to Error: {e}")
@@ -2582,8 +2582,8 @@ except KeyboardInterrupt:
     print("\n🛑 Bot stopped manually by user (Ctrl + C).")
     bot_logger.info(f"\nBot was stoped by the user\n\n")
     try:
-        upload_log_to_google_doc(os.getenv("BFILE_ID"), "bot_log.txt")
-        upload_log_to_google_doc(os.getenv("UFILE_ID"), "user_log.txt")
+        upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
+        upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
         # Note: Download logs are directly appended to YFILE_ID Google Doc, no file upload needed
         sys.exit(0)
     except Exception as e:
@@ -2594,8 +2594,8 @@ except Exception as e:
     bot_logger.error(f"\n❌ An unexpected error occurred: {e}")
     bot_logger.info("\n")
     try:
-        upload_log_to_google_doc(os.getenv("BFILE_ID"), "bot_log.txt")
-        upload_log_to_google_doc(os.getenv("UFILE_ID"), "user_log.txt")
+        upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
+        upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
         # Note: Download logs are directly appended to YFILE_ID Google Doc, no file upload needed
         sys.exit(1)
     except Exception as e:
