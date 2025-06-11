@@ -28,11 +28,39 @@ logger = logging.getLogger(__name__)
 
 class AudioDownloader:
     """Audio downloader class for YouTube and Spotify"""
-    
+
     def __init__(self, temp_dir: str = "temp"):
         self.temp_dir = Path(temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
-        
+
+        # Set FFmpeg path - check for local installation first
+        self.ffmpeg_path = self._find_ffmpeg_path()
+
+    def _find_ffmpeg_path(self) -> Optional[str]:
+        """Find FFmpeg installation path"""
+        # Check local ffmpeg directory first
+        local_ffmpeg_paths = [
+            "./ffmpeg/ffmpeg.exe",  # Windows
+            "./ffmpeg/ffmpeg",      # Linux/Mac
+            "ffmpeg/ffmpeg.exe",    # Windows (relative)
+            "ffmpeg/ffmpeg",        # Linux/Mac (relative)
+        ]
+
+        for path in local_ffmpeg_paths:
+            if Path(path).exists():
+                logger.info(f"Found local FFmpeg at: {path}")
+                return str(Path(path).absolute())
+
+        # Check system PATH
+        import shutil
+        system_ffmpeg = shutil.which("ffmpeg")
+        if system_ffmpeg:
+            logger.info(f"Found system FFmpeg at: {system_ffmpeg}")
+            return system_ffmpeg
+
+        logger.warning("FFmpeg not found. Audio conversion may fail.")
+        return None
+
     def detect_platform(self, url: str) -> str:
         """Detect the platform from URL"""
         url_lower = url.lower()
@@ -146,6 +174,10 @@ class AudioDownloader:
                 'quiet': True,
                 'no_warnings': True,
             }
+
+            # Add FFmpeg location if found
+            if self.ffmpeg_path:
+                ydl_opts['ffmpeg_location'] = str(Path(self.ffmpeg_path).parent)
             
             # Download with timeout
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -201,6 +233,10 @@ class AudioDownloader:
                 "--format", "mp3",
                 "--output", str(output_dir)
             ]
+
+            # Add FFmpeg location if found
+            if self.ffmpeg_path:
+                spotdl_cmd.extend(["--ffmpeg", self.ffmpeg_path])
             
             # Run spotdl with timeout
             result = await asyncio.wait_for(
