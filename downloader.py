@@ -117,12 +117,14 @@ class AudioDownloader:
                     import tempfile
                     import tarfile
 
-                    # Try multiple sources for Linux FFmpeg (prioritize simple downloads)
+                    # Try multiple sources for Linux FFmpeg (updated URLs)
                     ffmpeg_urls = [
-                        # Direct static binary (most reliable)
-                        "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2023-12-09-12-49/ffmpeg-n6.1-2-g31f1a25352-linux64-gpl-6.1.tar.xz",
-                        # Alternative static binary
+                        # John Van Sickle static builds (most reliable)
                         "https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz",
+                        # Alternative: try to get latest release from GitHub
+                        "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz",
+                        # Fallback: older but stable version
+                        "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2024-03-17-12-49/ffmpeg-n6.1.1-26-g806c2d9c72-linux64-gpl-6.1.tar.xz",
                     ]
 
                     success = False
@@ -188,16 +190,35 @@ class AudioDownloader:
                             # Make it executable
                             os.chmod(linux_ffmpeg_path, 0o755)
 
-                            # Test the downloaded version
-                            test_result = sp.run([str(linux_ffmpeg_path), "-version"],
-                                               capture_output=True, text=True, timeout=10)
-                            if test_result.returncode == 0:
-                                logger.info("Downloaded Linux FFmpeg is working correctly")
-                                success = True
-                                break
-                            else:
-                                logger.warning("Downloaded FFmpeg is not working, trying next source")
+                            # Test the downloaded version with more thorough testing
+                            try:
+                                # First test: version check
+                                test_result = sp.run([str(linux_ffmpeg_path), "-version"],
+                                                   capture_output=True, text=True, timeout=10)
+                                if test_result.returncode != 0:
+                                    logger.warning(f"Downloaded FFmpeg version test failed: {test_result.stderr}")
+                                    linux_ffmpeg_path.unlink(missing_ok=True)
+                                    continue
+
+                                # Second test: simple conversion test to catch crashes
+                                test_conversion = sp.run([
+                                    str(linux_ffmpeg_path), "-f", "lavfi", "-i", "testsrc=duration=1:size=320x240:rate=1",
+                                    "-f", "null", "-"
+                                ], capture_output=True, text=True, timeout=15)
+
+                                if test_conversion.returncode == 0:
+                                    logger.info("Downloaded Linux FFmpeg is working correctly")
+                                    success = True
+                                    break
+                                else:
+                                    logger.warning(f"Downloaded FFmpeg conversion test failed (code {test_conversion.returncode}): {test_conversion.stderr}")
+                                    linux_ffmpeg_path.unlink(missing_ok=True)
+                                    continue
+
+                            except Exception as test_error:
+                                logger.warning(f"Error testing downloaded FFmpeg: {test_error}")
                                 linux_ffmpeg_path.unlink(missing_ok=True)
+                                continue
 
                         except Exception as url_error:
                             logger.warning(f"Failed to download from {ffmpeg_url}: {url_error}")
@@ -215,20 +236,49 @@ class AudioDownloader:
             if system == "linux":
                 logger.info("Attempting to install FFmpeg using system package manager...")
                 try:
-                    # Try apt-get (Ubuntu/Debian systems like Streamlit Cloud)
-                    install_result = sp.run(
-                        ["apt-get", "update", "&&", "apt-get", "install", "-y", "ffmpeg"],
-                        capture_output=True, text=True, timeout=120, shell=True
-                    )
-                    if install_result.returncode == 0:
-                        logger.info("Successfully installed FFmpeg via apt-get")
-                        # Test if it's now available
-                        test_result = sp.run(["ffmpeg", "-version"], capture_output=True, text=True)
-                        if test_result.returncode == 0:
-                            logger.info("System FFmpeg is now working")
-                            return "system"  # System FFmpeg is available
+                    # First try: update package list
+                    logger.info("Updating package list...")
+                    update_result = sp.run(["apt-get", "update"], capture_output=True, text=True, timeout=60)
+
+                    if update_result.returncode == 0:
+                        logger.info("Package list updated successfully")
+
+                        # Second try: install FFmpeg
+                        logger.info("Installing FFmpeg...")
+                        install_result = sp.run(
+                            ["apt-get", "install", "-y", "ffmpeg"],
+                            capture_output=True, text=True, timeout=120
+                        )
+
+                        if install_result.returncode == 0:
+                            logger.info("Successfully installed FFmpeg via apt-get")
+
+                            # Test if it's now available and working
+                            try:
+                                test_result = sp.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=10)
+                                if test_result.returncode == 0:
+                                    logger.info("System FFmpeg is now working")
+
+                                    # Additional test to make sure it doesn't crash
+                                    test_conversion = sp.run([
+                                        "ffmpeg", "-f", "lavfi", "-i", "testsrc=duration=1:size=320x240:rate=1",
+                                        "-f", "null", "-"
+                                    ], capture_output=True, text=True, timeout=15)
+
+                                    if test_conversion.returncode == 0:
+                                        logger.info("System FFmpeg conversion test passed")
+                                        return "system"  # System FFmpeg is available and working
+                                    else:
+                                        logger.warning(f"System FFmpeg conversion test failed: {test_conversion.stderr}")
+                                else:
+                                    logger.warning(f"System FFmpeg version test failed: {test_result.stderr}")
+                            except Exception as test_error:
+                                logger.warning(f"Error testing system FFmpeg: {test_error}")
+                        else:
+                            logger.warning(f"Failed to install FFmpeg via apt-get: {install_result.stderr}")
                     else:
-                        logger.warning(f"Failed to install FFmpeg via apt-get: {install_result.stderr}")
+                        logger.warning(f"Failed to update package list: {update_result.stderr}")
+
                 except Exception as install_error:
                     logger.warning(f"Could not install FFmpeg via package manager: {install_error}")
 
