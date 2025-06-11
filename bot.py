@@ -964,12 +964,10 @@ try :
 
      
  
- def filter_hymns_by_theme(data, theme):
+ def filter_hymns_by_theme(data=dfH, theme=None):
      """
      Filters the DataFrame for rows where the "Themes" column contains the given theme.
      """
-     if "Themes" not in data.columns:
-         return pd.DataFrame()  # Return empty DataFrame if Themes column doesn't exist
      filtered = data[data["Themes"].str.contains(theme, case=False, na=False)]
      return filtered
  
