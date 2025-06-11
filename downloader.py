@@ -33,6 +33,17 @@ except ImportError:
 # Setup logging
 logger = logging.getLogger(__name__)
 
+# Setup file logging for downloader (will be uploaded to BFILE_ID)
+downloader_logger = logging.getLogger("downloader_debug")
+if not downloader_logger.handlers:
+    downloader_logger.setLevel(logging.INFO)
+    downloader_logger.propagate = False
+
+    # File handler for downloader logs
+    downloader_handler = logging.FileHandler("downloader_log.txt", mode='w', encoding='utf-8')
+    downloader_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    downloader_logger.addHandler(downloader_handler)
+
 class AudioDownloader:
     """Audio downloader class for YouTube and Spotify"""
 
@@ -40,12 +51,14 @@ class AudioDownloader:
         # Detect if running on Streamlit Cloud
         self.is_streamlit_cloud = self._detect_streamlit_cloud()
         logger.info(f"Running on Streamlit Cloud: {self.is_streamlit_cloud}")
+        downloader_logger.info(f"AudioDownloader initialized - Streamlit Cloud: {self.is_streamlit_cloud}")
 
         self.temp_dir = Path(temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
 
         # Set FFmpeg path - use the complete setup from audio_downloader_bot.py
         self.ffmpeg_path = asyncio.run(self._setup_ffmpeg())
+        downloader_logger.info(f"FFmpeg setup result: {self.ffmpeg_path}")
 
         # Configure FFmpeg in PATH if local installation found
         if self.ffmpeg_path and self.ffmpeg_path != "system":
@@ -54,6 +67,7 @@ class AudioDownloader:
             if self.ffmpeg_path not in current_path:
                 os.environ["PATH"] = self.ffmpeg_path + os.pathsep + current_path
                 logger.info(f"Added FFmpeg to PATH: {self.ffmpeg_path}")
+                downloader_logger.info(f"Added FFmpeg to PATH: {self.ffmpeg_path}")
 
             # Configure spotdl to use local FFmpeg
             system = platform.system().lower()
@@ -65,11 +79,13 @@ class AudioDownloader:
             if ffmpeg_exe.exists():
                 os.environ["FFMPEG_BINARY"] = str(ffmpeg_exe)
                 logger.info(f"Set FFMPEG_BINARY environment variable: {ffmpeg_exe}")
+                downloader_logger.info(f"Set FFMPEG_BINARY environment variable: {ffmpeg_exe}")
 
         # For Streamlit Cloud, ensure FFmpeg is configured for spotdl
         if self.is_streamlit_cloud and self.ffmpeg_path == "system":
             os.environ["FFMPEG_BINARY"] = "ffmpeg"
             logger.info("Configured spotdl to use system FFmpeg on Streamlit Cloud")
+            downloader_logger.info("Configured spotdl to use system FFmpeg on Streamlit Cloud")
 
     def _detect_streamlit_cloud(self) -> bool:
         """Detect if running on Streamlit Cloud"""
@@ -105,23 +121,39 @@ class AudioDownloader:
     async def _setup_ffmpeg(self) -> Optional[str]:
         """Setup FFmpeg using the complete logic from audio_downloader_bot.py"""
         try:
-            # First, check if ffmpeg is already installed on the system
-            try:
-                result = sp.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    logger.info("FFmpeg is already installed on the system")
-                    if self.is_streamlit_cloud:
-                        logger.info("Running on Streamlit Cloud with system FFmpeg")
-                        # Test FFmpeg more thoroughly on Streamlit Cloud
-                        test_result = await self._test_ffmpeg_on_streamlit_cloud()
-                        if test_result:
-                            return "system"
-                        else:
-                            logger.warning("FFmpeg test failed on Streamlit Cloud")
-                    else:
-                        return "system"  # Indicates system FFmpeg should be used
-            except Exception as e:
-                logger.info(f"FFmpeg not found in system PATH: {e}, checking local directory")
+            # Use the complete download_ffmpeg function from audio_downloader_bot.py
+            ffmpeg_result = await self.download_ffmpeg()
+
+            if ffmpeg_result == "system":
+                # System FFmpeg is available
+                self.ffmpeg_path = "system"
+                logger.info("Using system FFmpeg installation")
+                downloader_logger.info("Using system FFmpeg installation")
+
+                # Configure spotdl to use system FFmpeg
+                await self.configure_spotdl_ffmpeg()
+
+            elif ffmpeg_result:
+                # Local FFmpeg directory
+                self.ffmpeg_path = ffmpeg_result
+                # Add FFmpeg directory to PATH
+                current_path = os.environ.get("PATH", "")
+                if self.ffmpeg_path not in current_path:
+                    os.environ["PATH"] = self.ffmpeg_path + os.pathsep + current_path
+                logger.info(f"FFmpeg set up at: {self.ffmpeg_path}")
+                downloader_logger.info(f"FFmpeg set up at: {self.ffmpeg_path}")
+
+                # Configure spotdl to use local FFmpeg
+                await self.configure_spotdl_ffmpeg()
+
+            else:
+                # No FFmpeg available
+                self.ffmpeg_path = None
+                logger.warning("FFmpeg not available - some audio conversions may not work")
+                logger.info("Bot will try to download audio in native formats when possible")
+                downloader_logger.warning("FFmpeg not available - some audio conversions may not work")
+
+            return self.ffmpeg_path
 
             # Check for FFmpeg in the local repository directory
             ffmpeg_dir = Path.cwd() / "ffmpeg"
@@ -342,7 +374,330 @@ class AudioDownloader:
 
         except Exception as e:
             logger.error(f"Error setting up FFmpeg: {e}")
+            downloader_logger.error(f"Error setting up FFmpeg: {e}")
             return None
+
+    async def configure_spotdl_ffmpeg(self):
+        """Configure spotdl to use the available FFmpeg installation (from audio_downloader_bot.py)"""
+        try:
+            if self.ffmpeg_path == "system":
+                # For system FFmpeg, spotdl should find it automatically
+                os.environ["FFMPEG_BINARY"] = "ffmpeg"
+                logger.info("Configured spotdl to use system FFmpeg")
+                downloader_logger.info("Configured spotdl to use system FFmpeg")
+
+            elif self.ffmpeg_path:
+                # For local FFmpeg, set the full path
+                system = platform.system().lower()
+                if system == "windows":
+                    ffmpeg_exe = Path(self.ffmpeg_path) / "ffmpeg.exe"
+                else:
+                    ffmpeg_exe = Path(self.ffmpeg_path) / "ffmpeg"
+
+                if ffmpeg_exe.exists():
+                    os.environ["FFMPEG_BINARY"] = str(ffmpeg_exe)
+                    logger.info(f"Configured spotdl to use local FFmpeg: {ffmpeg_exe}")
+                    downloader_logger.info(f"Configured spotdl to use local FFmpeg: {ffmpeg_exe}")
+                else:
+                    logger.warning(f"FFmpeg executable not found at: {ffmpeg_exe}")
+                    downloader_logger.warning(f"FFmpeg executable not found at: {ffmpeg_exe}")
+
+        except Exception as e:
+            logger.error(f"Error configuring spotdl FFmpeg: {e}")
+            downloader_logger.error(f"Error configuring spotdl FFmpeg: {e}")
+
+    async def download_ffmpeg(self):
+        """Complete FFmpeg download function from audio_downloader_bot.py"""
+        try:
+            downloader_logger.info("Starting FFmpeg setup process")
+
+            # First, check if ffmpeg is already installed on the system
+            try:
+                result = sp.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    logger.info("FFmpeg is already installed on the system")
+                    downloader_logger.info("FFmpeg is already installed on the system")
+                    return "system"  # Indicates system FFmpeg should be used
+            except Exception as e:
+                logger.info("FFmpeg not found in system PATH, checking local directory")
+                downloader_logger.info(f"FFmpeg not found in system PATH: {e}")
+
+            # Check for FFmpeg in the local repository directory
+            ffmpeg_dir = Path.cwd() / "ffmpeg"
+            downloader_logger.info(f"Checking for local FFmpeg in: {ffmpeg_dir}")
+
+            # Determine platform and appropriate executable name
+            system = platform.system().lower()
+            downloader_logger.info(f"Detected platform: {system}")
+
+            if system == "windows":
+                ffmpeg_names = ["ffmpeg.exe"]
+            else:
+                ffmpeg_names = ["ffmpeg"]
+
+            # Check if FFmpeg exists in the local directory
+            for name in ffmpeg_names:
+                ffmpeg_path = ffmpeg_dir / name
+                if ffmpeg_path.exists():
+                    logger.info(f"Found local FFmpeg at: {ffmpeg_path}")
+                    downloader_logger.info(f"Found local FFmpeg at: {ffmpeg_path}")
+
+                    # Make sure it's executable (Linux/Mac only)
+                    if system != "windows":
+                        try:
+                            os.chmod(ffmpeg_path, 0o755)
+                        except Exception as chmod_error:
+                            logger.warning(f"Could not make FFmpeg executable: {chmod_error}")
+
+                    # Test if it works
+                    try:
+                        test_result = sp.run([str(ffmpeg_path), "-version"],
+                                           capture_output=True, text=True, timeout=10)
+                        if test_result.returncode == 0:
+                            logger.info("Local FFmpeg is working correctly")
+                            downloader_logger.info("Local FFmpeg is working correctly")
+                            return str(ffmpeg_dir)
+                        else:
+                            logger.warning(f"Local FFmpeg test failed: {test_result.stderr}")
+                            downloader_logger.warning(f"Local FFmpeg test failed: {test_result.stderr}")
+                    except Exception as test_error:
+                        logger.warning(f"Could not test local FFmpeg: {test_error}")
+                        downloader_logger.warning(f"Could not test local FFmpeg: {test_error}")
+
+            # If we're on Linux and only have Windows executables, try to download Linux version
+            if system == "linux" and (ffmpeg_dir / "ffmpeg.exe").exists():
+                logger.info("Found Windows FFmpeg but running on Linux, downloading Linux version")
+                downloader_logger.info("Found Windows FFmpeg but running on Linux, downloading Linux version")
+
+                result = await self._download_linux_ffmpeg(ffmpeg_dir)
+                if result:
+                    return result
+
+            # Last resort: try to install FFmpeg using system package manager (for Streamlit Cloud)
+            if system == "linux":
+                logger.info("Attempting to install FFmpeg using system package manager...")
+                downloader_logger.info("Attempting to install FFmpeg using system package manager...")
+
+                result = await self._install_system_ffmpeg()
+                if result:
+                    return result
+
+            # If no working FFmpeg found, create directory and log the issue
+            ffmpeg_dir.mkdir(exist_ok=True)
+            logger.warning("No working FFmpeg found")
+            downloader_logger.warning("No working FFmpeg found")
+            logger.info("Bot will work with limited functionality - some audio conversions may not be available")
+            logger.info("yt-dlp will try to download audio in native formats when possible")
+
+            # Return None to indicate FFmpeg is not available
+            return None
+
+        except Exception as e:
+            logger.error(f"Error in download_ffmpeg: {e}")
+            downloader_logger.error(f"Error in download_ffmpeg: {e}")
+            return None
+
+    async def _download_linux_ffmpeg(self, ffmpeg_dir: Path) -> Optional[str]:
+        """Download Linux FFmpeg binary (from audio_downloader_bot.py)"""
+        try:
+            import requests
+            import tempfile
+            import tarfile
+
+            # Try multiple sources for Linux FFmpeg (updated URLs)
+            ffmpeg_urls = [
+                # John Van Sickle static builds (most reliable)
+                "https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz",
+                # Alternative: try to get latest release from GitHub
+                "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz",
+                # Fallback: older but stable version
+                "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2024-03-17-12-49/ffmpeg-n6.1.1-26-g806c2d9c72-linux64-gpl-6.1.tar.xz",
+            ]
+
+            success = False
+            for ffmpeg_url in ffmpeg_urls:
+                try:
+                    logger.info(f"Trying to download from: {ffmpeg_url}")
+                    downloader_logger.info(f"Trying to download from: {ffmpeg_url}")
+
+                    response = requests.get(ffmpeg_url, stream=True, timeout=60)
+                    response.raise_for_status()
+
+                    # Save the Linux version
+                    linux_ffmpeg_path = ffmpeg_dir / "ffmpeg"
+
+                    if ffmpeg_url.endswith('.tar.xz'):
+                        # Handle compressed archives
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.tar.xz') as tmp_file:
+                            for chunk in response.iter_content(chunk_size=8192):
+                                tmp_file.write(chunk)
+                            tmp_file.flush()
+
+                            logger.info("Downloaded archive, extracting...")
+                            downloader_logger.info("Downloaded archive, extracting...")
+
+                            try:
+                                # Extract the archive
+                                with tarfile.open(tmp_file.name, 'r:xz') as tar:
+                                    # Find ffmpeg binary in the archive
+                                    ffmpeg_member = None
+                                    for member in tar.getmembers():
+                                        if member.name.endswith('/ffmpeg') or member.name == 'ffmpeg':
+                                            ffmpeg_member = member
+                                            break
+
+                                    if ffmpeg_member:
+                                        # Extract just the ffmpeg binary
+                                        tar.extract(ffmpeg_member, path=str(ffmpeg_dir))
+
+                                        # Move to the correct location if needed
+                                        extracted_path = ffmpeg_dir / ffmpeg_member.name
+                                        final_path = ffmpeg_dir / "ffmpeg"
+
+                                        if extracted_path != final_path:
+                                            extracted_path.rename(final_path)
+
+                                        logger.info(f"Successfully extracted FFmpeg to: {final_path}")
+                                        downloader_logger.info(f"Successfully extracted FFmpeg to: {final_path}")
+                                    else:
+                                        logger.warning("FFmpeg binary not found in archive")
+                                        downloader_logger.warning("FFmpeg binary not found in archive")
+                                        continue
+
+                            except Exception as extract_error:
+                                logger.warning(f"Failed to extract archive: {extract_error}")
+                                downloader_logger.warning(f"Failed to extract archive: {extract_error}")
+                                continue
+                            finally:
+                                # Clean up temp file
+                                try:
+                                    os.unlink(tmp_file.name)
+                                except:
+                                    pass
+                    else:
+                        # Direct binary download
+                        with open(linux_ffmpeg_path, 'wb') as f:
+                            for chunk in response.iter_content(chunk_size=8192):
+                                f.write(chunk)
+
+                    # Make it executable
+                    os.chmod(linux_ffmpeg_path, 0o755)
+
+                    # Test the downloaded version with more thorough testing
+                    try:
+                        # First test: version check
+                        test_result = sp.run([str(linux_ffmpeg_path), "-version"],
+                                           capture_output=True, text=True, timeout=10)
+                        if test_result.returncode != 0:
+                            logger.warning(f"Downloaded FFmpeg version test failed: {test_result.stderr}")
+                            downloader_logger.warning(f"Downloaded FFmpeg version test failed: {test_result.stderr}")
+                            linux_ffmpeg_path.unlink(missing_ok=True)
+                            continue
+
+                        # Second test: simple conversion test to catch crashes
+                        test_conversion = sp.run([
+                            str(linux_ffmpeg_path), "-f", "lavfi", "-i", "testsrc=duration=1:size=320x240:rate=1",
+                            "-f", "null", "-"
+                        ], capture_output=True, text=True, timeout=15)
+
+                        if test_conversion.returncode == 0:
+                            logger.info("Downloaded Linux FFmpeg is working correctly")
+                            downloader_logger.info("Downloaded Linux FFmpeg is working correctly")
+                            success = True
+                            break
+                        else:
+                            logger.warning(f"Downloaded FFmpeg conversion test failed (code {test_conversion.returncode}): {test_conversion.stderr}")
+                            downloader_logger.warning(f"Downloaded FFmpeg conversion test failed (code {test_conversion.returncode}): {test_conversion.stderr}")
+                            linux_ffmpeg_path.unlink(missing_ok=True)
+                            continue
+
+                    except Exception as test_error:
+                        logger.warning(f"Error testing downloaded FFmpeg: {test_error}")
+                        downloader_logger.warning(f"Error testing downloaded FFmpeg: {test_error}")
+                        linux_ffmpeg_path.unlink(missing_ok=True)
+                        continue
+
+                except Exception as url_error:
+                    logger.warning(f"Failed to download from {ffmpeg_url}: {url_error}")
+                    downloader_logger.warning(f"Failed to download from {ffmpeg_url}: {url_error}")
+                    continue
+
+            if success:
+                return str(ffmpeg_dir)
+            else:
+                logger.error("All FFmpeg download attempts failed")
+                downloader_logger.error("All FFmpeg download attempts failed")
+                return None
+
+        except Exception as download_error:
+            logger.error(f"Failed to download Linux FFmpeg: {download_error}")
+            downloader_logger.error(f"Failed to download Linux FFmpeg: {download_error}")
+            return None
+
+    async def _install_system_ffmpeg(self) -> Optional[str]:
+        """Install FFmpeg using system package manager (from audio_downloader_bot.py)"""
+        try:
+            # First try: update package list
+            logger.info("Updating package list...")
+            downloader_logger.info("Updating package list...")
+
+            update_result = sp.run(["apt-get", "update"], capture_output=True, text=True, timeout=60)
+
+            if update_result.returncode == 0:
+                logger.info("Package list updated successfully")
+                downloader_logger.info("Package list updated successfully")
+
+                # Second try: install FFmpeg
+                logger.info("Installing FFmpeg...")
+                downloader_logger.info("Installing FFmpeg...")
+
+                install_result = sp.run(
+                    ["apt-get", "install", "-y", "ffmpeg"],
+                    capture_output=True, text=True, timeout=120
+                )
+
+                if install_result.returncode == 0:
+                    logger.info("Successfully installed FFmpeg via apt-get")
+                    downloader_logger.info("Successfully installed FFmpeg via apt-get")
+
+                    # Test if it's now available and working
+                    try:
+                        test_result = sp.run(["ffmpeg", "-version"], capture_output=True, text=True, timeout=10)
+                        if test_result.returncode == 0:
+                            logger.info("System FFmpeg is now working")
+                            downloader_logger.info("System FFmpeg is now working")
+
+                            # Additional test to make sure it doesn't crash
+                            test_conversion = sp.run([
+                                "ffmpeg", "-f", "lavfi", "-i", "testsrc=duration=1:size=320x240:rate=1",
+                                "-f", "null", "-"
+                            ], capture_output=True, text=True, timeout=15)
+
+                            if test_conversion.returncode == 0:
+                                logger.info("System FFmpeg conversion test passed")
+                                downloader_logger.info("System FFmpeg conversion test passed")
+                                return "system"  # System FFmpeg is available and working
+                            else:
+                                logger.warning(f"System FFmpeg conversion test failed: {test_conversion.stderr}")
+                                downloader_logger.warning(f"System FFmpeg conversion test failed: {test_conversion.stderr}")
+                        else:
+                            logger.warning(f"System FFmpeg version test failed: {test_result.stderr}")
+                            downloader_logger.warning(f"System FFmpeg version test failed: {test_result.stderr}")
+                    except Exception as test_error:
+                        logger.warning(f"Error testing system FFmpeg: {test_error}")
+                        downloader_logger.warning(f"Error testing system FFmpeg: {test_error}")
+                else:
+                    logger.warning(f"Failed to install FFmpeg via apt-get: {install_result.stderr}")
+                    downloader_logger.warning(f"Failed to install FFmpeg via apt-get: {install_result.stderr}")
+            else:
+                logger.warning(f"Failed to update package list: {update_result.stderr}")
+                downloader_logger.warning(f"Failed to update package list: {update_result.stderr}")
+
+        except Exception as install_error:
+            logger.warning(f"Could not install FFmpeg via package manager: {install_error}")
+            downloader_logger.warning(f"Could not install FFmpeg via package manager: {install_error}")
+
+        return None
 
     async def diagnose_ffmpeg_issue(self) -> Dict[str, str]:
         """Diagnose FFmpeg issues and provide recommendations"""
@@ -447,7 +802,8 @@ class AudioDownloader:
         test_result = {
             'status': 'unknown',
             'version': '',
-            'error': ''
+            'error': '',
+            'help_output': ''
         }
 
         try:
@@ -464,6 +820,16 @@ class AudioDownloader:
                 test_result['status'] = 'working'
                 test_result['version'] = result.stdout.strip()
                 logger.info(f"spotdl is working: {test_result['version']}")
+
+                # Also test help to see available commands
+                try:
+                    help_result = sp.run(["spotdl", "--help"], capture_output=True, text=True, timeout=5)
+                    if help_result.returncode == 0:
+                        test_result['help_output'] = help_result.stdout
+                        logger.info("spotdl help command successful")
+                except Exception as help_error:
+                    logger.warning(f"Could not get spotdl help: {help_error}")
+
             else:
                 test_result['status'] = 'error'
                 test_result['error'] = result.stderr or result.stdout
@@ -671,15 +1037,27 @@ class AudioDownloader:
             output_dir = self.temp_dir / f"spotify_{int(time.time())}"
             output_dir.mkdir(exist_ok=True)
             
-            # Prepare spotdl command
-            spotdl_cmd = [
-                "spotdl",
-                "download",
-                url,
-                "--bitrate", f"{bitrate}k",
-                "--format", "mp3",
-                "--output", str(output_dir)
-            ]
+            # Prepare spotdl command with better output handling for Streamlit Cloud
+            if self.is_streamlit_cloud:
+                # Use a simpler output pattern for Streamlit Cloud
+                spotdl_cmd = [
+                    "spotdl",
+                    "download",
+                    url,
+                    "--bitrate", f"{bitrate}k",
+                    "--format", "mp3",
+                    "--output", str(output_dir),
+                    "--print-errors"  # Show more detailed errors
+                ]
+            else:
+                spotdl_cmd = [
+                    "spotdl",
+                    "download",
+                    url,
+                    "--bitrate", f"{bitrate}k",
+                    "--format", "mp3",
+                    "--output", str(output_dir)
+                ]
 
             # Add FFmpeg path explicitly for spotdl (using same logic as audio_downloader_bot.py)
             if self.ffmpeg_path == "system":
@@ -748,33 +1126,77 @@ class AudioDownloader:
 
             if result.returncode != 0:
                 logger.error(f"spotdl failed with exit code {result.returncode}")
+                downloader_logger.error(f"spotdl FAILED - Exit code: {result.returncode}")
+                downloader_logger.error(f"Command: {' '.join(spotdl_cmd)}")
+                downloader_logger.error(f"Working directory: {output_dir}")
+                downloader_logger.error(f"stdout: {result.stdout}")
+                downloader_logger.error(f"stderr: {result.stderr}")
+
                 logger.error(f"Command: {' '.join(spotdl_cmd)}")
                 logger.error(f"Working directory: {output_dir}")
 
                 # Check if it's an FFmpeg-related error
                 if result.stderr and ("ffmpeg" in result.stderr.lower() or "code -11" in result.stderr):
                     logger.error("FFmpeg-related error detected. Running diagnostics...")
+                    downloader_logger.error("FFmpeg-related error detected in spotdl output")
 
                     # Run FFmpeg diagnostics
                     diagnosis = await self.diagnose_ffmpeg_issue()
                     logger.error(f"FFmpeg diagnosis: {diagnosis['status']} - {diagnosis['issue']}")
                     logger.error(f"Recommendation: {diagnosis['recommendation']}")
+                    downloader_logger.error(f"FFmpeg diagnosis: {diagnosis}")
 
                     for detail in diagnosis['details']:
                         logger.info(f"Diagnosis detail: {detail}")
 
                 # Try fallback to YouTube search
                 logger.info("Attempting fallback to YouTube search")
+                downloader_logger.info(f"STARTING FALLBACK - Spotify URL: {url}")
                 return await self.download_spotify_fallback(url, quality)
             
-            # Find downloaded file
-            downloaded_files = list(output_dir.glob("*.mp3"))
+            # Find downloaded file - check for various audio formats
+            audio_extensions = ["*.mp3", "*.m4a", "*.webm", "*.ogg", "*.wav"]
+            downloaded_files = []
+
+            for ext in audio_extensions:
+                files = list(output_dir.glob(ext))
+                downloaded_files.extend(files)
+                logger.info(f"Found {len(files)} files with extension {ext}")
+
+            # Also check subdirectories (spotdl sometimes creates subdirs)
+            for subdir in output_dir.iterdir():
+                if subdir.is_dir():
+                    logger.info(f"Checking subdirectory: {subdir}")
+                    for ext in audio_extensions:
+                        subdir_files = list(subdir.glob(ext))
+                        downloaded_files.extend(subdir_files)
+                        logger.info(f"Found {len(subdir_files)} files with extension {ext} in {subdir}")
+
+            logger.info(f"Total downloaded files found: {len(downloaded_files)}")
+            for file in downloaded_files:
+                logger.info(f"Downloaded file: {file} (size: {file.stat().st_size} bytes)")
+
             if not downloaded_files:
-                raise FileNotFoundError("Download failed - no MP3 file found")
+                # List all files in output directory for debugging
+                all_files = list(output_dir.rglob("*"))
+                logger.error(f"No audio files found. All files in output directory:")
+                for file in all_files:
+                    if file.is_file():
+                        logger.error(f"  {file} (size: {file.stat().st_size} bytes)")
+                raise FileNotFoundError("Download failed - no audio file found")
             
+            # Use the first (and hopefully only) downloaded file
             downloaded_file = downloaded_files[0]
             filename = downloaded_file.stem
-            
+            file_extension = downloaded_file.suffix
+
+            logger.info(f"Processing downloaded file: {downloaded_file}")
+            logger.info(f"File extension: {file_extension}")
+
+            # If the file is not MP3, we might need to convert it or just use it as-is
+            if file_extension.lower() != '.mp3':
+                logger.warning(f"Downloaded file is {file_extension}, not MP3. Using as-is.")
+
             # Parse artist and title from filename
             if " - " in filename:
                 parts = filename.split(" - ", 1)
@@ -783,15 +1205,16 @@ class AudioDownloader:
             else:
                 title = filename
                 artist = "Unknown Artist"
-            
+
             file_info = {
                 'title': title,
                 'artist': artist,
                 'duration': 0,
                 'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                'platform': 'Spotify'
+                'platform': 'Spotify',
+                'format': file_extension.lstrip('.')
             }
-            
+
             return downloaded_file, file_info
             
         except Exception as e:
@@ -843,7 +1266,10 @@ class AudioDownloader:
     async def get_spotify_search_query(self, url: str) -> Optional[str]:
         """Get a search query from Spotify URL by fetching page title"""
         try:
+            downloader_logger.info(f"Attempting to extract search query from Spotify URL: {url}")
+
             if not requests:
+                downloader_logger.error("Requests library not available")
                 return None
 
             headers = {
@@ -858,6 +1284,8 @@ class AudioDownloader:
                 timeout=15
             )
 
+            downloader_logger.info(f"Spotify page response status: {response.status_code}")
+
             if response.status_code == 200:
                 html = response.text
 
@@ -868,28 +1296,47 @@ class AudioDownloader:
                     # Remove " | Spotify" from the end
                     title_text = title_text.replace(' | Spotify', '').strip()
 
-                    if title_text and title_text != 'Spotify':
-                        logger.info(f"Extracted search query from page title: {title_text}")
-                        return title_text
+                    downloader_logger.info(f"Raw title from Spotify page: {title_text}")
 
+                    if title_text and title_text != 'Spotify':
+                        # Clean up the title for better search results
+                        # Remove common unwanted patterns
+                        cleaned_title = title_text
+
+                        # Remove things like "(Official Video)", "(Lyrics)", etc.
+                        cleaned_title = re.sub(r'\([^)]*(?:official|video|lyrics|audio|music|mv)\)', '', cleaned_title, flags=re.IGNORECASE)
+                        cleaned_title = re.sub(r'\[[^\]]*(?:official|video|lyrics|audio|music|mv)\]', '', cleaned_title, flags=re.IGNORECASE)
+
+                        # Clean up extra spaces
+                        cleaned_title = ' '.join(cleaned_title.split())
+
+                        downloader_logger.info(f"Cleaned search query: {cleaned_title}")
+                        logger.info(f"Extracted search query from page title: {cleaned_title}")
+                        return cleaned_title
+
+            downloader_logger.warning("Could not extract title from Spotify page")
             return None
 
         except Exception as e:
+            downloader_logger.error(f"Error getting Spotify search query: {e}")
             logger.warning(f"Error getting Spotify search query: {e}")
             return None
     
     async def search_youtube(self, query: str) -> Optional[str]:
         """Search YouTube for a track"""
         if not yt_dlp:
+            downloader_logger.error("yt-dlp not available for YouTube search")
             return None
-            
+
         try:
+            downloader_logger.info(f"Searching YouTube for: '{query}'")
+
             ydl_opts = {
                 'quiet': True,
                 'no_warnings': True,
-                'default_search': 'ytsearch1:',
+                'default_search': 'ytsearch3:',  # Get top 3 results for better matching
             }
-            
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 search_results = await asyncio.wait_for(
                     asyncio.get_event_loop().run_in_executor(
@@ -897,13 +1344,33 @@ class AudioDownloader:
                     ),
                     timeout=30
                 )
-                
+
                 if search_results and 'entries' in search_results and search_results['entries']:
-                    return search_results['entries'][0]['webpage_url']
-            
+                    # Log all found results for debugging
+                    downloader_logger.info(f"Found {len(search_results['entries'])} YouTube results:")
+                    for i, entry in enumerate(search_results['entries'][:3]):
+                        title = entry.get('title', 'Unknown')
+                        uploader = entry.get('uploader', 'Unknown')
+                        duration = entry.get('duration', 0)
+                        url = entry.get('webpage_url', 'No URL')
+                        downloader_logger.info(f"  {i+1}. {title} by {uploader} ({duration}s) - {url}")
+
+                    # Use the first result
+                    selected_result = search_results['entries'][0]
+                    selected_url = selected_result['webpage_url']
+                    selected_title = selected_result.get('title', 'Unknown')
+
+                    downloader_logger.info(f"Selected YouTube result: {selected_title} - {selected_url}")
+                    logger.info(f"Found YouTube alternative: {selected_title}")
+
+                    return selected_url
+                else:
+                    downloader_logger.warning("No YouTube search results found")
+
             return None
-            
+
         except Exception as e:
+            downloader_logger.error(f"YouTube search failed: {e}")
             logger.error(f"YouTube search failed: {e}")
             return None
     

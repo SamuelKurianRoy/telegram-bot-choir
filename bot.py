@@ -510,6 +510,10 @@ try :
  upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
  upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
 
+ # Also upload downloader log if it exists
+ if os.path.exists("downloader_log.txt"):
+     upload_log_to_google_doc(st.secrets["BFILE_ID"], "downloader_log.txt")
+
  # Function to append download entries to Google Doc (similar to comment function)
  def append_download_to_google_doc(yfile_id: str, download_entry: str):
     """
@@ -2081,6 +2085,12 @@ try :
             try:
                 upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
                 upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
+
+                # Also upload downloader log if it exists
+                if os.path.exists("downloader_log.txt"):
+                    upload_log_to_google_doc(st.secrets["BFILE_ID"], "downloader_log.txt")
+                    bot_logger.info("Downloader log uploaded to BFILE_ID")
+
                 # Note: Download logs are directly appended to YFILE_ID Google Doc, no file upload needed
                 bot_logger.info("Scheduled log upload completed successfully")
             except Exception as e:
@@ -2400,6 +2410,9 @@ try :
         try:
          upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
          upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
+         # Also upload downloader log if it exists
+         if os.path.exists("downloader_log.txt"):
+             upload_log_to_google_doc(st.secrets["BFILE_ID"], "downloader_log.txt")
          # Note: Download logs are directly appended to YFILE_ID Google Doc, no file upload needed
         except Exception as e:
          print(f"Couldn't save log files due to Error: {e}")
