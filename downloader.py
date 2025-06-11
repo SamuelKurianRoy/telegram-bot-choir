@@ -393,6 +393,40 @@ class AudioDownloader:
 
         return diagnosis
 
+    async def test_spotdl_installation(self) -> Dict[str, str]:
+        """Test if spotdl is installed and working"""
+        test_result = {
+            'status': 'unknown',
+            'version': '',
+            'error': ''
+        }
+
+        try:
+            # Test spotdl version
+            result = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: sp.run(["spotdl", "--version"], capture_output=True, text=True, timeout=10)
+                ),
+                timeout=15
+            )
+
+            if result.returncode == 0:
+                test_result['status'] = 'working'
+                test_result['version'] = result.stdout.strip()
+                logger.info(f"spotdl is working: {test_result['version']}")
+            else:
+                test_result['status'] = 'error'
+                test_result['error'] = result.stderr or result.stdout
+                logger.error(f"spotdl version check failed: {test_result['error']}")
+
+        except Exception as e:
+            test_result['status'] = 'not_found'
+            test_result['error'] = str(e)
+            logger.error(f"spotdl not found or not working: {e}")
+
+        return test_result
+
     def detect_platform(self, url: str) -> str:
         """Detect the platform from URL"""
         url_lower = url.lower()
@@ -449,7 +483,7 @@ class AudioDownloader:
             return None
     
     async def extract_spotify_info(self, url: str) -> Optional[Dict]:
-        """Extract Spotify track info using web scraping approach (same as working audio_downloader_bot.py)"""
+        """Extract Spotify track info using simplified approach (same as working audio_downloader_bot.py)"""
         try:
             # Extract track ID from URL
             track_id_match = re.search(r'track/([a-zA-Z0-9]+)', url)
@@ -460,46 +494,10 @@ class AudioDownloader:
             track_id = track_id_match.group(1)
             logger.info(f"Extracted Spotify track ID: {track_id}")
 
-            # Try to get metadata from Spotify's public endpoint (same approach as working version)
-            metadata = await self.get_spotify_track_info(track_id, url)
-            if metadata:
-                return {
-                    'title': metadata['title'],
-                    'artist': metadata['artist'],
-                    'duration': metadata.get('duration', 0),
-                    'platform': 'Spotify'
-                }
-
-            # Fallback: try to extract basic info from URL structure
-            try:
-                from urllib.parse import unquote
-                decoded_url = unquote(url)
-
-                # Look for patterns like /track/id?si=... or /track/id/name
-                if '/track/' in decoded_url:
-                    parts = decoded_url.split('/track/')[1]
-                    if '?' in parts:
-                        parts = parts.split('?')[0]
-
-                    # Sometimes track names are in the URL after the ID
-                    url_parts = parts.split('/')
-                    if len(url_parts) > 1:
-                        potential_title = url_parts[1].replace('-', ' ').replace('_', ' ')
-                        if potential_title:
-                            logger.info(f"Extracted title from URL structure: {potential_title}")
-                            return {
-                                'title': potential_title,
-                                'artist': 'Unknown Artist',
-                                'duration': 0,
-                                'platform': 'Spotify'
-                            }
-
-            except Exception as url_parse_error:
-                logger.warning(f"URL parsing fallback failed: {url_parse_error}")
-
-            # Final fallback - return basic info with track ID
+            # For now, return basic info that will allow the search to proceed
+            # The working version also uses this approach as a fallback
             return {
-                'title': f'Spotify Track {track_id[:8]}',
+                'title': 'Spotify Track',
                 'artist': 'Unknown Artist',
                 'duration': 0,
                 'platform': 'Spotify'
@@ -509,92 +507,7 @@ class AudioDownloader:
             logger.error(f"Error extracting Spotify info: {e}")
             return None
 
-    async def get_spotify_track_info(self, track_id: str, track_url: str) -> Optional[Dict]:
-        """Get Spotify track metadata using web scraping (same approach as working audio_downloader_bot.py)"""
-        try:
-            import requests
 
-            # Try to get metadata from Spotify's public endpoint
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-
-            try:
-                response = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: requests.get(track_url, headers=headers, timeout=10)
-                    ),
-                    timeout=15
-                )
-
-                if response.status_code == 200:
-                    html = response.text
-
-                    # Try to extract metadata from HTML
-                    import re
-
-                    # Look for JSON-LD structured data
-                    json_ld_match = re.search(r'<script type="application/ld\+json"[^>]*>(.*?)</script>', html, re.DOTALL)
-                    if json_ld_match:
-                        try:
-                            import json
-                            json_data = json.loads(json_ld_match.group(1))
-
-                            if isinstance(json_data, list):
-                                json_data = json_data[0]
-
-                            if json_data.get('@type') == 'MusicRecording':
-                                title = json_data.get('name', '')
-                                artist = ''
-
-                                # Extract artist info
-                                by_artist = json_data.get('byArtist', {})
-                                if isinstance(by_artist, dict):
-                                    artist = by_artist.get('name', '')
-                                elif isinstance(by_artist, list) and by_artist:
-                                    artist = by_artist[0].get('name', '')
-
-                                if title and artist:
-                                    logger.info(f"Extracted from JSON-LD: {artist} - {title}")
-                                    return {
-                                        'title': title,
-                                        'artist': artist,
-                                        'duration': 0,
-                                        'album': '',
-                                        'url': track_url,
-                                        'track_id': track_id
-                                    }
-                        except Exception as json_error:
-                            logger.warning(f"Error parsing JSON-LD: {json_error}")
-
-                    # Fallback: try to extract from page title
-                    title_match = re.search(r'<title[^>]*>([^<]+)</title>', html)
-                    if title_match:
-                        title_text = title_match.group(1)
-                        # Remove " | Spotify" from the end
-                        title_text = title_text.replace(' | Spotify', '')
-
-                        # Try to split by common separators
-                        if ' - ' in title_text:
-                            parts = title_text.split(' - ', 1)
-                            return {
-                                'title': parts[0].strip(),
-                                'artist': parts[1].strip() if len(parts) > 1 else 'Unknown Artist',
-                                'duration': 0,
-                                'album': '',
-                                'url': track_url,
-                                'track_id': track_id
-                            }
-
-            except Exception as request_error:
-                logger.warning(f"Error fetching Spotify page: {request_error}")
-
-            return None
-
-        except Exception as e:
-            logger.error(f"Error getting Spotify track metadata: {e}")
-            return None
 
     async def download_audio(self, url: str, quality: str = "medium") -> Optional[Tuple[Path, Dict]]:
         """Download audio from URL"""
@@ -683,15 +596,24 @@ class AudioDownloader:
     async def download_spotify_audio(self, url: str, quality: str) -> Optional[Tuple[Path, Dict]]:
         """Download Spotify audio using spotdl"""
         try:
+            # First test if spotdl is working
+            spotdl_test = await self.test_spotdl_installation()
+            logger.info(f"spotdl test result: {spotdl_test}")
+
+            if spotdl_test['status'] != 'working':
+                logger.error(f"spotdl is not working: {spotdl_test['error']}")
+                logger.info("Attempting fallback to YouTube search immediately")
+                return await self.download_spotify_fallback(url, quality)
+
             # Quality mapping
             quality_map = {
                 "high": "320",
                 "medium": "192",
                 "low": "128"
             }
-            
+
             bitrate = quality_map.get(quality, "192")
-            
+
             # Generate unique output directory
             output_dir = self.temp_dir / f"spotify_{int(time.time())}"
             output_dir.mkdir(exist_ok=True)
@@ -728,6 +650,15 @@ class AudioDownloader:
             
             # Run spotdl with timeout
             logger.info(f"Running spotdl command: {' '.join(spotdl_cmd)}")
+            logger.info(f"Working directory: {output_dir}")
+            logger.info(f"FFmpeg path configured: {self.ffmpeg_path}")
+
+            # Check if output directory exists and is writable
+            if not output_dir.exists():
+                logger.error(f"Output directory does not exist: {output_dir}")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Created output directory: {output_dir}")
+
             result = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(
                     None,
@@ -748,6 +679,10 @@ class AudioDownloader:
                 logger.info(f"spotdl stdout: {result.stdout}")
             if result.stderr:
                 logger.error(f"spotdl stderr: {result.stderr}")
+
+            # Check what files were created in the output directory
+            created_files = list(output_dir.glob("*"))
+            logger.info(f"Files in output directory after spotdl: {[f.name for f in created_files]}")
 
             if result.returncode != 0:
                 logger.error(f"spotdl failed with exit code {result.returncode}")
@@ -803,29 +738,23 @@ class AudioDownloader:
             return await self.download_spotify_fallback(url, quality)
     
     async def download_spotify_fallback(self, url: str, quality: str) -> Optional[Tuple[Path, Dict]]:
-        """Fallback: search for Spotify track on YouTube"""
+        """Fallback: search for Spotify track on YouTube using simplified approach"""
         try:
             logger.info(f"Attempting Spotify fallback for URL: {url}")
 
-            # First try to extract Spotify track info
-            spotify_info = await self.extract_spotify_info(url)
-            if not spotify_info:
-                logger.error("Could not extract Spotify track information for fallback")
+            # Extract track ID for basic search
+            track_id_match = re.search(r'track/([a-zA-Z0-9]+)', url)
+            if not track_id_match:
+                logger.error("Could not extract track ID for fallback search")
                 return None
 
-            # Create search query from Spotify info
-            artist = spotify_info.get('artist', '').strip()
-            title = spotify_info.get('title', '').strip()
+            track_id = track_id_match.group(1)
 
-            if not title:
-                logger.error("No title found in Spotify info for fallback search")
-                return None
-
-            # Build search query
-            if artist and artist != 'Unknown Artist':
-                search_query = f"{artist} {title}"
-            else:
-                search_query = title
+            # Try to get basic track info from Spotify page title
+            search_query = await self.get_spotify_search_query(url)
+            if not search_query:
+                # Fallback to generic search
+                search_query = f"spotify track {track_id[:8]}"
 
             logger.info(f"Searching YouTube for: {search_query}")
 
@@ -847,6 +776,44 @@ class AudioDownloader:
 
         except Exception as e:
             logger.error(f"Spotify fallback failed: {e}")
+            return None
+
+    async def get_spotify_search_query(self, url: str) -> Optional[str]:
+        """Get a search query from Spotify URL by fetching page title"""
+        try:
+            if not requests:
+                return None
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+
+            response = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: requests.get(url, headers=headers, timeout=10)
+                ),
+                timeout=15
+            )
+
+            if response.status_code == 200:
+                html = response.text
+
+                # Extract title from page
+                title_match = re.search(r'<title[^>]*>([^<]+)</title>', html)
+                if title_match:
+                    title_text = title_match.group(1)
+                    # Remove " | Spotify" from the end
+                    title_text = title_text.replace(' | Spotify', '').strip()
+
+                    if title_text and title_text != 'Spotify':
+                        logger.info(f"Extracted search query from page title: {title_text}")
+                        return title_text
+
+            return None
+
+        except Exception as e:
+            logger.warning(f"Error getting Spotify search query: {e}")
             return None
     
     async def search_youtube(self, query: str) -> Optional[str]:
