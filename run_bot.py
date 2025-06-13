@@ -1,5 +1,5 @@
 # run_bot.py
-from modules.bot import TelegramBot
+from bot import TelegramBot  # Changed from modules.bot to direct import
 import threading
 import time
 import streamlit as st
@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Add at the top of the file
-STOP_SIGNAL_FILE = "/tmp/telegram_bot_stop_signal"
+STOP_SIGNAL_FILE = "bot_stop_signal"  # Changed to relative path
 
 # Global flag to control the bot thread
 bot_running = False

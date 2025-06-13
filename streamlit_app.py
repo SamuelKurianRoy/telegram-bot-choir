@@ -7,7 +7,7 @@ import json
 import logging
 import datetime
 from pathlib import Path
-from modules.bot import TelegramBot
+from bot import TelegramBot  # Changed from modules.bot to direct import
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseDownload
@@ -16,7 +16,7 @@ import subprocess
 import psutil
 
 # Add at the top of the file
-STOP_SIGNAL_FILE = "/tmp/telegram_bot_stop_signal"
+STOP_SIGNAL_FILE = "bot_stop_signal"  # Changed to relative path
 
 # Set page config
 st.set_page_config(
