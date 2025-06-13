@@ -7,7 +7,7 @@ import json
 import logging
 import datetime
 from pathlib import Path
-from bot import TelegramBot  # Changed from modules.bot to direct import
+from run_bot import start_bot_in_background, stop_bot_in_background, stop_all_bot_instances
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseDownload
@@ -16,7 +16,7 @@ import subprocess
 import psutil
 
 # Add at the top of the file
-STOP_SIGNAL_FILE = "bot_stop_signal"  # Changed to relative path
+STOP_SIGNAL_FILE = "/tmp/telegram_bot_stop_signal"
 
 # Set page config
 st.set_page_config(
@@ -345,62 +345,6 @@ def debug_bot_processes():
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
     return processes
-
-def stop_all_bot_instances():
-    """Stop all running bot instances by finding and terminating their processes."""
-    try:
-        # First try to stop gracefully using the signal file
-        Path(STOP_SIGNAL_FILE).touch()
-        time.sleep(2)  # Give processes time to respond
-        
-        # Find and terminate any remaining Python processes running the bot
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-            try:
-                cmdline = proc.info['cmdline']
-                if cmdline and 'python' in proc.info['name'].lower() and 'modules/bot.py' in ' '.join(cmdline):
-                    proc.terminate()
-                    proc.wait(timeout=3)
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired):
-                continue
-        
-        # Remove the stop signal file
-        if os.path.exists(STOP_SIGNAL_FILE):
-            os.remove(STOP_SIGNAL_FILE)
-            
-        st.session_state["bot_started"] = False
-        st.session_state["last_stopped"] = datetime.datetime.now()
-        return True
-    except Exception as e:
-        logging.error(f"Error stopping bot instances: {str(e)}")
-        return False
-
-def start_bot_in_background(log_upload_interval=60):
-    """Start the bot process in the background with specified log upload interval."""
-    try:
-        # Ensure any existing instances are stopped first
-        stop_all_bot_instances()
-        
-        # Build the command to run the bot script
-        bot_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modules", "bot.py")
-        
-        # Start the bot process
-        process = subprocess.Popen([
-            sys.executable,
-            bot_script,
-            "--log-upload-interval", str(log_upload_interval)
-        ], 
-        start_new_session=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
-        
-        # Update session state
-        st.session_state["bot_started"] = True
-        st.session_state["last_started"] = datetime.datetime.now()
-        
-        return True
-    except Exception as e:
-        logging.error(f"Error starting bot: {str(e)}")
-        return False
 
 # Initialize logging
 bot_logger, user_logger = setup_logging()
