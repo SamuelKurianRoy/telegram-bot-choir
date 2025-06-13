@@ -7,7 +7,7 @@ import json
 import logging
 import datetime
 from pathlib import Path
-from modules.bot import TelegramBot
+from run_bot import start_bot_in_background, stop_bot_in_background, stop_all_bot_instances
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseDownload
