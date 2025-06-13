@@ -587,23 +587,23 @@ elif page == "Logs":
         # Display logs
         st.code(bot_log_content, language="text")
 
-    with tab2:
-        st.subheader("User Activity Log")
+    # with tab2:
+    #     st.subheader("User Activity Log")
         
-        # Add search filter
-        user_search = st.text_input("Filter user logs (case-insensitive):", key="user_search")
+    #     # Add search filter
+    #     user_search = st.text_input("Filter user logs (case-insensitive):", key="user_search")
         
-        # Get log content
-        user_log_content = get_log_content("user_log.txt", max_lines=500)
+    #     # Get log content
+    #     user_log_content = get_log_content("user_log.txt", max_lines=500)
         
-        # Apply filters
-        if user_search:
-            filtered_lines = [line for line in user_log_content.split('\n') 
-                             if user_search.lower() in line.lower()]
-            user_log_content = '\n'.join(filtered_lines)
+    #     # Apply filters
+    #     if user_search:
+    #         filtered_lines = [line for line in user_log_content.split('\n') 
+    #                          if user_search.lower() in line.lower()]
+    #         user_log_content = '\n'.join(filtered_lines)
         
-        # Display logs
-        st.code(user_log_content, language="text")
+    #     # Display logs
+    #     st.code(user_log_content, language="text")
 
     # Auto-refresh logs
     if st.session_state["bot_started"]:
