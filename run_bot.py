@@ -1,11 +1,16 @@
 # run_bot.py
-from bot import run_bot, stop_bot as bot_stop
+from modules.bot import TelegramBot
 import threading
 import time
 import streamlit as st
 import os
 import signal
 import psutil
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Add at the top of the file
 STOP_SIGNAL_FILE = "/tmp/telegram_bot_stop_signal"
