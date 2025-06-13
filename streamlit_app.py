@@ -554,7 +554,7 @@ elif page == "Logs":
                 st.error("BFILE_ID or UFILE_ID not configured in secrets")
     
     # Log tabs
-    tab1= st.tabs(["Bot Log"])
+    tab1 = st.tabs(["Bot Log"])[0]  # Get the first tab from the list
     # tab1, tab2 = st.tabs(["Bot Log", "User Activity Log"])
     
     with tab1:
