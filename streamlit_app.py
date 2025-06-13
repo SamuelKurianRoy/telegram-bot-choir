@@ -554,7 +554,8 @@ elif page == "Logs":
                 st.error("BFILE_ID or UFILE_ID not configured in secrets")
     
     # Log tabs
-    tab1, tab2 = st.tabs(["Bot Log", "User Activity Log"])
+    tab1= st.tabs(["Bot Log"])
+    # tab1, tab2 = st.tabs(["Bot Log", "User Activity Log"])
     
     with tab1:
         st.subheader("Bot Log (Errors & System Messages)")
