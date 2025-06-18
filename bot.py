@@ -1486,6 +1486,15 @@ try :
                 page_no_series = pd.Series([row["Page no"]])
                 break
 
+    # 🔁 NEW FALLBACK: Look globally if still not found
+    if page_no_series.empty:
+        for _, row in dfTH.iterrows():
+            tune_list = [t.strip() for t in str(row["Tune Index"]).split(",")]
+            if tune_name.strip() in tune_list:
+                page_no_series = pd.Series([row["Page no"]])
+                break
+
+
     if page_no_series.empty:
         await context.bot.send_message(chat_id=chat_id, text=f"❌ Could not find notation page for '{tune_name}' in {song_id}.")
         return
