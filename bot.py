@@ -985,7 +985,7 @@ try :
  os.makedirs(DOWNLOAD_DIR, exist_ok=True)
  file_map = get_image_files_from_folder(HYMN_FOLDER_URL)
 
- 
+
 
  def Music_notation_downloader(hymnno, file_map): 
     if isinstance(hymnno, str) and hymnno.upper().startswith('H-'):
@@ -1509,7 +1509,7 @@ try :
             if downloaded_path and os.path.exists(downloaded_path):
                 file_path = downloaded_path
             else:
-                await context.bot.send_message(chat_id=chat_id, text=f"❌ Image for page {page} could not be found or downloaded.")
+                await context.bot.send_message(chat_id=chat_id, text=f"❌ Image  could not be found or downloaded.")
                 continue  # Skip to next page
 
         # 4. Send the photo
@@ -1518,11 +1518,11 @@ try :
                 await context.bot.send_photo(
                     chat_id=chat_id,
                     photo=photo,
-                    caption=f"{tune_name} ({song_id}) - Page {page}"
+                    caption=f"{tune_name}"
                 )
             sent_any = True
         except Exception as e:
-            await context.bot.send_message(chat_id=chat_id, text=f"❌ Failed to send page {page}: {e}")
+            await context.bot.send_message(chat_id=chat_id, text=f"❌ Failed to send image: {e}")
 
     if not sent_any:
         await context.bot.send_message(chat_id=chat_id, text=f"❌ No images found for {tune_name} ({song_id})")
