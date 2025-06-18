@@ -1470,37 +1470,40 @@ try :
 
 
 # Function to send notation images
+ def normalize_tune(tune):
+     return re.sub(r'[^a-z0-9]', '', tune.lower())
+ 
  async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE, tune_name: str, song_id: str):
     chat_id = update.effective_chat.id
-    hymnno = int(song_id.replace("H-", "").strip())
+    Song_id = standardize_hlc_value(song_id)
+    hymnno = int(Song_id.replace("H-", "").strip())
+    normalized_target = normalize_tune(tune_name)
 
-    # 1. Look up page numbers
-    mask = (dfTH["Hymn no"] == hymnno) & (dfTH["Tune Index"] == tune_name)
-    page_no_series = dfTH[mask]["Page no"]
+    matched_row = None
 
-    if page_no_series.empty:
-        # Try partial match (in comma-separated list)
-        for _, row in dfTH[dfTH["Hymn no"] == hymnno].iterrows():
-            tune_list = [t.strip() for t in str(row["Tune Index"]).split(",")]
-            if tune_name.strip() in tune_list:
-                page_no_series = pd.Series([row["Page no"]])
-                break
+    # === 1. Try to find it in the same hymn number
+    subset_df = dfTH[dfTH["Hymn no"] == hymnno]
+    for _, row in subset_df.iterrows():
+        tune_list = [normalize_tune(t.strip()) for t in str(row["Tune Index"]).split(",")]
+        if normalized_target in tune_list:
+            matched_row = row
+            break
 
-    # 🔁 NEW FALLBACK: Look globally if still not found
-    if page_no_series.empty:
+    # === 2. Global fallback if not found
+    if matched_row is None:
         for _, row in dfTH.iterrows():
-            tune_list = [t.strip() for t in str(row["Tune Index"]).split(",")]
-            if tune_name.strip() in tune_list:
-                page_no_series = pd.Series([row["Page no"]])
+            tune_list = [normalize_tune(t.strip()) for t in str(row["Tune Index"]).split(",")]
+            if normalized_target in tune_list:
+                matched_row = row
                 break
 
-
-    if page_no_series.empty:
+    # === 3. If still not found
+    if matched_row is None:
         await context.bot.send_message(chat_id=chat_id, text=f"❌ Could not find notation page for '{tune_name}' in {song_id}.")
         return
 
-    # 2. Parse page numbers
-    raw_page_value = str(page_no_series.values[0])
+    # === 4. Parse page numbers
+    raw_page_value = str(matched_row["Page no"])
     page_numbers = [p.strip() for p in raw_page_value.split(",") if p.strip().isdigit()]
 
     if not page_numbers:
@@ -1512,26 +1515,17 @@ try :
         filename = f"{page}.jpg"
         file_path = os.path.join(DOWNLOAD_DIR, filename)
 
-        # 3. Check if image exists, or download it
         if not os.path.exists(file_path):
-            # Try to download or generate image
             downloaded_path = get_image_by_page(page, file_map)
-
-            # Assume function returns the final saved path
             if downloaded_path and os.path.exists(downloaded_path):
                 file_path = downloaded_path
             else:
-                await context.bot.send_message(chat_id=chat_id, text=f"❌ Image  could not be found or downloaded.")
-                continue  # Skip to next page
+                await context.bot.send_message(chat_id=chat_id, text=f"❌ Image could not be found or downloaded.")
+                continue
 
-        # 4. Send the photo
         try:
             with open(file_path, 'rb') as photo:
-                await context.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=photo,
-                    caption=f"{tune_name}"
-                )
+                await context.bot.send_photo(chat_id=chat_id, photo=photo, caption=f"{tune_name}")
             sent_any = True
         except Exception as e:
             await context.bot.send_message(chat_id=chat_id, text=f"❌ Failed to send image: {e}")
