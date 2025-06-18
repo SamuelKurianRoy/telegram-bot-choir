@@ -919,6 +919,107 @@ try :
 
     else:
         return "Invalid Number"
+    
+
+
+
+ HYMN_FOLDER_URL = f'https://drive.google.com/drive/folders/{H_SHEET_MUSIC}'
+ DOWNLOAD_DIR = os.path.join(os.getcwd(), "Download")
+ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+ import requests
+ # === EXTRACT FOLDER ID ===
+ def extract_folder_id(folder_url):
+     match = re.search(r'/folders/([a-zA-Z0-9_-]+)', folder_url)
+     if match:
+         return match.group(1)
+     raise ValueError("Invalid folder URL")
+ 
+ # === FETCH ALL IMAGE FILES ===
+ def get_image_files_from_folder(folder_url):
+     folder_id = extract_folder_id(folder_url)
+     file_map = {}
+     page_token = None
+ 
+     while True:
+         response = drive_service.files().list(
+             q=f"'{folder_id}' in parents and mimeType contains 'image/' and trashed = false",
+             fields="nextPageToken, files(id, name)",
+             pageToken=page_token
+         ).execute()
+ 
+         for file in response.get('files', []):
+             try:
+                 page_num = int(file['name'].split('.')[0])
+                 file_map[page_num] = file['id']
+             except ValueError:
+                 continue  # Skip files that don't start with a number
+ 
+         page_token = response.get('nextPageToken', None)
+         if page_token is None:
+             break
+ 
+     return file_map
+ 
+ # === DOWNLOAD IMAGE ===
+ def download_image(file_id, filename):
+     url = f"https://drive.google.com/uc?id={file_id}"
+     response = requests.get(url)
+     if response.status_code == 200:
+         with open(os.path.join(DOWNLOAD_DIR, filename), 'wb') as f:
+             f.write(response.content)
+         return os.path.join(DOWNLOAD_DIR, filename)
+     else:
+         return None
+ 
+ # === GET IMAGE FOR PAGE ===
+ def get_image_by_page(page_number, file_map):
+     page_number = int(page_number)
+     if page_number in file_map:
+         file_id = file_map[page_number]
+         filename = f"{page_number}.jpg"
+         return download_image(file_id, filename)
+     else:
+         return None
+ 
+ # === MAIN EXECUTION ===
+ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+ file_map = get_image_files_from_folder(HYMN_FOLDER_URL)
+
+ 
+
+ def Music_notation_downloader(hymnno, file_map): 
+    if isinstance(hymnno, str) and hymnno.upper().startswith('H-'):
+        hymnno = hymnno[2:]
+    hymnno = int(hymnno)
+    results = {}
+    
+    # Get tunes for the hymn
+    tunes_str = dfH["Tunes"][hymnno - 1]
+    tune_names = [t.strip() for t in tunes_str.split(',')]
+
+    for tune_name in tune_names:
+        # Check if the exact tune is present for this hymn
+        tune_matches = dfTH[(dfTH["Hymn no"] == hymnno) & (dfTH["Tune Index"].str.contains(tune_name, na=False))]
+
+        if not tune_matches.empty:
+            page_str = str(tune_matches["Page no"].values[0]).split(',')[0]
+            image_path = get_image_by_page(page_str, file_map)
+            results[tune_name] = image_path or "Page not found"
+        else:
+            # Search in entire dataset for the tune
+            found = False
+            for idx, row in dfTH.iterrows():
+                tune_indices = [ti.strip() for ti in str(row["Tune Index"]).split(',')]
+                if tune_name in tune_indices:
+                    page_str = str(row["Page no"]).split(',')[0]
+                    image_path = get_image_by_page(page_str, file_map)
+                    results[tune_name] = image_path or "Page not found"
+                    found = True
+                    break
+            if not found:
+                results[tune_name] = "Notation not found"
+
+    return results
 
 
 
@@ -1355,6 +1456,131 @@ try :
     )
 
     return ConversationHandler.END
+
+
+
+
+
+ #/notation
+
+
+
+
+# Function to send notation images
+ async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE, tune_name: str, song_id: str):
+    chat_id = update.effective_chat.id
+    hymnno = int(song_id.replace("H-", "").strip())
+
+    # 1. Look up page numbers
+    mask = (dfTH["Hymn no"] == hymnno) & (dfTH["Tune Index"] == tune_name)
+    page_no_series = dfTH[mask]["Page no"]
+
+    if page_no_series.empty:
+        # Try partial match (in comma-separated list)
+        for _, row in dfTH[dfTH["Hymn no"] == hymnno].iterrows():
+            tune_list = [t.strip() for t in str(row["Tune Index"]).split(",")]
+            if tune_name.strip() in tune_list:
+                page_no_series = pd.Series([row["Page no"]])
+                break
+
+    if page_no_series.empty:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ Could not find notation page for '{tune_name}' in {song_id}.")
+        return
+
+    # 2. Parse page numbers
+    raw_page_value = str(page_no_series.values[0])
+    page_numbers = [p.strip() for p in raw_page_value.split(",") if p.strip().isdigit()]
+
+    if not page_numbers:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ Invalid or missing page number for {tune_name} ({song_id})")
+        return
+
+    sent_any = False
+    for page in page_numbers:
+        filename = f"{page}.jpg"
+        file_path = os.path.join(DOWNLOAD_DIR, filename)
+
+        # 3. Check if image exists, or download it
+        if not os.path.exists(file_path):
+            # Try to download or generate image
+            downloaded_path = get_image_by_page(page, file_map)
+
+            # Assume function returns the final saved path
+            if downloaded_path and os.path.exists(downloaded_path):
+                file_path = downloaded_path
+            else:
+                await context.bot.send_message(chat_id=chat_id, text=f"❌ Image for page {page} could not be found or downloaded.")
+                continue  # Skip to next page
+
+        # 4. Send the photo
+        try:
+            with open(file_path, 'rb') as photo:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=photo,
+                    caption=f"{tune_name} ({song_id}) - Page {page}"
+                )
+            sent_any = True
+        except Exception as e:
+            await context.bot.send_message(chat_id=chat_id, text=f"❌ Failed to send page {page}: {e}")
+
+    if not sent_any:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ No images found for {tune_name} ({song_id})")
+
+
+# /notation command handler
+ async def notation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("❗ Usage: /notation <SongID> (e.g. /notation H-86)")
+        return
+
+    song_id = standardize_hlc_value(" ".join(context.args).strip())
+
+    tunes = Tune_finder_of_known_songs(song_id)
+    if not tunes or tunes == "Invalid Number":
+        await update.message.reply_text(f"❌ No known tunes found for {song_id}")
+        return
+
+    if isinstance(tunes, str):
+        tune_list = [t.strip() for t in tunes.split(",") if t.strip()]
+    else:
+        await update.message.reply_text("⚠️ Could not parse tunes.")
+        return
+
+    if not tune_list:
+        await update.message.reply_text("🎵 No tunes available.")
+        return
+
+    # Create inline buttons: callback_data format "notation:tune|song_id"
+    keyboard = [
+        [InlineKeyboardButton(tune, callback_data=f"notation:{tune}|{song_id}")]
+        for tune in tune_list
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        f"🎶 Select a tune for {song_id}:", reply_markup=reply_markup
+    )
+
+
+# Callback handler for button press
+ async def handle_notation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if not query.data.startswith("notation:"):
+        return
+
+    try:
+        data = query.data.replace("notation:", "")
+        tune_name, song_id = data.split("|", 1)
+    except ValueError:
+        await query.edit_message_text("⚠️ Invalid callback format.")
+        return
+
+    # Send the image using the fixed function
+    await send_notation_image(update, context, tune_name.strip(), song_id.strip())
+
 
 
   
@@ -2538,6 +2764,8 @@ try :
      app.add_handler(CommandHandler("date", date_command))
      app.add_handler(CommandHandler("refresh", refresh_command))
      app.add_handler(CommandHandler("reply", admin_reply))
+     app.add_handler(CommandHandler("notation", notation))
+     app.add_handler(CallbackQueryHandler(handle_notation_callback, pattern="^notation:"))
 
      app.add_handler(tune_conv_handler)
      app.add_handler(last_conv_handler)
