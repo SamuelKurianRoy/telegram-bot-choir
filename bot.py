@@ -1463,7 +1463,7 @@ try :
 
  #/notation
 
-
+ ASK_HYMN_NO = range(1)
 
 
 # Function to send notation images
@@ -1561,6 +1561,39 @@ try :
     await update.message.reply_text(
         f"🎶 Select a tune for {song_id}:", reply_markup=reply_markup
     )
+ async def start_notation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📖 Please enter the hymn number (e.g. H-86):")
+    return ASK_HYMN_NO
+ 
+ async def receive_hymn_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    song_id = standardize_hlc_value(update.message.text.strip())
+
+    tunes = Tune_finder_of_known_songs(song_id)
+    if not tunes or tunes == "Invalid Number":
+        await update.message.reply_text(f"❌ No known tunes found for {song_id}. Try again or type /cancel to stop.")
+        return ASK_HYMN_NO
+
+    if isinstance(tunes, str):
+        tune_list = [t.strip() for t in tunes.split(",") if t.strip()]
+    else:
+        await update.message.reply_text("⚠️ Could not parse tunes.")
+        return ConversationHandler.END
+
+    if not tune_list:
+        await update.message.reply_text("🎵 No tunes available.")
+        return ConversationHandler.END
+
+    keyboard = [
+        [InlineKeyboardButton(tune, callback_data=f"notation:{tune}|{song_id}")]
+        for tune in tune_list
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        f"🎶 Select a tune for {song_id}:", reply_markup=reply_markup
+    )
+    return ConversationHandler.END
+
 
 
 # Callback handler for button press
@@ -2756,6 +2789,16 @@ try :
     },
     fallbacks=[CommandHandler("cancel", cancel)],
 )
+     notation_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("notation", start_notation)],
+    states={
+        ASK_HYMN_NO: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_hymn_number)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
+
+
+
  
  
  
@@ -2764,7 +2807,6 @@ try :
      app.add_handler(CommandHandler("date", date_command))
      app.add_handler(CommandHandler("refresh", refresh_command))
      app.add_handler(CommandHandler("reply", admin_reply))
-     app.add_handler(CommandHandler("notation", notation))
      app.add_handler(CallbackQueryHandler(handle_notation_callback, pattern="^notation:"))
 
      app.add_handler(tune_conv_handler)
@@ -2776,6 +2818,7 @@ try :
      app.add_handler(comment_handler)
      app.add_handler(reply_conv_handler)
      app.add_handler(download_conv_handler)
+     app.add_handler(notation_conv_handler)
 
      app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
 
