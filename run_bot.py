@@ -1,5 +1,5 @@
 # run_bot.py
-from bot import run_bot, stop_bot as bot_stop
+from main_bot import run_bot, stop_bot as bot_stop
 import threading
 import time
 import streamlit as st
