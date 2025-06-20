@@ -3,6 +3,10 @@
 import os
 import asyncio
 from datetime import datetime
+from bot.logging_utils import setup_bot_logger, setup_user_logger
+from bot.config import TOKEN, ADMIN_ID, AUTHORIZED_USERS
+from telegram.ext import Application
+from bot.handlers import register_handlers
 
 # Add any required global variables and helpers
 bot_should_run = True
@@ -20,10 +24,26 @@ def debug_bot_status():
     print("Debug: Bot status check")
 
 def main():
-    print("Main bot logic running (placeholder)")
-    # Simulate bot running
-    import time
-    time.sleep(2)
+    print("Starting Railway Choir Telegram Bot...")
+    # Set up logging
+    bot_logger = setup_bot_logger()
+    user_logger = setup_user_logger()
+    bot_logger.info("Bot is starting up...")
+
+    # Create the Application
+    application = Application.builder().token(TOKEN).build()
+
+    # Register handlers
+    dependencies = {
+        'user_logger': user_logger,
+        'ADMIN_ID': ADMIN_ID,
+        'authorized_users': AUTHORIZED_USERS,
+    }
+    register_handlers(application, dependencies)
+
+    # Start polling (blocking call)
+    bot_logger.info("Bot is running. Waiting for messages...")
+    application.run_polling()
 
 # --- Inserted from user ---
 def run_bot():
