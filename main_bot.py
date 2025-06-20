@@ -48,7 +48,7 @@ def run_bot():
     try:
         # Run the bot in the current thread
         print("Starting main bot function...")
-        asyncio.run(main())
+        main()
         print("Bot stopped normally")
         return True
     except KeyboardInterrupt:
