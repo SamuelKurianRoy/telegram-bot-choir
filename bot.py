@@ -35,13 +35,7 @@ from datetime import datetime
 
 # === Load Data and Initialize Global State ===
 config = get_config()
-data = reload_all_datasets()
-dfH = data['dfH']
-dfL = data['dfL']
-dfC = data['dfC']
-df = data['df']
-dfTH = data['dfTH']
-dfTD = data['dfTD']
+dfH, dfL, dfC, yr23, yr24, yr25, df, dfTH, dfTD = reload_all_datasets()
 # Build vocabulary
 Vocabulary, Hymn_Vocabulary, Lyric_Vocabulary, Convention_Vocabulary = ChoirVocabulary(df, dfH, dfL, dfC)
 # Setup search
