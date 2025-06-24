@@ -1,7 +1,7 @@
-# Debugging: Check if python-telegram-bot is installed and print version
+# Debugging: Check if python-telegram-bot is installed and print confirmation
 try:
     import telegram
-    print(f"python-telegram-bot version: {telegram.__version__}")
+    print("python-telegram-bot is installed and importable.")
     from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackQueryHandler
 except ImportError as e:
     print(f"[DEBUG] ImportError: {e}")
@@ -12,8 +12,8 @@ try:
     from data.datasets import reload_all_datasets, get_all_data, Tune_finder_of_known_songs, Tunenofinder
     from data.vocabulary import ChoirVocabulary
     from utils.search import setup_search
-    from telegram.handlers import start, help_command, refresh_command, admin_reply, cancel
-    from telegram.conversations import (
+    from telegram_handlers.handlers import start, help_command, refresh_command, admin_reply, cancel
+    from telegram_handlers.conversations import (
         check_song_start, check_song_input, ENTER_SONG,
         last_sung_start, last_sung_input, last_sung_show_all, ENTER_LAST_SONG, ASK_SHOW_ALL,
         search_start, search_method_choice, search_index_category, search_by_index, search_number_category, search_by_number,
