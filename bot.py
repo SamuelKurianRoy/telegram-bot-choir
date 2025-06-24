@@ -2,6 +2,7 @@
 try:
     import telegram
     print("python-telegram-bot is installed and importable.")
+    print("python-telegram-bot version:", getattr(telegram, '__version__', 'unknown'))
     from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackQueryHandler
 except ImportError as e:
     print(f"[DEBUG] ImportError: {e}")
@@ -172,7 +173,9 @@ def run_bot():
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+        print("About to call app.run_polling()")
         app.run_polling()
+        print("Returned from app.run_polling()")
         print("Bot stopped normally")
         return True
     except KeyboardInterrupt:
