@@ -1,21 +1,33 @@
-# Modularized Telegram Bot Entry Point
-from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackQueryHandler
-from config import get_config
-from data.datasets import reload_all_datasets, get_all_data, Tune_finder_of_known_songs, Tunenofinder
-from data.vocabulary import ChoirVocabulary
-from utils.search import setup_search
-from telegram.handlers import start, help_command, refresh_command, admin_reply, cancel
-from telegram.conversations import (
-    check_song_start, check_song_input, ENTER_SONG,
-    last_sung_start, last_sung_input, last_sung_show_all, ENTER_LAST_SONG, ASK_SHOW_ALL,
-    search_start, search_method_choice, search_index_category, search_by_index, search_number_category, search_by_number,
-    tune_command, choose_method, get_input, CHOOSE_METHOD, GET_INPUT,
-    start_notation, receive_hymn_number, ASK_HYMN_NO,
-    filter_theme, handle_theme_selection, handle_year_filter, THEME_SELECTION, YEAR_FILTER,
-    start_vocabulary, category_selection, CATEGORY_SELECTION,
-    download_start, download_url_input, download_quality_selection, ENTER_URL, SELECT_QUALITY,
-    start_comment, process_comment, COMMENT
-)
+# Debugging: Check if python-telegram-bot is installed and print version
+try:
+    import telegram
+    print(f"python-telegram-bot version: {telegram.__version__}")
+    from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackQueryHandler
+except ImportError as e:
+    print(f"[DEBUG] ImportError: {e}")
+    raise
+
+try:
+    from config import get_config
+    from data.datasets import reload_all_datasets, get_all_data, Tune_finder_of_known_songs, Tunenofinder
+    from data.vocabulary import ChoirVocabulary
+    from utils.search import setup_search
+    from telegram.handlers import start, help_command, refresh_command, admin_reply, cancel
+    from telegram.conversations import (
+        check_song_start, check_song_input, ENTER_SONG,
+        last_sung_start, last_sung_input, last_sung_show_all, ENTER_LAST_SONG, ASK_SHOW_ALL,
+        search_start, search_method_choice, search_index_category, search_by_index, search_number_category, search_by_number,
+        tune_command, choose_method, get_input, CHOOSE_METHOD, GET_INPUT,
+        start_notation, receive_hymn_number, ASK_HYMN_NO,
+        filter_theme, handle_theme_selection, handle_year_filter, THEME_SELECTION, YEAR_FILTER,
+        start_vocabulary, category_selection, CATEGORY_SELECTION,
+        download_start, download_url_input, download_quality_selection, ENTER_URL, SELECT_QUALITY,
+        start_comment, process_comment, COMMENT
+    )
+except ImportError as e:
+    print(f"[DEBUG] ImportError during project imports: {e}")
+    raise
+
 import os
 from utils.lockfile import acquire_lock, release_lock, LOCK_FILE, STOP_SIGNAL_FILE
 import time
