@@ -1,4 +1,4 @@
- # Modularized Telegram Bot Entry Point
+# Modularized Telegram Bot Entry Point
 from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackQueryHandler
 from config import get_config
 from data.datasets import reload_all_datasets, get_all_data, Tune_finder_of_known_songs, Tunenofinder
@@ -16,6 +16,10 @@ from telegram.conversations import (
     download_start, download_url_input, download_quality_selection, ENTER_URL, SELECT_QUALITY,
     start_comment, process_comment, COMMENT
 )
+import os
+from utils.lockfile import acquire_lock, release_lock, LOCK_FILE, STOP_SIGNAL_FILE
+import time
+from datetime import datetime
 
 # === Load Data and Initialize Global State ===
 config = get_config()
@@ -130,5 +134,47 @@ comment_handler = ConversationHandler(
 )
 app.add_handler(comment_handler)
 
-if __name__ == "__main__":
-    app.run_polling()
+bot_should_run = True
+
+def run_bot():
+    """Starts the bot with lock and stop signal logic."""
+    global bot_should_run
+    print("=== BOT STARTUP DEBUG INFO ===")
+    print(f"Bot PID: {os.getpid()}")
+    print(f"Lock file exists: {os.path.exists(LOCK_FILE)}")
+    print(f"Stop signal file exists: {os.path.exists(STOP_SIGNAL_FILE)}")
+    print("=============================")
+    bot_should_run = True
+    # Remove any existing stop signal file
+    if os.path.exists(STOP_SIGNAL_FILE):
+        os.remove(STOP_SIGNAL_FILE)
+        print(f"Removed stop signal file: {STOP_SIGNAL_FILE}")
+    # Try to acquire the lock
+    print("Attempting to acquire lock...")
+    if not acquire_lock():
+        print("Another instance of the bot is already running. Aborting.")
+        return False
+    print(f"Bot starting with PID {os.getpid()}")
+    try:
+        print("Starting main bot function...")
+        app.run_polling()
+        print("Bot stopped normally")
+        return True
+    except KeyboardInterrupt:
+        print("\nBot was stopped by the user")
+        return True
+    except Exception as e:
+        print(f"\nAn unexpected error occurred: {e}")
+        return False
+    finally:
+        print("Releasing lock...")
+        release_lock()
+
+def stop_bot():
+    """Stops the bot gracefully by creating a stop signal file and releasing the lock."""
+    global bot_should_run
+    bot_should_run = False
+    with open(STOP_SIGNAL_FILE, 'w') as f:
+        f.write(str(datetime.now()))
+    release_lock()
+    return True
