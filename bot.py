@@ -32,6 +32,9 @@ import os
 from utils.lockfile import acquire_lock, release_lock, LOCK_FILE, STOP_SIGNAL_FILE
 import time
 from datetime import datetime
+import asyncio
+import nest_asyncio
+nest_asyncio.apply()
 
 # === Load Data and Initialize Global State ===
 config = get_config()
@@ -163,6 +166,12 @@ def run_bot():
     print(f"Bot starting with PID {os.getpid()}")
     try:
         print("Starting main bot function...")
+        # Ensure an event loop exists in this thread
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
         app.run_polling()
         print("Bot stopped normally")
         return True
