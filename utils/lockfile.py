@@ -3,9 +3,10 @@
 
 import os
 import sys
+import tempfile
 
-LOCK_FILE = "/tmp/telegram_bot.lock"
-STOP_SIGNAL_FILE = "/tmp/telegram_bot_stop_signal"
+LOCK_FILE = os.path.join(tempfile.gettempdir(), "telegram_bot.lock")
+STOP_SIGNAL_FILE = os.path.join(tempfile.gettempdir(), "telegram_bot_stop_signal")
 
 def acquire_lock():
     """

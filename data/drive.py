@@ -7,6 +7,7 @@ from google.oauth2 import service_account
 import json
 import os
 from config import get_config
+import tempfile
 
 # Google Drive/Docs API setup and helpers
 
@@ -15,10 +16,12 @@ def get_drive_service():
     Returns an authenticated Google Drive service instance.
     """
     config = get_config()
-    # Save service account data to a temp file if not already present
-    if not os.path.exists(config.KEY_PATH):
-        with open(config.KEY_PATH, "w") as f:
-            json.dump(config.service_account_data, f)
+    # Always use a cross-platform temp directory for the service account file
+    tmp_dir = tempfile.gettempdir()
+    key_path = os.path.join(tmp_dir, "service_account.json")
+    with open(key_path, "w") as f:
+        json.dump(config.service_account_data, f)
+    config.KEY_PATH = key_path
     creds = service_account.Credentials.from_service_account_file(
         config.KEY_PATH, scopes=["https://www.googleapis.com/auth/drive"]
     )
