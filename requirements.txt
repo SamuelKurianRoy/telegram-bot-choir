@@ -20,7 +20,7 @@ indic-nlp-library
 streamlit>=1.28.0
 
 # Telegram bot
-python-telegram-bot>=20.0
+python-telegram-bot==20.7
 
 # Async support
 nest_asyncio>=1.5.0
