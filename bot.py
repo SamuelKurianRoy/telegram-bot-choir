@@ -146,6 +146,11 @@ app.add_handler(comment_handler)
 
 bot_should_run = True
 
+async def main():
+    print("About to call app.run_polling() [async]")
+    await app.run_polling()
+    print("Returned from app.run_polling() [async]")
+
 def run_bot():
     """Starts the bot with lock and stop signal logic."""
     global bot_should_run
@@ -167,15 +172,8 @@ def run_bot():
     print(f"Bot starting with PID {os.getpid()}")
     try:
         print("Starting main bot function...")
-        # Ensure an event loop exists in this thread
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        print("About to call app.run_polling()")
-        app.run_polling()
-        print("Returned from app.run_polling()")
+        # Use asyncio.run to start the async main
+        asyncio.run(main())
         print("Bot stopped normally")
         return True
     except KeyboardInterrupt:
