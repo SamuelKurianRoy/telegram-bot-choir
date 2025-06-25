@@ -172,8 +172,22 @@ def run_bot():
     print(f"Bot starting with PID {os.getpid()}")
     try:
         print("Starting main bot function...")
-        # Use asyncio.run to start the async main
-        asyncio.run(main())
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and loop.is_running():
+            # If there's already a running loop, schedule main() as a task
+            import threading
+            # Only create a task if we're in the main thread of the event loop
+            if threading.current_thread() is threading.main_thread():
+                loop.create_task(main())
+            else:
+                # In a background thread, use run_until_complete
+                fut = asyncio.run_coroutine_threadsafe(main(), loop)
+                fut.result()  # Wait for completion
+        else:
+            asyncio.run(main())
         print("Bot stopped normally")
         return True
     except KeyboardInterrupt:
