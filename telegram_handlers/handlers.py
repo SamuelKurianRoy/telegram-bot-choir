@@ -286,9 +286,33 @@ async def check_song_input(update: Update, context: CallbackContext) -> int:
     Vocabulary = ChoirVocabulary(df, dfH, dfL, dfC)[0]
     result = isVocabulary(user_input, Vocabulary, dfH, dfTH, Tune_finder_of_known_songs)
 
+    # Fetch song name
+    song_name = None
+    if song_type == 'H':
+        row = dfH[dfH['Hymn no'] == int(song_number)]
+        if not row.empty:
+            song_name = row.iloc[0].get('Hymn Name')
+    elif song_type == 'L':
+        row = dfL[dfL['Lyric no'] == int(song_number)]
+        if not row.empty:
+            song_name = row.iloc[0].get('Lyric Name')
+    elif song_type == 'C':
+        row = dfC[dfC['Convention no'] == int(song_number)]
+        if not row.empty:
+            song_name = row.iloc[0].get('Convention Name')
+
+    # Fetch song name using IndexFinder (Malayalam name/index)
+    from data.datasets import IndexFinder
+    song_index = IndexFinder(user_input)
+    song_display = f"{user_input}: {song_index}" if song_index and song_index != "Invalid Number" else user_input
+    # Replace the code in the result with the code+name
+    if result.startswith(user_input):
+        result = result.replace(user_input, song_display, 1)
+    reply_text = result
+
     # Send back the result with HTML parsing and no link preview
     await update.message.reply_text(
-        result,
+        reply_text,
         parse_mode="HTML",  # <-- Required for clickable links
         disable_web_page_preview=True,
         reply_markup=ReplyKeyboardRemove()
@@ -437,3 +461,58 @@ def get_songs_by_date(input_date):
         "message": message,
         "songs": songs
     } 
+
+async def handle_song_code(update: Update, context: CallbackContext) -> None:
+    user_input = update.message.text.strip().upper()
+    user_input = standardize_hlc_value(user_input)
+
+    # Basic format check
+    if not user_input or '-' not in user_input:
+        await update.message.reply_text(
+            "❌ Invalid format. Please use format like H-27.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
+
+    song_type, _, song_number = user_input.partition('-')
+
+    if song_type not in ['H', 'L', 'C'] or not song_number.isdigit():
+        await update.message.reply_text(
+            "❌ Invalid input. Use H-, L-, or C- followed by a number (e.g. H-27).",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
+
+    from data.vocabulary import ChoirVocabulary
+    from data.datasets import df, dfH, dfL, dfC, dfTH, Tune_finder_of_known_songs
+    Vocabulary = ChoirVocabulary(df, dfH, dfL, dfC)[0]
+    result = isVocabulary(user_input, Vocabulary, dfH, dfTH, Tune_finder_of_known_songs)
+
+    # Fetch song name
+    song_name = None
+    if song_type == 'H':
+        row = dfH[dfH['Hymn no'] == int(song_number)]
+        if not row.empty:
+            song_name = row.iloc[0].get('Hymn Name')
+    elif song_type == 'L':
+        row = dfL[dfL['Lyric no'] == int(song_number)]
+        if not row.empty:
+            song_name = row.iloc[0].get('Lyric Name')
+    elif song_type == 'C':
+        row = dfC[dfC['Convention no'] == int(song_number)]
+        if not row.empty:
+            song_name = row.iloc[0].get('Convention Name')
+
+    # Fetch song name using IndexFinder (Malayalam name/index)
+    from data.datasets import IndexFinder
+    song_index = IndexFinder(user_input)
+    song_display = f"{user_input}: {song_index}" if song_index and song_index != "Invalid Number" else user_input
+    if result.startswith(user_input):
+        result = result.replace(user_input, song_display, 1)
+    reply_text = result
+    await update.message.reply_text(
+        reply_text,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=ReplyKeyboardRemove()
+    ) 
