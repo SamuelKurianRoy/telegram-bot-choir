@@ -14,11 +14,13 @@ from data.datasets import Tunenofinder, Tune_finder_of_known_songs, Datefinder, 
 import re
 import os
 import requests
-from data.drive import get_drive_service, append_download_to_google_doc
+from data.drive import get_drive_service, append_download_to_google_doc, get_docs_service
 from datetime import datetime
 import io
 from telegram_handlers.handlers import is_authorized
 from downloader import AudioDownloader
+import logging
+from telegram.constants import ParseMode
 
 DOWNLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'tmp')
 HYMN_FOLDER_URL = f'https://drive.google.com/drive/folders/{get_config().H_SHEET_MUSIC}'
@@ -1227,21 +1229,19 @@ async def process_comment(update: Update, context: CallbackContext) -> int:
 
     # Append comment to Google Doc
     try:
+        docs_service = get_docs_service()
         doc = docs_service.documents().get(documentId=comfile_id).execute()
         end_index = doc.get("body").get("content")[-1].get("endIndex", 1)
-
         requests = [{
             "insertText": {
                 "location": {"index": end_index - 1},
                 "text": comment_entry
             }
         }]
-
         docs_service.documents().batchUpdate(
             documentId=comfile_id,
             body={"requests": requests}
         ).execute()
-
         print("✅ Comment appended to Google Doc.")
     except Exception as e:
         logging.error(f"❌ Failed to append comment to Google Doc ({comfile_id}): {e}")
