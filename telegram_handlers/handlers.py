@@ -1,25 +1,70 @@
 # telegram/handlers.py
 # Telegram command/callback handlers
 
-from telegram import Update, ReplyKeyboardRemove
-from telegram.ext import CallbackContext, ConversationHandler
+import streamlit as st
+from telegram import Update, ReplyKeyboardRemove, ReplyKeyboardMarkup
+from telegram.ext import CallbackContext, ConversationHandler, ContextTypes
 from config import get_config
 from logging_utils import setup_loggers
-from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns
+from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
 from data.drive import upload_log_to_google_doc
+from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
+import pandas as pd
+from datetime import date
 
 bot_logger, user_logger = setup_loggers()
 
 # --- Command Handlers ---
 
+authorized_users_str = st.secrets["AUTHORIZED_USERS"]
+authorized_users = list(map(int, authorized_users_str.split(','))) if authorized_users_str else []
+
+
+
+# Log messages from users
+async def log_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    msg = update.message.text
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /start")
+    await update.message.reply_text("Message received!")
+
+
+
+#Authorization
+async def is_authorized(update: Update) -> bool:
+   """Check if the user is authorized to interact with the bot."""
+   user_id = update.effective_user.id
+   # List of authorized user IDs from the environment variable
+   authorized_users_str = st.secrets["AUTHORIZED_USERS"]
+   
+   if authorized_users_str is not None:
+       authorized_users = list(map(int, authorized_users_str.split(',')))
+   else:
+       authorized_users = []
+   
+   # If the user is not authorized, reply and return False
+   if user_id not in authorized_users:
+       await update.message.reply_text("🚫 You are not authorized to access this feature of the bot. \n Please contact the bot administrator for more information")
+       return False
+   
+   return True
+
+ADMIN_ID = int(st.secrets["ADMIN_ID"])
+
+
+
+
+#Start
 async def start(update: Update, context: CallbackContext) -> None:
-    """Handle /start command."""
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /start")
-    config = get_config()
-    ADMIN_ID = config.ADMIN_ID
-    authorized_users = config.AUTHORIZED_USERS
+
+    # Check authorization
+    authorized_users_str = st.secrets["AUTHORIZED_USERS"]
+    authorized_users = list(map(int, authorized_users_str.split(','))) if authorized_users_str else []
+
     if user.id not in authorized_users:
+        # Notify admin but do NOT block user
         await context.bot.send_message(
             chat_id=ADMIN_ID,
             text=(
@@ -30,69 +75,88 @@ async def start(update: Update, context: CallbackContext) -> None:
             ),
             parse_mode="HTML"
         )
+
+    # Proceed with regular welcome message
     welcome_text = (f"Hello {user.full_name if user.full_name else user.username}\n\n"
-        "🎵 <b>Welcome to the Choir Bot!</b>\n\n"
-        "This bot helps you quickly find details about choir songs!\n"
-        "Simply type a song like <b>H-27</b>, <b>L-5</b>, or <b>C-12</b> and get instant info, including the last sung date.\n\n"
-        "Use <b>/help</b> to explore all commands."
-    )
+    "🎵 <b>Welcome to the Choir Bot!</b>\n\n"
+    "This bot helps you quickly find details about choir songs!\n"
+    "Simply type a song like <b>H-27</b>, <b>L-5</b>, or <b>C-12</b> and get instant info, including the last sung date.\n\n"
+    "Use <b>/help</b> to explore all commands."
+)
+
     await update.message.reply_text(welcome_text, parse_mode="HTML")
 
-async def help_command(update: Update, context: CallbackContext) -> None:
-    """Handle /help command."""
-    user = update.effective_user
-    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) asked for /help")
-    help_text = (
-        "🎵 *Choir Song Bot Help*\n\n"
-        "Here are the available commands and how to use them:\n\n"
-        "• **/start**\n"
-        "  - *Description:* Starts the bot and shows the welcome message with basic instructions.\n"
-        "  - *Example:* Simply type `/start`.\n\n"
-        "• **/check**\n"
-        "  - *Description:* Check if a song exists in the vocabulary or not. After typing the command, enter the song in the format H-27 (Hymn), L-14 (Lyric), or C-5 (Convention).\n"
-        "  - *Example:* Type `/check`, then enter a song like `H-27`.\n\n"
-        "• **/last**\n"
-        "  - *Description:* Find out when a song was last sung. After typing the command, enter the song like H-27 (Hymn), L-14 (Lyric), or C-5 (Convention). You'll also have the option to view all the dates it was sung.\n"
-        "  - *Example:* Type `/last`, then enter a song like `H-27`.\n\n"
-        "• **/search**\n"
-        "  - *Description:* Interactive search for songs.\n"
-        "  - *Options:*\n"
-        "     - _By Index:_ Search by entering a line from a hymn, lyric, or convention.\n"
-        "     - _By Number:_ Search by entering an index number.\n"
-        "  - *Example:* Type `/search` and follow the prompts.\n\n"
-        "• **/tune**\n"
-        "  - *Description:* Interactively find tunes by hymn number or tune index.\n"
-        "  - *Options:*\n"
-        "     - _By Hymn Number:_ Returns the tune(s) for a specific hymn number.\n"
-        "     - _By Tune Index:_ Provides the top matching hymns using fuzzy matching on tune names.\n"
-        "  - *Example:* Type `/tune` and choose either *Hymn Number* or *Tune Index*, then enter your query (e.g. `Whit` or `29`).\n\n"
-        "• **/notation**\n"
-        "  - *Description:* Interactive notation lookup. Start by typing `/notation`, and the bot will ask you for the hymn number (e.g. `H-86`). Then you'll be able to choose a tune and receive the notation image if available.\n"
-        "  - *Example:* Type `/notation`, then enter a hymn number like `H-86`, and choose a tune to view notation.\n\n"
-        "• **/theme**\n"
-        "  - *Description:* Initiates an interactive theme filter. You will be presented with a list of unique themes (collected from all comma-separated entries in the database), and you can select or type a theme to display the hymns related to it.\n"
-        "  - *Example:* Type `/theme` and choose from the displayed themes, or type a custom theme like `Additional Hymns`.\n\n"
-        "• **/date**\n"
-        "  - *Description:* Shows the songs sung on a specific date or the next available date if none found. Accepts various date formats.\n"
-        "  - *Examples:*\n"
-        "     - `/date 05/04/2024`\n\n"
-        "• **/vocabulary**\n"
-        "  - *Description:* Starts the vocabulary export conversation.\n"
-        "  - *Example:* Type `/vocabulary` and follow the instructions.\n\n"
-        "• **/download**\n"
-        "  - *Description:* Download audio from YouTube, Spotify, or SoundCloud links. The bot will extract the audio and send it to you as an MP3 file.\n"
-        "  - *Supported platforms:* YouTube, Spotify, SoundCloud\n"
-        "  - *Example:* Type `/download`, then paste a YouTube or Spotify link, and select your preferred audio quality.\n\n"
-        "• **/comment**\n"
-        "  - *Description:* Allows you to submit comments, recommendations, or feedback directly to the bot administrator.\n"
-        "  - *Example:* Type `/comment Your message here` and the bot will forward it to the administrator for review.\n\n"
-        "• **/cancel**\n"
-        "  - *Description:* Cancels the current operation.\n"
-        "  - *Example:* If you are in a conversation, type `/cancel` to stop it.\n\n"
-        "If you need further assistance, feel free to ask!"
-    )
-    await update.message.reply_text(help_text, parse_mode="Markdown")
 
+
+
+
+#Help
+async def help_command(update: Update, context: CallbackContext) -> None:
+     user = update.effective_user
+     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) asked for /help")
+ 
+     help_text = (
+    "🎵 *Choir Song Bot Help*\n\n"
+"Here are the available commands and how to use them:\n\n"
+"• **/start**\n"
+"  - *Description:* Starts the bot and shows the welcome message with basic instructions.\n"
+"  - *Example:* Simply type `/start`.\n\n"
+"• **/check**\n"
+"  - *Description:* Check if a song exists in the vocabulary or not. After typing the command, enter the song in the format H-27 (Hymn), L-14 (Lyric), or C-5 (Convention).\n"
+"  - *Example:* Type `/check`, then enter a song like `H-27`.\n\n"
+"• **/last**\n"
+"  - *Description:* Find out when a song was last sung. After typing the command, enter the song like H-27 (Hymn), L-14 (Lyric), or C-5 (Convention). You'll also have the option to view all the dates it was sung.\n"
+"  - *Example:* Type `/last`, then enter a song like `H-27`.\n\n"
+"• **/search**\n"
+"  - *Description:* Interactive search for songs.\n"
+"  - *Options:*\n"
+"     - _By Index:_ Search by entering a line from a hymn, lyric, or convention.\n"
+"     - _By Number:_ Search by entering an index number.\n"
+"  - *Example:* Type `/search` and follow the prompts.\n\n"
+"• **/tune**\n"
+"  - *Description:* Interactively find tunes by hymn number or tune index.\n"
+"  - *Options:*\n"
+"     - _By Hymn Number:_ Returns the tune(s) for a specific hymn number.\n"
+"     - _By Tune Index:_ Provides the top matching hymns using fuzzy matching on tune names.\n"
+"  - *Example:* Type `/tune` and choose either *Hymn Number* or *Tune Index*, then enter your query (e.g. `Whit` or `29`).\n\n"
+"• **/notation**\n"
+"  - *Description:* Interactive notation lookup. Start by typing `/notation`, and the bot will ask you for the hymn number (e.g. `H-86`). Then you'll be able to choose a tune and receive the notation image if available.\n"
+"  - *Example:* Type `/notation`, then enter a hymn number like `H-86`, and choose a tune to view notation.\n\n"
+"• **/theme**\n"
+"  - *Description:* Initiates an interactive theme filter. You will be presented with a list of unique themes (collected from all comma-separated entries in the database), and you can select or type a theme to display the hymns related to it.\n"
+"  - *Example:* Type `/theme` and choose from the displayed themes, or type a custom theme like `Additional Hymns`.\n\n"
+"• **/date**\n"
+"  - *Description:* Shows the songs sung on a specific date or the next available date if none found. Accepts various date formats.\n"
+"  - *Examples:*\n"
+"     - `/date 05/04/2024`\n\n"
+"• **/vocabulary**\n"
+"  - *Description:* Starts the vocabulary export conversation.\n"
+"  - *Example:* Type `/vocabulary` and follow the instructions.\n\n"
+"• **/download**\n"
+"  - *Description:* Download audio from YouTube, Spotify, or SoundCloud links. The bot will extract the audio and send it to you as an MP3 file.\n"
+"  - *Supported platforms:* YouTube, Spotify, SoundCloud\n"
+"  - *Example:* Type `/download`, then paste a YouTube or Spotify link, and select your preferred audio quality.\n\n"
+"• **/comment**\n"
+"  - *Description:* Allows you to submit comments, recommendations, or feedback directly to the bot administrator.\n"
+"  - *Example:* Type `/comment Your message here` and the bot will forward it to the administrator for review.\n\n"
+"• **/cancel**\n"
+"  - *Description:* Cancels the current operation.\n"
+"  - *Example:* If you are in a conversation, type `/cancel` to stop it.\n\n"
+"If you need further assistance, feel free to ask!"
+)
+
+     await update.message.reply_text(help_text, parse_mode="Markdown")
+
+
+
+
+
+
+
+
+
+#Refresh
+ 
 async def refresh_command(update: Update, context: CallbackContext) -> None:
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) used /refresh")
@@ -109,6 +173,8 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text("Datasets reloaded successfully!")
     except Exception as e:
         await update.message.reply_text(f"Error reloading datasets: {e}")
+
+#Admin reply
 
 async def admin_reply(update: Update, context: CallbackContext) -> None:
     user = update.effective_user
@@ -130,10 +196,244 @@ async def admin_reply(update: Update, context: CallbackContext) -> None:
     )
     await update.message.reply_text(f"✅ Reply sent to user {target_user_id}.")
 
+
+
+#Cancel
+
 async def cancel(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /cancel")
     await update.message.reply_text("Operation canceled.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
+
+
+#/date
+async def date_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.args:
+        input_date = " ".join(context.args)
+        result = get_songs_by_date(input_date)
+        
+        if isinstance(result, dict):
+         songs_text = "\n".join(
+        f"{i + 1}. {s} - {IndexFinder(s)}" for i, s in enumerate(result["songs"])
+    )
+         response = f"{result['message']}:\n\n{songs_text}"
+
+        else:
+            response = result  # This will be the error message from get_songs_by_date
+    else:
+        response = "Please provide a date. Usage: `/date DD/MM/YYYY`, `/date DD/MM`, or `/date DD`"
+
+    await update.message.reply_text(response, parse_mode='Markdown')
+
+
+
+#Check
+ADMIN_ID = int(st.secrets["ADMIN_ID"])
+ENTER_SONG = 0  # Ensure this is defined somewhere globally
+async def check_song_start(update: Update, context: CallbackContext) -> int:
+    user = update.effective_user
+
+    if not await is_authorized(update):
+        user_logger.warning(f"Unauthorized access attempt to /checksong by {user.full_name} (@{user.username}, ID: {user.id})")
+
+        # Notify the admin
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=(
+                f"🚨 <b>Unauthorized user accessed /checksong</b>\n\n"
+                f"<b>Name:</b> {user.full_name}\n"
+                f"<b>Username:</b> @{user.username}\n"
+                f"<b>User ID:</b> <code>{user.id}</code>"
+            ),
+            parse_mode="HTML"
+        )
+
+    await update.message.reply_text(
+        "🎵 Please enter the song (e.g. H-27, L-14, C-5):",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ENTER_SONG
+
+
+ 
+ # Handle song input
+async def check_song_input(update: Update, context: CallbackContext) -> int:
+    user_input = update.message.text.strip().upper()
+    user_input = standardize_hlc_value(user_input)
+
+    # Basic format check
+    if not user_input or '-' not in user_input:
+        await update.message.reply_text(
+            "❌ Invalid format. Please use format like H-27.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ENTER_SONG
+
+    song_type, _, song_number = user_input.partition('-')
+
+    if song_type not in ['H', 'L', 'C'] or not song_number.isdigit():
+        await update.message.reply_text(
+            "❌ Invalid input. Use H-, L-, or C- followed by a number (e.g. H-27).",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ENTER_SONG
+
+    # Prepare arguments for isVocabulary
+    from data.vocabulary import ChoirVocabulary
+    from data.datasets import df, dfH, dfL, dfC, dfTH, Tune_finder_of_known_songs
+    Vocabulary = ChoirVocabulary(df, dfH, dfL, dfC)[0]
+    result = isVocabulary(user_input, Vocabulary, dfH, dfTH, Tune_finder_of_known_songs)
+
+    # Send back the result with HTML parsing and no link preview
+    await update.message.reply_text(
+        result,
+        parse_mode="HTML",  # <-- Required for clickable links
+        disable_web_page_preview=True,
+        reply_markup=ReplyKeyboardRemove()
+    )
+
+    return ConversationHandler.END
+
+
+
+#/last
+
+# States
+ENTER_LAST_SONG, ASK_SHOW_ALL = range(2)
+#Download command states
+ENTER_URL, SELECT_QUALITY = range(2, 4)
+ 
+ # /last entry point
+async def last_sung_start(update: Update, context: CallbackContext) -> int:
+     await update.message.reply_text(
+         "🎼 Please enter the song (e.g. H-27, L-14, C-5):",
+         reply_markup=ReplyKeyboardRemove()
+     )
+     return ENTER_LAST_SONG
+ 
+ # Handle song input
+async def last_sung_input(update: Update, context: CallbackContext) -> int:
+     user_input = update.message.text.strip().upper()
+     user_input = standardize_hlc_value(user_input)
+ 
+     if not user_input or '-' not in user_input:
+         await update.message.reply_text("❌ Invalid format. Please use format like H-27.")
+         return ENTER_LAST_SONG
+ 
+     song_type, _, song_number = user_input.partition('-')
+ 
+     if song_type not in ['H', 'L', 'C'] or not song_number.isdigit():
+         await update.message.reply_text("❌ Invalid code. Use H-, L-, or C- followed by a number (e.g. H-27).")
+         return ENTER_LAST_SONG
+ 
+     full_song = f"{song_type}-{song_number}"
+     context.user_data["last_category"] = song_type
+     context.user_data["last_song"] = full_song
+ 
+     # Get last sung date
+     result = Datefinder(full_song, song_type, first=True)
+     await update.message.reply_text(result)
+ 
+     # Ask if user wants all dates
+     reply_keyboard = [["Yes", "No"]]
+     await update.message.reply_text(
+         "Would you like to see all the dates on which this song was sung?",
+         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
+     )
+     return ASK_SHOW_ALL
+ 
+ # Handle "show all dates?" step
+async def last_sung_show_all(update: Update, context: CallbackContext) -> int:
+     reply = update.message.text.strip().lower()
+     category = context.user_data.get("last_category")
+     full_song = context.user_data.get("last_song")
+ 
+     if reply == "yes":
+         result = Datefinder(full_song, category, first=False)
+         await update.message.reply_text(result, reply_markup=ReplyKeyboardRemove())
+     else:
+         await update.message.reply_text(
+             "May the music stay in your heart 🎵\n(❁´◡`❁)\n<b><i>S.D.G</i></b>",
+             parse_mode="HTML",
+             reply_markup=ReplyKeyboardRemove()
+         )
+ 
+     return ConversationHandler.END
+
 # TODO: Add more command handlers (check, last, search, tune, notation, theme, vocabulary, download, comment, refresh, reply, cancel, etc.) 
+
+def get_songs_by_date(input_date):
+    """
+    Accepts:
+    - 'DD/MM/YYYY', 'DD-MM-YYYY'
+    - 'DD/MM/YY', 'DD-MM-YY'
+    - 'DD/MM', 'DD-MM'
+    - 'DD' (uses current month and year)
+
+    If no songs found on the given date, returns next available date with songs.
+    """
+    from data.datasets import get_all_data
+    data = get_all_data()
+    df = data["df"]
+    today = date.today()
+    current_year = today.year
+    current_month = today.month
+
+    # Normalize input: replace '-' with '/' for easier parsing
+    if isinstance(input_date, str):
+        input_date = input_date.replace('-', '/').strip()
+        parts = input_date.split('/')
+
+        try:
+            if len(parts) == 3:
+                input_date = pd.to_datetime(input_date, dayfirst=True).date()
+            elif len(parts) == 2:
+                day, month = map(int, parts)
+                input_date = date(current_year, month, day)
+            elif len(parts) == 1:
+                day = int(parts[0])
+                input_date = date(current_year, current_month, day)
+            else:
+                return "Invalid date format. Use DD, DD/MM, DD/MM/YY, or DD/MM/YYYY."
+        except Exception as e:
+            return f"Date parsing error: {e}"
+
+    # Ensure 'Date' column is datetime.date
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.date
+    df.dropna(subset=['Date'], inplace=True)
+
+    # Sort dates
+    available_dates = sorted(df['Date'].unique())
+
+    # Find songs on the input date
+    matching_rows = df[df['Date'] == input_date]
+
+    if matching_rows.empty:
+        # Get the next available date with songs
+        next_dates = [d for d in available_dates if d > input_date]
+        if not next_dates:
+            return f"No songs found on {input_date.strftime('%d/%m/%Y')} or any later date."
+        next_date = next_dates[0]
+        matching_rows = df[df['Date'] == next_date]
+        message = f"No songs found on {input_date.strftime('%d/%m/%Y')}. Showing songs from next available date: {next_date.strftime('%d/%m/%Y')}"
+    else:
+        next_date = input_date
+        message = f"Songs sung on {next_date.strftime('%d/%m/%Y')}"
+
+    # Get song columns
+    song_columns = [col for col in df.columns if col != 'Date']
+    songs = []
+
+    for _, row in matching_rows.iterrows():
+        for col in song_columns:
+            song = row[col]
+            if pd.notna(song) and str(song).strip() != '':
+                songs.append(song.strip())
+
+    return {
+        "date": next_date.strftime('%d/%m/%Y'),
+        "message": message,
+        "songs": songs
+    } 

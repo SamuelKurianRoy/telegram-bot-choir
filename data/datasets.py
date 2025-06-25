@@ -8,6 +8,8 @@ from data.drive import get_drive_service
 from config import get_config
 import re
 from datetime import datetime
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # Global dataset variables
 dfH = dfL = dfC = yr23 = yr24 = yr25 = df = dfTH = dfTD = None
@@ -211,5 +213,79 @@ def get_all_data():
         'dfTH': dfTH,
         'dfTD': dfTD,
     }
+
+def standardize_hlc_value(value):
+    value = str(value).upper().strip()
+    value = re.sub(r'^([HLC])\s*[-]?\s*(\d+)$', r'\1-\2', value)
+    value = re.sub(r'-+', '-', value)
+    value = re.sub(r'\s*-\s*', '-', value)
+    return value
+
+def IndexFinder(Song):
+    song = standardize_hlc_value(Song)
+    global dfH, dfL, dfC
+    if song.startswith("H"):
+        song = song.replace('H','').strip().replace("-", "")
+        song = int(song)
+        return dfH['Hymn Index'][song-1]
+    elif song.startswith("L"):
+        song = song.replace('L','').strip().replace("-", "")
+        song = int(song)
+        return dfL['Lyric Index'][song-1]
+    elif song.startswith("C"):
+        song = song.replace('C','').strip().replace("-", "")
+        song = int(song)
+        return dfC['Convention Index'][song-1]
+    else:
+        return "Invalid Number"
+
+def Datefinder(songs, category=None, first=False):
+    global df
+    First=first
+    Song = standardize_hlc_value(songs)
+    Found = False
+    formatted_date = []
+    for i in range(len(df) - 1, -1, -1):
+        if Song in df.iloc[i].tolist():
+            Found = True
+            date_val = df['Date'].iloc[i]
+            formatted_date.append(date_val.strftime("%d/%m/%Y"))
+            if First:
+                break
+    if Found and First:
+         return f"{Song}: {IndexFinder(Song)} was last sung on: {formatted_date[0]}"
+    elif Found:
+        dates_string = ''.join(f"{i}\n" for i in formatted_date)
+        return f"{Song}: {IndexFinder(Song)} was sung on: \n{dates_string}"
+    else:
+         return f"The Song {Song} was not Sang in the past years since 2022"
+
+def Hymn_Tune_no_Finder(dfTH, tune_query, top_n=10):
+    # if dfTH is None or dfTH.empty:
+    #     return pd.DataFrame(columns=['Hymn no', 'Tune Index', 'Similarity'])
+    # Preprocess: lowercase all entries
+    dfTH = dfTH.copy()
+    dfTH['Tune Index'] = dfTH['Tune Index'].astype(str).str.lower()
+    tune_query = tune_query.lower()
+
+    # Combine all tune names into a list and add the query
+    tune_list = dfTH['Tune Index'].tolist()
+    all_tunes = tune_list + [tune_query]
+
+    # Use character n-grams (for partial and fuzzy matching)
+    vectorizer = TfidfVectorizer(analyzer='char_wb', ngram_range=(2, 4))
+    tfidf_matrix = vectorizer.fit_transform(all_tunes)
+
+    # Compute cosine similarity
+    cosine_sim = cosine_similarity(tfidf_matrix[-1], tfidf_matrix[:-1]).flatten()
+
+    # Get top N indices
+    top_indices = cosine_sim.argsort()[::-1][:top_n]
+
+    # Build results DataFrame
+    results = dfTH.iloc[top_indices][['Hymn no', 'Tune Index']].copy()
+    results['Similarity'] = cosine_sim[top_indices]
+
+    return results.reset_index(drop=True)
 
 # TODO: Add data cleaning and preprocessing functions (e.g., yrDataPreprocessing, dfcleaning) 

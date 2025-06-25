@@ -10,20 +10,23 @@ except ImportError as e:
 
 try:
     from config import get_config
-    from data.datasets import reload_all_datasets, get_all_data, Tune_finder_of_known_songs, Tunenofinder
+    from data.datasets import reload_all_datasets, get_all_data, Tune_finder_of_known_songs, Tunenofinder, load_datasets
     from data.vocabulary import ChoirVocabulary
     from utils.search import setup_search
-    from telegram_handlers.handlers import start, help_command, refresh_command, admin_reply, cancel
+    from telegram_handlers.handlers import (
+        start, help_command, refresh_command, admin_reply, cancel, date_command, 
+        check_song_start, last_sung_start, check_song_input, ENTER_SONG, 
+        last_sung_input, last_sung_show_all, ENTER_LAST_SONG, ASK_SHOW_ALL
+    )
     from telegram_handlers.conversations import (
-        check_song_start, check_song_input, ENTER_SONG,
-        last_sung_start, last_sung_input, last_sung_show_all, ENTER_LAST_SONG, ASK_SHOW_ALL,
+        SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT,
         search_start, search_method_choice, search_index_category, search_by_index, search_number_category, search_by_number,
         tune_command, choose_method, get_input, CHOOSE_METHOD, GET_INPUT,
         start_notation, receive_hymn_number, ASK_HYMN_NO,
         filter_theme, handle_theme_selection, handle_year_filter, THEME_SELECTION, YEAR_FILTER,
         start_vocabulary, category_selection, CATEGORY_SELECTION,
         download_start, download_url_input, download_quality_selection, ENTER_URL, SELECT_QUALITY,
-        start_comment, process_comment, COMMENT
+        start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback, handle_song_code
     )
 except ImportError as e:
     print(f"[DEBUG] ImportError during project imports: {e}")
@@ -38,6 +41,7 @@ import nest_asyncio
 nest_asyncio.apply()
 
 # === Load Data and Initialize Global State ===
+load_datasets()
 config = get_config()
 dfH, dfL, dfC, yr23, yr24, yr25, df, dfTH, dfTD = reload_all_datasets()
 # Build vocabulary
@@ -49,12 +53,39 @@ setup_search(dfH, dfL, dfC)
 app = Application.builder().token(config.TOKEN).build()
 
 # --- Register Modularized Handlers ---
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("help", help_command))
-app.add_handler(CommandHandler("refresh", refresh_command))
-app.add_handler(CommandHandler("reply", admin_reply))
-app.add_handler(CommandHandler("cancel", cancel))
+async def shutdown(app):
+         """Shutdown the bot gracefully"""
+         app.stop()
+         
+     # Register handlers
+conv_handler = ConversationHandler(
+         entry_points=[CommandHandler("vocabulary", start_vocabulary)],
+         states={
+             CATEGORY_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, category_selection)]
+         },
+         fallbacks=[CommandHandler("cancel", cancel)]
+     )
 
+search_conv_handler = ConversationHandler(
+     entry_points=[CommandHandler("search", search_start)],
+     states={
+         SEARCH_METHOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_method_choice)],
+         INDEX_CATEGORY: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_index_category)],
+         INDEX_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_by_index)],
+         NUMBER_CATEGORY: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_number_category)],
+         NUMBER_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_by_number)],
+     },
+     fallbacks=[CommandHandler("cancel", cancel)],
+     )
+theme_handler = ConversationHandler(
+    entry_points=[CommandHandler("theme", filter_theme)],
+    states={
+    THEME_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_theme_selection)],
+    YEAR_FILTER: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_year_filter)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
+     
 check_conv = ConversationHandler(
     entry_points=[CommandHandler('check', check_song_start)],
     states={
@@ -62,8 +93,8 @@ check_conv = ConversationHandler(
     },
     fallbacks=[CommandHandler("cancel", cancel)],
 )
-app.add_handler(check_conv)
 
+     
 last_conv_handler = ConversationHandler(
     entry_points=[CommandHandler("last", last_sung_start)],
     states={
@@ -72,21 +103,16 @@ last_conv_handler = ConversationHandler(
     },
     fallbacks=[CommandHandler("cancel", cancel)],
 )
-app.add_handler(last_conv_handler)
 
-search_conv_handler = ConversationHandler(
-    entry_points=[CommandHandler("search", search_start)],
+comment_handler = ConversationHandler(
+    entry_points=[CommandHandler('comment', start_comment)],
     states={
-        0: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_method_choice)],
-        1: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_index_category)],
-        2: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_by_index)],
-        3: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_number_category)],
-        4: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_by_number)],
+        COMMENT: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, process_comment)
+        ]
     },
-    fallbacks=[CommandHandler("cancel", cancel)],
+    fallbacks=[CommandHandler('cancel', cancel_comment)]
 )
-app.add_handler(search_conv_handler)
-
 tune_conv_handler = ConversationHandler(
     entry_points=[CommandHandler("tune", tune_command)],
     states={
@@ -95,36 +121,16 @@ tune_conv_handler = ConversationHandler(
     },
     fallbacks=[CommandHandler("cancel", cancel)],
 )
-app.add_handler(tune_conv_handler)
-
-notation_conv_handler = ConversationHandler(
-    entry_points=[CommandHandler("notation", start_notation)],
+     
+reply_conv_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(reply_to_user, pattern="^reply_")],
     states={
-        ASK_HYMN_NO: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_hymn_number)],
-    },
-    fallbacks=[CommandHandler("cancel", cancel)],
-)
-app.add_handler(notation_conv_handler)
-
-theme_handler = ConversationHandler(
-    entry_points=[CommandHandler("theme", filter_theme)],
-    states={
-        THEME_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_theme_selection)],
-        YEAR_FILTER: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_year_filter)],
-    },
-    fallbacks=[CommandHandler("cancel", cancel)],
-)
-app.add_handler(theme_handler)
-
-vocab_conv_handler = ConversationHandler(
-    entry_points=[CommandHandler("vocabulary", start_vocabulary)],
-    states={
-        CATEGORY_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, category_selection)]
+        REPLY: [MessageHandler(filters.TEXT & ~filters.COMMAND, send_reply_to_user)]
     },
     fallbacks=[CommandHandler("cancel", cancel)]
 )
-app.add_handler(vocab_conv_handler)
 
+     # Download conversation handler
 download_conv_handler = ConversationHandler(
     entry_points=[CommandHandler("download", download_start)],
     states={
@@ -133,16 +139,37 @@ download_conv_handler = ConversationHandler(
     },
     fallbacks=[CommandHandler("cancel", cancel)],
 )
-app.add_handler(download_conv_handler)
-
-comment_handler = ConversationHandler(
-    entry_points=[CommandHandler('comment', start_comment)],
+notation_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("notation", start_notation)],
     states={
-        COMMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_comment)]
+        ASK_HYMN_NO: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_hymn_number)],
     },
-    fallbacks=[CommandHandler('cancel', cancel)]
+    fallbacks=[CommandHandler("cancel", cancel)],
 )
+
+
+
+ 
+ 
+ 
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("help", help_command))
+app.add_handler(CommandHandler("date", date_command))
+app.add_handler(CommandHandler("refresh", refresh_command))
+app.add_handler(CommandHandler("reply", admin_reply))
+app.add_handler(CallbackQueryHandler(handle_notation_callback, pattern="^notation:"))
+
+app.add_handler(tune_conv_handler)
+app.add_handler(last_conv_handler)
+app.add_handler(check_conv)
+app.add_handler(theme_handler)
+app.add_handler(search_conv_handler)
+app.add_handler(conv_handler)
 app.add_handler(comment_handler)
+app.add_handler(reply_conv_handler)
+app.add_handler(download_conv_handler)
+app.add_handler(notation_conv_handler)
+app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
 
 bot_should_run = True
 

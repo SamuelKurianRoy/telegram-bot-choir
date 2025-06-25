@@ -4,6 +4,9 @@ user_log.txt
 bot_log.txt
 comments.txt
 __pycache__/
+tmp/
+
+downloader_log.txt
 
 # Download feature documentation and setup files
 DOWNLOAD_FEATURE_SUMMARY.md
