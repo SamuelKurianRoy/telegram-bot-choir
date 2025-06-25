@@ -208,3 +208,6 @@ def stop_bot():
         f.write(str(datetime.now()))
     release_lock()
     return True
+
+if __name__ == "__main__":
+    run_bot()
