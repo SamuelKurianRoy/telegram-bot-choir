@@ -181,8 +181,30 @@ def filter_hymns_by_theme(data, theme=None):
 async def send_long_message(update, message_parts, parse_mode="Markdown", max_length=3500):
     """
     Sends a message, splitting it into multiple messages if it's too long.
+    Ensures that no message part exceeds max_length.
     """
-    full_message = "\n\n".join(message_parts)
+    def split_text(text, max_len):
+        # Split text into chunks of max_len, trying to split at newlines
+        chunks = []
+        while len(text) > max_len:
+            split_at = text.rfind('\n', 0, max_len)
+            if split_at == -1 or split_at < max_len // 2:
+                split_at = max_len
+            chunks.append(text[:split_at])
+            text = text[split_at:]
+        if text:
+            chunks.append(text)
+        return chunks
+
+    # Flatten message_parts so that no part exceeds max_length
+    flat_parts = []
+    for part in message_parts:
+        if len(part) > max_length:
+            flat_parts.extend(split_text(part, max_length))
+        else:
+            flat_parts.append(part)
+
+    full_message = "\n\n".join(flat_parts)
     if len(full_message) <= max_length:
         await update.message.reply_text(
             full_message,
@@ -190,16 +212,14 @@ async def send_long_message(update, message_parts, parse_mode="Markdown", max_le
             reply_markup=ReplyKeyboardRemove()
         )
     else:
-        # Split into chunks
         current_chunk = ""
-        for part in message_parts:
+        for part in flat_parts:
             if len(current_chunk + "\n\n" + part) <= max_length:
                 if current_chunk:
                     current_chunk += "\n\n" + part
                 else:
                     current_chunk = part
             else:
-                # Send current chunk
                 if current_chunk:
                     await update.message.reply_text(
                         current_chunk,
@@ -207,7 +227,6 @@ async def send_long_message(update, message_parts, parse_mode="Markdown", max_le
                         reply_markup=ReplyKeyboardRemove()
                     )
                 current_chunk = part
-        # Send remaining chunk
         if current_chunk:
             await update.message.reply_text(
                 current_chunk,
@@ -485,7 +504,7 @@ async def download_url_input(update: Update, context: CallbackContext) -> int:
 
     # Show quality selection
     quality_keyboard = [
-        ["🔥 High Quality (320kbps)", "🎵 Medium Quality (192kbps)"],
+        ["🔥 High Quality (320kbps)", "�� Medium Quality (192kbps)"],
         ["💾 Low Quality (128kbps)", "❌ Cancel"]
     ]
 
