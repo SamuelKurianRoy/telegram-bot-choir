@@ -23,7 +23,7 @@ try:
         search_start, search_method_choice, search_index_category, search_by_index, search_number_category, search_by_number,
         tune_command, choose_method, get_input, CHOOSE_METHOD, GET_INPUT,
         start_notation, receive_hymn_number, ASK_HYMN_NO,
-        filter_theme, handle_theme_selection, handle_year_filter, THEME_SELECTION, YEAR_FILTER,
+        theme_type_choice, handle_theme_type, handle_theme_selection, handle_year_filter, handle_theme_typo_confirm, THEME_TYPE, THEME_SELECTION, YEAR_FILTER, TYPO_CONFIRM,
         start_vocabulary, category_selection, CATEGORY_SELECTION,
         download_start, download_url_input, download_quality_selection, ENTER_URL, SELECT_QUALITY,
         start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback, handle_song_code
@@ -78,10 +78,12 @@ search_conv_handler = ConversationHandler(
      fallbacks=[CommandHandler("cancel", cancel)],
      )
 theme_handler = ConversationHandler(
-    entry_points=[CommandHandler("theme", filter_theme)],
+    entry_points=[CommandHandler("theme", theme_type_choice)],
     states={
-    THEME_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_theme_selection)],
-    YEAR_FILTER: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_year_filter)],
+        THEME_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_theme_type)],
+        THEME_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_theme_selection)],
+        TYPO_CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_theme_typo_confirm)],
+        YEAR_FILTER: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_year_filter)],
     },
     fallbacks=[CommandHandler("cancel", cancel)],
 )

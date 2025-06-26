@@ -21,6 +21,10 @@ from telegram_handlers.handlers import is_authorized
 from downloader import AudioDownloader
 import logging
 from telegram.constants import ParseMode
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+from rapidfuzz import process, fuzz
 
 DOWNLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'tmp')
 HYMN_FOLDER_URL = f'https://drive.google.com/drive/folders/{get_config().H_SHEET_MUSIC}'
@@ -172,6 +176,44 @@ def filter_hymns_by_theme(data, theme=None):
     return filtered
 
 
+
+# Helper function to send long messages in chunks
+async def send_long_message(update, message_parts, parse_mode="Markdown", max_length=3500):
+    """
+    Sends a message, splitting it into multiple messages if it's too long.
+    """
+    full_message = "\n\n".join(message_parts)
+    if len(full_message) <= max_length:
+        await update.message.reply_text(
+            full_message,
+            parse_mode=parse_mode,
+            reply_markup=ReplyKeyboardRemove()
+        )
+    else:
+        # Split into chunks
+        current_chunk = ""
+        for part in message_parts:
+            if len(current_chunk + "\n\n" + part) <= max_length:
+                if current_chunk:
+                    current_chunk += "\n\n" + part
+                else:
+                    current_chunk = part
+            else:
+                # Send current chunk
+                if current_chunk:
+                    await update.message.reply_text(
+                        current_chunk,
+                        parse_mode=parse_mode,
+                        reply_markup=ReplyKeyboardRemove()
+                    )
+                current_chunk = part
+        # Send remaining chunk
+        if current_chunk:
+            await update.message.reply_text(
+                current_chunk,
+                parse_mode=parse_mode,
+                reply_markup=ReplyKeyboardRemove()
+            )
 
 async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE, tune_name: str, song_id: str):
     chat_id = update.effective_chat.id
@@ -860,147 +902,191 @@ async def category_selection(update: Update, context: CallbackContext) -> int:
 #/theme
 
 # Define unique conversation states:
+THEME_TYPE = 0  # New state for choosing Hymns or Lyrics
 THEME_SELECTION = 1
 YEAR_FILTER = 2
 
-# Step 1: List available unique themes and prompt user
-async def filter_theme(update: Update, context: CallbackContext) -> int:
-    """
-    Lists available unique themes and prompts the user to choose.
-    Splits comma-separated themes and flattens the list.
-    """
-    user = update.effective_user
-    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /theme")
+# Add a new state for typo confirmation
+TYPO_CONFIRM = 99
 
-    # Get unique themes from the DataFrame, splitting by comma if necessary
-    data = get_all_data()
-    dfH = data["dfH"]
-    all_themes = dfH["Themes"].dropna().str.split(",").explode().str.strip().unique()
-    themes = sorted(all_themes)
-
-    # Build keyboard layout (2 themes per row)
-    keyboard = [themes[i:i+2] for i in range(0, len(themes), 2)]
-
+# Step 0: Ask user to choose Hymns or Lyrics
+async def theme_type_choice(update: Update, context: CallbackContext) -> int:
+    reply_keyboard = [["Hymns", "Lyrics"]]
     await update.message.reply_text(
-        "🎯 *Available Themes:*\nPlease select or type one of the themes below:",
+        "What would you like to filter by theme?",
+        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
+    )
+    return THEME_TYPE
+
+# Step 1: Handle Hymns/Lyrics choice and show available themes
+async def handle_theme_type(update: Update, context: CallbackContext) -> int:
+    choice = update.message.text.strip().lower()
+    if choice not in ["hymns", "lyrics"]:
+        await update.message.reply_text("Please choose either 'Hymns' or 'Lyrics'.")
+        return THEME_TYPE
+    context.user_data["theme_type"] = choice
+    user = update.effective_user
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) chose {choice} for /theme")
+
+    # Get unique themes from the correct DataFrame
+    data = get_all_data()
+    df = data["dfH"] if choice == "hymns" else data["dfL"]
+    all_themes = df["Themes"].dropna().str.split(",").explode().str.strip().unique()
+    themes = sorted(all_themes)
+    keyboard = [themes[i:i+2] for i in range(0, len(themes), 2)]
+    await update.message.reply_text(
+        f"🎯 *Available Themes for {choice.capitalize()}:*\nPlease select or type one of the themes below:",
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     )
-
     return THEME_SELECTION
 
- # Helper function to send long messages in chunks
-async def send_long_message(update, message_parts, parse_mode="Markdown", max_length=3500):
-    """
-    Sends a message, splitting it into multiple messages if it's too long.
-    """
-    full_message = "\n\n".join(message_parts)
+# Load the embedding model once
+_theme_model = None
+_theme_embeddings = {}
+_theme_texts = {}
+def get_theme_model():
+    global _theme_model
+    if _theme_model is None:
+        _theme_model = SentenceTransformer('all-MiniLM-L6-v2')
+    return _theme_model
 
-    if len(full_message) <= max_length:
-        await update.message.reply_text(
-            full_message,
-            parse_mode=parse_mode,
-            reply_markup=ReplyKeyboardRemove()
-        )
+def get_theme_embeddings(theme_type, all_themes):
+    global _theme_embeddings, _theme_texts
+    all_themes_list = list(all_themes)
+    if theme_type not in _theme_embeddings or _theme_texts.get(theme_type) != all_themes_list:
+        model = get_theme_model()
+        _theme_embeddings[theme_type] = model.encode(all_themes_list)
+        _theme_texts[theme_type] = all_themes_list
+    return _theme_embeddings[theme_type], _theme_texts[theme_type]
+
+def find_similar_themes(user_input, all_themes, theme_embeddings, threshold=0.7):
+    model = get_theme_model()
+    user_emb = model.encode([user_input])
+    sims = cosine_similarity(user_emb, theme_embeddings)[0]
+    matched = [theme for theme, sim in zip(all_themes, sims) if sim > threshold]
+    return matched
+
+def fuzzy_find_theme(user_input, all_themes, threshold=50):
+    best_theme = None
+    best_score = 0
+    for theme in all_themes:
+        for word in theme.split():
+            score = fuzz.ratio(user_input.lower(), word.lower())
+            if score > best_score:
+                best_score = score
+                best_theme = theme
+    if best_score >= threshold:
+        # Optionally, print for debugging
+        # print(f"Fuzzy match: {best_theme} (score: {best_score})")
+        return best_theme
+    return None
+
+# Helper to process theme selection logic for both direct and typo-confirmed input
+async def process_theme_selection(theme_input, update, context):
+    context.user_data["theme_input"] = theme_input
+    data = get_all_data()
+    theme_type = context.user_data.get("theme_type", "hymns")
+    dfH = data["dfH"]
+    dfL = data["dfL"]
+    df = data["df"]
+    dfC = data["dfC"]
+    # Compute vocabularies
+    _, Hymn_Vocabulary, Lyric_Vocabulary, _ = ChoirVocabulary(df, dfH, dfL, dfC)
+    if theme_type == "hymns":
+        all_themes = dfH["Themes"].dropna().str.split(",").explode().str.strip().unique()
+        theme_embeddings, theme_texts = get_theme_embeddings("hymns", all_themes)
+        matched_themes = find_similar_themes(theme_input, theme_texts, theme_embeddings, threshold=0.7)
+        filtered_df = dfH[dfH["Themes"].apply(lambda x: any(t in str(x) for t in matched_themes))]
+        known = Hymn_Vocabulary.values
+        prefix = "H-"
+        index_col = "Hymn Index"
+        no_col = "Hymn no"
+        tune_col = "Tunes"
     else:
-        # Split into chunks
-        current_chunk = ""
-        for part in message_parts:
-            if len(current_chunk + "\n\n" + part) <= max_length:
-                if current_chunk:
-                    current_chunk += "\n\n" + part
-                else:
-                    current_chunk = part
-            else:
-                # Send current chunk
-                if current_chunk:
-                    await update.message.reply_text(
-                        current_chunk,
-                        parse_mode=parse_mode,
-                        reply_markup=ReplyKeyboardRemove()
-                    )
-                current_chunk = part
-
-        # Send remaining chunk
-        if current_chunk:
+        all_themes = dfL["Themes"].dropna().str.split(",").explode().str.strip().unique()
+        theme_embeddings, theme_texts = get_theme_embeddings("lyrics", all_themes)
+        matched_themes = find_similar_themes(theme_input, theme_texts, theme_embeddings, threshold=0.7)
+        filtered_df = dfL[dfL["Themes"].apply(lambda x: any(t in str(x) for t in matched_themes))]
+        known = Lyric_Vocabulary.values
+        prefix = "L-"
+        index_col = "Lyric Index"
+        no_col = "Lyric no"
+        tune_col = None
+    # If no semantic match, try fuzzy matching and ask user for confirmation
+    if filtered_df.empty or not matched_themes:
+        suggestion = fuzzy_find_theme(theme_input, all_themes, threshold=50)
+        if suggestion:
+            context.user_data["theme_typo_suggestion"] = suggestion
+            keyboard = [["Yes", "No"]]
             await update.message.reply_text(
-                current_chunk,
-                parse_mode=parse_mode,
+                f"Did you mean: *{suggestion}*?",
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+            )
+            return TYPO_CONFIRM
+        else:
+            await update.message.reply_text(
+                f"😕 No {theme_type} found for theme: *{theme_input}* (semantic & fuzzy match)",
+                parse_mode="Markdown",
                 reply_markup=ReplyKeyboardRemove()
             )
-
-# Step 2: Process the theme selection
-async def handle_theme_selection(update: Update, context: CallbackContext) -> int:
-    """
-    Handles the user's theme selection by filtering the hymns,
-    displays them grouped as known/unknown, and then asks
-    if the user wants to filter by year.
-    """
-    theme_input = update.message.text.strip()
-    # Save theme in user_data for later
-    context.user_data["theme_input"] = theme_input
-
-    data = get_all_data()
-    dfH = data["dfH"]
-    df = data["df"]
-    dfL = data["dfL"]
-    dfC = data["dfC"]
-    # Compute Hymn_Vocabulary dynamically
-    _, Hymn_Vocabulary, _, _ = ChoirVocabulary(df, dfH, dfL, dfC)
-
-    filtered_df = filter_hymns_by_theme(dfH, theme_input)
-
-    if filtered_df.empty:
-        await update.message.reply_text(
-            f"😕 No hymns found for theme: *{theme_input}*",
-            parse_mode="Markdown",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        return ConversationHandler.END
-
-    # Instead of storing formatted strings, store raw hymn numbers.
-    known_hymns = []
-    unknown_hymns = []
-
+            return ConversationHandler.END
+    known_items = []
+    unknown_items = []
     for _, row in filtered_df.iterrows():
-        hymn_no = row["Hymn no"]
-        if hymn_no in Hymn_Vocabulary.values:
-            known_hymns.append(hymn_no)
+        item_no = row[no_col]
+        if item_no in known:
+            known_items.append(item_no)
         else:
-            unknown_hymns.append(hymn_no)
-
-    # Build display lines for known and unknown hymns (show ALL, no limits)
-    display_known = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]} - {dfH[dfH['Hymn no'] == h]['Tunes'].values[0]}" for h in known_hymns]
-    display_unknown = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]}" for h in unknown_hymns]
-
-    message_parts = [f"🎼 *Hymns related to theme:* `{theme_input}`"]
-
+            unknown_items.append(item_no)
+    if theme_type == "hymns":
+        display_known = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]} - {dfH[dfH['Hymn no'] == h]['Tunes'].values[0]}" for h in known_items]
+        display_unknown = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]}" for h in unknown_items]
+        message_parts = [f"🎼 *Hymns related to theme(s):* {', '.join(matched_themes)}"]
+    else:
+        display_known = [f"L-{l} - {dfL[dfL['Lyric no'] == l]['Lyric Index'].values[0]}" for l in known_items]
+        display_unknown = [f"L-{l} - {dfL[dfL['Lyric no'] == l]['Lyric Index'].values[0]}" for l in unknown_items]
+        message_parts = [f"🎼 *Lyrics related to theme(s):* {', '.join(matched_themes)}"]
     if display_known:
-        message_parts.append(f"✅ *Choir Knows ({len(known_hymns)} total):*\n" + "\n".join(display_known))
+        message_parts.append(f"✅ *Choir Knows ({len(known_items)} total):*\n" + "\n".join(display_known))
     else:
-        message_parts.append("❌ *No known hymns found in this theme.*")
-
+        message_parts.append(f"❌ *No known {theme_type} found in this theme.*")
     if display_unknown:
-        message_parts.append(f"❌ *Choir Doesn't Know ({len(unknown_hymns)} total):*\n" + "\n".join(display_unknown) +
-                             "\n\n*Note:* A known song may appear here if not sung in the past 3 years.")
+        message_parts.append(f"❌ *Choir Doesn't Know ({len(unknown_items)} total):*\n" + "\n".join(display_unknown) + "\n\n*Note:* A known song may appear here if not sung in the past 3 years.")
     else:
-        message_parts.append("🎉 *Choir knows all hymns in this theme!*")
-
-    # Use the helper function to send the message (will split automatically if too long)
+        message_parts.append(f"🎉 *Choir knows all {theme_type} in this theme!*")
     await send_long_message(update, message_parts)
-
-    # Store the raw hymn numbers for later processing in year filtering
-    context.user_data["known_hymns"] = known_hymns
-    context.user_data["unknown_hymns"] = unknown_hymns
-
-    # Ask the user if they want to filter by year
+    context.user_data["known_items"] = known_items
+    context.user_data["unknown_items"] = unknown_items
     await update.message.reply_text(
-        "📅 Do you want to filter these hymns to see Songs Sung this year?",
+        "📅 Do you want to filter these to see Songs Sung this year?",
         reply_markup=ReplyKeyboardMarkup([["Yes", "No"]], one_time_keyboard=True, resize_keyboard=True)
     )
     return YEAR_FILTER
 
-# Step 3: Ask the user if they want year filtering
+# Step 2: Process the theme selection (with typo correction logic)
+async def handle_theme_selection(update: Update, context: CallbackContext) -> int:
+    theme_input = update.message.text.strip()
+    return await process_theme_selection(theme_input, update, context)
+
+# Handler for typo confirmation (Yes/No)
+async def handle_theme_typo_confirm(update: Update, context: CallbackContext) -> int:
+    reply = update.message.text.strip().lower()
+    suggestion = context.user_data.get("theme_typo_suggestion")
+    if reply == "yes" and suggestion:
+        context.user_data["theme_input"] = suggestion
+        context.user_data.pop("theme_typo_suggestion", None)
+        return await process_theme_selection(suggestion, update, context)
+    else:
+        await update.message.reply_text(
+            "Sorry, nothing was found.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        context.user_data.pop("theme_typo_suggestion", None)
+        return ConversationHandler.END
+
+# Step 3: Ask the user if they want year filtering (now supports both Hymns and Lyrics)
 async def handle_year_filter(update: Update, context: CallbackContext) -> int:
     reply = update.message.text.strip().lower()
     if reply != "yes":
@@ -1008,12 +1094,27 @@ async def handle_year_filter(update: Update, context: CallbackContext) -> int:
         return ConversationHandler.END
 
     s_year = datetime.now().year  # Automatically get current year
-
     data = get_all_data()
-    dfH = data["dfH"]
+    theme_type = context.user_data.get("theme_type", "hymns")
+    theme = context.user_data.get("theme_input", "")
+    known = context.user_data.get("known_items", [])
+    unknown = context.user_data.get("unknown_items", [])
 
-    def get_last_sung_date(hymn_code):
-        result = Datefinder(songs=hymn_code, first=True)
+    if theme_type == "hymns":
+        df = data["dfH"]
+        no_col = "Hymn no"
+        index_col = "Hymn Index"
+        tune_col = "Tunes"
+        prefix = "H-"
+    else:
+        df = data["dfL"]
+        no_col = "Lyric no"
+        index_col = "Lyric Index"
+        tune_col = None
+        prefix = "L-"
+
+    def get_last_sung_date(song_code):
+        result = Datefinder(songs=song_code, first=True)
         if result and len(result) >= 10:
             try:
                 return datetime.strptime(result[-10:], "%d/%m/%Y")
@@ -1021,45 +1122,45 @@ async def handle_year_filter(update: Update, context: CallbackContext) -> int:
                 return None
         return None
 
-    # Group by year: Expect hymn_list to contain raw hymn numbers.
-    def group_by_year(hymn_list):
+    def group_by_year(item_list):
         sung, not_sung = [], []
-        for h in hymn_list:
-            hymn_code = f"H-{h}"
-            date_obj = get_last_sung_date(hymn_code)
-            # Retrieve hymn index from DataFrame
-            index = dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]
-            tune = dfH[dfH['Hymn no'] == h]['Tunes'].values[0]
-            if date_obj and date_obj.year == s_year:
-                sung.append(f"{hymn_code} - {index}  -{tune}")
+        for item in item_list:
+            song_code = f"{prefix}{item}"
+            date_obj = get_last_sung_date(song_code)
+            # Retrieve index (and tune if hymns) from DataFrame
+            index = df[df[no_col] == item][index_col].values[0]
+            if theme_type == "hymns":
+                tune = df[df[no_col] == item][tune_col].values[0]
             else:
-                not_sung.append(f"{hymn_code} - {index} -{tune}")
+                tune = None
+            if date_obj and date_obj.year == s_year:
+                if theme_type == "hymns":
+                    sung.append(f"{song_code} - {index}  -{tune}")
+                else:
+                    sung.append(f"{song_code} - {index}")
+            else:
+                if theme_type == "hymns":
+                    not_sung.append(f"{song_code} - {index} -{tune}")
+                else:
+                    not_sung.append(f"{song_code} - {index}")
         return sung, not_sung
 
-    # Retrieve stored hymn numbers and theme from user_data
-    known = context.user_data.get("known_hymns", [])
-    unknown = context.user_data.get("unknown_hymns", [])
-    theme = context.user_data.get("theme_input", "")
-
     sung_known, not_sung_known = group_by_year(known)
-    # For unknown hymns, only the "not sung" part is needed.
     not_sung_unknown = group_by_year(unknown)[1]
 
     message_parts = [f"📅 *Theme:* `{theme}` – *Year:* {s_year}"]
 
     if sung_known:
         message_parts.append(f"✅ *Songs that were Sung ({len(sung_known)} total):*\n" + "\n".join(sung_known))
-
     if not_sung_known:
         message_parts.append(f"❌ *Songs that were Not Sung ({len(not_sung_known)} total):*\n" + "\n".join(not_sung_known))
-
     if not_sung_unknown:
         message_parts.append(f"🚫 *Songs Choir Doesn't Know ({len(not_sung_unknown)} total):*\n" + "\n".join(not_sung_unknown))
 
     # Use the helper function to send the message (will split automatically if too long)
     await send_long_message(update, message_parts)
     return ConversationHandler.END
- 
+
 # Add this function to periodically upload logs
 async def periodic_log_upload():
     """Periodically upload logs to Google Drive."""
