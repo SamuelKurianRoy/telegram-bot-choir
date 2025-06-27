@@ -507,7 +507,7 @@ if page == "Dashboard":
     st.markdown("<h2 class='sub-header'>Recent Activity</h2>", unsafe_allow_html=True)
     
     # Get the most recent user interactions
-    user_log_recent = get_log_content("user_log.txt", max_lines=5)
+    user_log_recent = get_log_content("bot_log.txt", max_lines=5)
     if user_log_recent != "Log file not found.":
         st.code(user_log_recent, language="text")
     else:
