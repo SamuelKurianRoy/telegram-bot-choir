@@ -12,6 +12,10 @@ import subprocess as sp
 import platform
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+import hashlib
+import json
+from datetime import datetime, timedelta
+import shutil
 
 try:
     import yt_dlp
@@ -184,6 +188,7 @@ class AudioDownloader:
                                            capture_output=True, text=True, timeout=10)
                         if test_result.returncode == 0:
                             logger.info("Local FFmpeg is working correctly")
+                            downloader_logger.info("Local FFmpeg is working correctly")
                             return str(ffmpeg_dir)
                         else:
                             logger.warning(f"Local FFmpeg test failed: {test_result.stderr}")
@@ -922,20 +927,113 @@ class AudioDownloader:
             logger.error(f"Error extracting Spotify info: {e}")
             return None
 
-    async def download_audio(self, url: str, quality: str = "medium") -> Optional[Tuple[Path, Dict]]:
-        """Download audio from URL"""
+    async def download_audio(self, url: str, quality: str = "medium", chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
+        """Download audio from URL, passing chat_id for checkpoint/resume."""
         platform = self.detect_platform(url)
-        
         if platform == 'Spotify':
-            return await self.download_spotify_audio(url, quality)
+            return await self.download_spotify_audio(url, quality, chat_id=chat_id)
         else:
-            return await self.download_youtube_audio(url, quality)
+            return await self.download_youtube_audio(url, quality, chat_id=chat_id)
     
-    async def download_youtube_audio(self, url: str, quality: str) -> Optional[Tuple[Path, Dict]]:
-        """Download audio from YouTube using yt-dlp"""
-        if not yt_dlp:
-            raise Exception("yt-dlp not installed")
-            
+    async def download_youtube_audio(self, url: str, quality: str, chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
+        """Download audio from YouTube using yt-dlp, with checkpoint/resume support."""
+        import hashlib
+        import json
+        from datetime import datetime, timedelta
+
+        def get_track_id(url):
+            return hashlib.md5(url.encode()).hexdigest()[:12]
+
+        def get_temp_paths(chat_id, track_id):
+            base = Path(self.temp_dir)
+            audio = base / f"{chat_id}_{track_id}.mp3"
+            meta = base / f"{chat_id}_{track_id}.json"
+            return audio, meta
+
+        def cleanup_old_temp_files():
+            now = datetime.now()
+            for f in Path(self.temp_dir).glob("*"):
+                if f.is_file() and f.suffix in {'.mp3', '.json'}:
+                    mtime = datetime.fromtimestamp(f.stat().st_mtime)
+                    if now - mtime > timedelta(hours=24):
+                        try:
+                            f.unlink()
+                        except Exception as e:
+                            logger.warning(f"Failed to delete old temp file {f}: {e}")
+
+        # Clean up old temp files
+        cleanup_old_temp_files()
+
+        track_id = get_track_id(url)
+        if not chat_id:
+            chat_id = 'default'
+        audio_path, meta_path = get_temp_paths(chat_id, track_id)
+
+        # Check for existing audio and metadata
+        if audio_path.exists() and meta_path.exists():
+            try:
+                with open(meta_path, 'r', encoding='utf-8') as f:
+                    info = json.load(f)
+                logger.info(f"Resuming: found audio and metadata for {audio_path}")
+                # Try to embed metadata if not already present
+                try:
+                    from mutagen.id3 import ID3, TIT2, TPE1, TALB, APIC, error
+                    from mutagen.mp3 import MP3
+                    import requests
+                    audio = MP3(audio_path, ID3=ID3)
+                    try:
+                        audio.add_tags()
+                    except error:
+                        pass
+                    tags = audio.tags
+                    tags.delall('TIT2')
+                    tags.add(TIT2(encoding=3, text=info.get('title', 'Unknown')))
+                    tags.delall('TPE1')
+                    tags.add(TPE1(encoding=3, text=info.get('uploader', 'Unknown')))
+                    tags.delall('TALB')
+                    tags.add(TALB(encoding=3, text=info.get('album', 'YouTube')))
+                    thumbnail_url = info.get('thumbnail')
+                    if thumbnail_url:
+                        try:
+                            response = requests.get(thumbnail_url)
+                            if response.status_code == 200:
+                                tags.delall('APIC')
+                                tags.add(
+                                    APIC(
+                                        encoding=3,
+                                        mime='image/jpeg',
+                                        type=3,
+                                        desc='Cover',
+                                        data=response.content
+                                    )
+                                )
+                                logger.info(f"Embedded cover art from {thumbnail_url}")
+                        except Exception as thumb_e:
+                            logger.warning(f"Exception downloading or embedding thumbnail: {thumb_e}")
+                    audio.save()
+                    logger.info(f"Metadata and cover art embedded for {audio_path}")
+                except Exception as meta_e:
+                    logger.warning(f"Failed to robustly embed metadata or cover art: {meta_e}")
+                file_info = {
+                    'title': info.get('title', 'Unknown'),
+                    'artist': info.get('uploader', 'Unknown'),
+                    'duration': info.get('duration', 0),
+                    'size_mb': audio_path.stat().st_size / (1024 * 1024),
+                    'platform': 'YouTube',
+                    'filename': str(audio_path.name)
+                }
+                # Delete temp files after successful resume
+                try:
+                    audio_path.unlink()
+                    meta_path.unlink()
+                except Exception as cleanup_e:
+                    logger.warning(f"Failed to delete temp files after resume: {cleanup_e}")
+                return audio_path, file_info
+            except Exception as e:
+                logger.warning(f"Failed to resume from temp files: {e}")
+                # If resume fails, fall through to fresh download
+
+        # Otherwise, proceed with fresh download
         try:
             # Quality mapping
             quality_map = {
@@ -1065,6 +1163,10 @@ class AudioDownloader:
                 logger.warning(f"Failed to robustly embed metadata or cover art: {meta_e}")
             # --- End robust metadata embedding ---
 
+            # Save metadata
+            with open(meta_path, 'w', encoding='utf-8') as f:
+                json.dump(info, f)
+
             file_info = {
                 'title': info.get('title', 'Unknown'),
                 'artist': info.get('uploader', 'Unknown'),
@@ -1080,22 +1182,107 @@ class AudioDownloader:
             logger.error(f"YouTube download failed: {e}")
             return None
     
-    async def download_spotify_audio(self, url: str, quality: str) -> Optional[Tuple[Path, Dict]]:
-        """Download Spotify audio using spotdl with Streamlit Cloud optimizations"""
+    async def download_spotify_audio(self, url: str, quality: str, chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
+        """Download Spotify audio using spotdl with Streamlit Cloud optimizations and checkpoint/resume support."""
+        import hashlib
+        import json
+        from datetime import datetime, timedelta
+        import shutil
+
+        def get_track_id(url):
+            return hashlib.md5(url.encode()).hexdigest()[:12]
+
+        def get_temp_paths(chat_id, track_id):
+            base = Path(self.temp_dir)
+            audio = base / f"{chat_id}_{track_id}.mp3"
+            meta = base / f"{chat_id}_{track_id}.json"
+            return audio, meta
+
+        def cleanup_old_temp_files():
+            now = datetime.now()
+            for f in Path(self.temp_dir).glob("*"):
+                if f.is_file() and f.suffix in {'.mp3', '.json'}:
+                    mtime = datetime.fromtimestamp(f.stat().st_mtime)
+                    if now - mtime > timedelta(hours=24):
+                        try:
+                            f.unlink()
+                        except Exception as e:
+                            logger.warning(f"Failed to delete old temp file {f}: {e}")
+
+        # Clean up old temp files
+        cleanup_old_temp_files()
+
+        track_id = get_track_id(url)
+        if not chat_id:
+            chat_id = 'default'
+        audio_path, meta_path = get_temp_paths(chat_id, track_id)
+
+        # Check for existing audio and metadata
+        if audio_path.exists() and meta_path.exists():
+            try:
+                with open(meta_path, 'r', encoding='utf-8') as f:
+                    info = json.load(f)
+                logger.info(f"Resuming: found audio and metadata for {audio_path}")
+                # Try to embed metadata if not already present
+                try:
+                    from mutagen.id3 import ID3, TIT2, TPE1, TALB, APIC, error
+                    from mutagen.mp3 import MP3
+                    import requests
+                    audio = MP3(audio_path, ID3=ID3)
+                    try:
+                        audio.add_tags()
+                    except error:
+                        pass
+                    tags = audio.tags
+                    tags.delall('TIT2')
+                    tags.add(TIT2(encoding=3, text=info.get('title', 'Unknown')))
+                    tags.delall('TPE1')
+                    tags.add(TPE1(encoding=3, text=info.get('artist', 'Unknown')))
+                    tags.delall('TALB')
+                    tags.add(TALB(encoding=3, text=info.get('album', 'Spotify')))
+                    thumbnail_url = info.get('thumbnail')
+                    if thumbnail_url:
+                        try:
+                            response = requests.get(thumbnail_url)
+                            if response.status_code == 200:
+                                tags.delall('APIC')
+                                tags.add(
+                                    APIC(
+                                        encoding=3,
+                                        mime='image/jpeg',
+                                        type=3,
+                                        desc='Cover',
+                                        data=response.content
+                                    )
+                                )
+                                logger.info(f"Embedded cover art from {thumbnail_url}")
+                        except Exception as thumb_e:
+                            logger.warning(f"Exception downloading or embedding thumbnail: {thumb_e}")
+                    audio.save()
+                    logger.info(f"Metadata and cover art embedded for {audio_path}")
+                except Exception as meta_e:
+                    logger.warning(f"Failed to robustly embed metadata or cover art: {meta_e}")
+                file_info = {
+                    'title': info.get('title', 'Unknown'),
+                    'artist': info.get('artist', 'Unknown'),
+                    'duration': info.get('duration', 0),
+                    'size_mb': audio_path.stat().st_size / (1024 * 1024),
+                    'platform': 'Spotify',
+                    'filename': str(audio_path.name)
+                }
+                # Delete temp files after successful resume
+                try:
+                    audio_path.unlink()
+                    meta_path.unlink()
+                except Exception as cleanup_e:
+                    logger.warning(f"Failed to delete temp files after resume: {cleanup_e}")
+                return audio_path, file_info
+            except Exception as e:
+                logger.warning(f"Failed to resume from temp files: {e}")
+                # If resume fails, fall through to fresh download
+
+        # Otherwise, proceed with fresh download
         try:
-            # On Streamlit Cloud, be more aggressive about using fallback
-            if self.is_streamlit_cloud:
-                logger.info("Running on Streamlit Cloud - testing spotdl with shorter timeout")
-
-            # First test if spotdl is working
-            spotdl_test = await self.test_spotdl_installation()
-            logger.info(f"spotdl test result: {spotdl_test}")
-
-            if spotdl_test['status'] != 'working':
-                logger.error(f"spotdl is not working: {spotdl_test['error']}")
-                logger.info("Attempting fallback to YouTube search immediately")
-                return await self.download_spotify_fallback(url, quality)
-
             # Quality mapping
             quality_map = {
                 "high": "320",
@@ -1281,17 +1468,34 @@ class AudioDownloader:
                 title = filename
                 artist = "Unknown Artist"
 
+            # After finding and processing the downloaded file:
+            # Save metadata
+            info = {
+                'title': title,
+                'artist': artist,
+                'duration': 0,
+                'album': 'Spotify',
+                'thumbnail': None,  # You can add thumbnail extraction if available
+            }
+            with open(meta_path, 'w', encoding='utf-8') as f:
+                json.dump(info, f)
+            # Copy audio to temp path
+            shutil.copy(str(downloaded_file), str(audio_path))
+            # Delete temp files after successful download
+            try:
+                audio_path.unlink()
+                meta_path.unlink()
+            except Exception as cleanup_e:
+                logger.warning(f"Failed to delete temp files after download: {cleanup_e}")
             file_info = {
                 'title': title,
                 'artist': artist,
                 'duration': 0,
                 'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
                 'platform': 'Spotify',
-                'format': file_extension.lstrip('.')
+                'filename': str(downloaded_file.name)
             }
-
             return downloaded_file, file_info
-            
         except Exception as e:
             logger.error(f"Spotify download failed: {e}")
             # Try fallback

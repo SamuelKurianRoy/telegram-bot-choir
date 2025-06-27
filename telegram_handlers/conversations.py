@@ -504,7 +504,7 @@ async def download_url_input(update: Update, context: CallbackContext) -> int:
 
     # Show quality selection
     quality_keyboard = [
-        ["🔥 High Quality (320kbps)", "�� Medium Quality (192kbps)"],
+        ["🔥 High Quality (320kbps)", "🎵 Medium Quality (192kbps)"],
         ["💾 Low Quality (128kbps)", "❌ Cancel"]
     ]
 
@@ -572,7 +572,7 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
         downloader = AudioDownloader()
 
         # Download the audio
-        result = await downloader.download_audio(url, quality)
+        result = await downloader.download_audio(url, quality, chat_id=chat_id)
 
         if result is None:
             # Log failed download to Google Doc
