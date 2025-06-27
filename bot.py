@@ -1,7 +1,6 @@
 # Debugging: Check if python-telegram-bot is installed and print confirmation
 try:
     import telegram
-    print("python-telegram-bot is installed and importable.")
     print("python-telegram-bot version:", getattr(telegram, '__version__', 'unknown'))
     from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackQueryHandler
 except ImportError as e:

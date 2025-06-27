@@ -922,8 +922,6 @@ class AudioDownloader:
             logger.error(f"Error extracting Spotify info: {e}")
             return None
 
-
-
     async def download_audio(self, url: str, quality: str = "medium") -> Optional[Tuple[Path, Dict]]:
         """Download audio from URL"""
         platform = self.detect_platform(url)
@@ -1001,7 +999,81 @@ class AudioDownloader:
                 'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
                 'platform': 'YouTube'
             }
-            
+
+            # --- Rename file to '<title> - <artist>.mp3' ---
+            try:
+                import re
+                def sanitize(s):
+                    return re.sub(r'[\\/:*?\"<>|]', '', s)
+                title = sanitize(info.get('title', 'Unknown'))
+                artist = sanitize(info.get('uploader', 'Unknown'))
+                new_filename = f"{title} - {artist}.mp3"
+                new_filepath = downloaded_file.parent / new_filename
+                downloaded_file.rename(new_filepath)
+                logger.info(f"Renamed file to: {new_filename}")
+                downloaded_file = new_filepath
+            except Exception as rename_e:
+                logger.warning(f"Failed to rename file: {rename_e}")
+            # --- End renaming ---
+
+            # --- Robustly embed metadata and cover art using mutagen.id3 ---
+            try:
+                from mutagen.id3 import ID3, TIT2, TPE1, TALB, APIC, error
+                from mutagen.mp3 import MP3
+                import requests
+
+                audio = MP3(downloaded_file, ID3=ID3)
+                # Add ID3 tag if it doesn't exist
+                try:
+                    audio.add_tags()
+                except error:
+                    pass
+                tags = audio.tags
+                tags.delall('TIT2')
+                tags.add(TIT2(encoding=3, text=info.get('title', 'Unknown')))
+                tags.delall('TPE1')
+                tags.add(TPE1(encoding=3, text=info.get('uploader', 'Unknown')))
+                tags.delall('TALB')
+                tags.add(TALB(encoding=3, text=info.get('album', 'YouTube')))
+
+                # Download and embed cover art (YouTube thumbnail)
+                thumbnail_url = info.get('thumbnail')
+                if thumbnail_url:
+                    try:
+                        response = requests.get(thumbnail_url)
+                        if response.status_code == 200:
+                            tags.delall('APIC')
+                            tags.add(
+                                APIC(
+                                    encoding=3,  # 3 is for utf-8
+                                    mime='image/jpeg',
+                                    type=3,  # Cover (front)
+                                    desc='Cover',
+                                    data=response.content
+                                )
+                            )
+                            logger.info(f"Embedded cover art from {thumbnail_url}")
+                        else:
+                            logger.warning(f"Failed to download thumbnail: {thumbnail_url} (status {response.status_code})")
+                    except Exception as thumb_e:
+                        logger.warning(f"Exception downloading or embedding thumbnail: {thumb_e}")
+                else:
+                    logger.warning("No thumbnail URL found in YouTube info for cover art.")
+                audio.save()
+                logger.info(f"Metadata and cover art embedded for {downloaded_file}")
+            except Exception as meta_e:
+                logger.warning(f"Failed to robustly embed metadata or cover art: {meta_e}")
+            # --- End robust metadata embedding ---
+
+            file_info = {
+                'title': info.get('title', 'Unknown'),
+                'artist': info.get('uploader', 'Unknown'),
+                'duration': info.get('duration', 0),
+                'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
+                'platform': 'YouTube',
+                'filename': str(downloaded_file.name)
+            }
+
             return downloaded_file, file_info
             
         except Exception as e:

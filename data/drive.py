@@ -77,7 +77,7 @@ def upload_log_to_google_doc(doc_id: str, log_file: str):
             documentId=doc_id,
             body={'requests': requests}
         ).execute()
-        print(f"✅ Successfully uploaded {log_file} to Google Doc ({doc_id})")
+        print(f"✅ Successfully uploaded {log_file} to Google Doc")
     except HttpError as e:
         print(f"❌ Failed to log due to: {e}")
 
@@ -99,7 +99,7 @@ def append_download_to_google_doc(yfile_id: str, download_entry: str):
             documentId=yfile_id,
             body={"requests": requests}
         ).execute()
-        print("✅ Download entry appended to Google Doc.")
+        print("✅ Download successful")
     except Exception as e:
         print(f"❌ Failed to append download entry to Google Doc ({yfile_id}): {e}")
 

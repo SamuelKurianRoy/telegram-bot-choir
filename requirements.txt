@@ -48,3 +48,6 @@ sentence-transformers
 
 # Added from the code block
 rapidfuzz
+
+# Added from the code block
+mutagen
