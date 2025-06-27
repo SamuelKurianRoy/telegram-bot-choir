@@ -1362,9 +1362,9 @@ async def process_comment(update: Update, context: CallbackContext) -> int:
             documentId=comfile_id,
             body={"requests": requests}
         ).execute()
-        print("✅ Comment appended to Google Doc.")
+        print("✅ Comment successfully send.")
     except Exception as e:
-        logging.error(f"❌ Failed to append comment to Google Doc ({comfile_id}): {e}")
+        logging.error(f"❌ Failed to comment: {e}")
 
     # Confirm to the user
     await update.message.reply_text("✅ Thank you for your feedback! We appreciate your thoughts.")

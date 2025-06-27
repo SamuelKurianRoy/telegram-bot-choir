@@ -99,8 +99,8 @@ def append_download_to_google_doc(yfile_id: str, download_entry: str):
             documentId=yfile_id,
             body={"requests": requests}
         ).execute()
-        print("✅ Download successful")
+        print("✅ Query successful")
     except Exception as e:
-        print(f"❌ Failed to append download entry to Google Doc ({yfile_id}): {e}")
+        print(f"❌ Failed to Query Youtube: {e}")
 
 # TODO: Add file download/upload helpers as needed for your bot 
