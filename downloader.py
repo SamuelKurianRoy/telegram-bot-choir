@@ -1180,6 +1180,35 @@ class AudioDownloader:
             
         except Exception as e:
             logger.error(f"YouTube download failed: {e}")
+            # Proxy fallback for 403 Forbidden
+            if ("403" in str(e) or "Forbidden" in str(e)):
+                logger.warning("403 Forbidden detected. Retrying with proxy...")
+                proxy_url = 'http://proxy.scrapeops.io:5353'  # Example reliable public proxy
+                ydl_opts['proxy'] = proxy_url
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = await asyncio.wait_for(
+                            asyncio.get_event_loop().run_in_executor(
+                                None, lambda: ydl.extract_info(url, download=True)
+                            ),
+                            timeout=300
+                        )
+                    downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
+                    if not downloaded_files:
+                        raise FileNotFoundError("Download failed - no file found (proxy)")
+                    downloaded_file = downloaded_files[0]
+                    file_info = {
+                        'title': info.get('title', 'Unknown'),
+                        'artist': info.get('uploader', 'Unknown'),
+                        'duration': info.get('duration', 0),
+                        'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
+                        'platform': 'YouTube (proxy)'
+                    }
+                    # (Optional: repeat renaming and metadata logic here if needed)
+                    return downloaded_file, file_info
+                except Exception as proxy_e:
+                    logger.error(f"Proxy download also failed: {proxy_e}")
+                    return None
             return None
     
     async def download_spotify_audio(self, url: str, quality: str, chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
