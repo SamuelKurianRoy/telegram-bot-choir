@@ -29,9 +29,9 @@ nest_asyncio>=1.5.0
 psutil>=5.8.0
 
 # Audio downloader dependencies
-yt-dlp
+yt-dlp>=2024.4.9
 requests
-spotdl
+spotdl>=4.2.0
 
 # Additional dependencies that might be needed
 httplib2==0.22.0
