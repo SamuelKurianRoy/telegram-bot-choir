@@ -39,6 +39,115 @@ authorized_users = list(map(int, authorized_users_str.split(','))) if authorized
 # Downloader feature flag
 DOWNLOADER_AVAILABLE = True
 
+# Add new states for notation
+NOTATION_TYPE, NOTATION_HYMN_INPUT, NOTATION_LYRIC_INPUT = range(100, 103)
+
+# Lyrics PDF logic
+LYRICS_DOWNLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'tmp')
+LYRICS_FOLDER_ID = st.secrets["L_SHEET_MUSIC"]
+LYRICS_FOLDER_URL = f'https://drive.google.com/drive/folders/{LYRICS_FOLDER_ID}'
+
+def extract_lyrics_folder_id(folder_url):
+    match = re.search(r'/folders/([a-zA-Z0-9_-]+)', folder_url)
+    if match:
+        return match.group(1)
+    raise ValueError("Invalid folder URL")
+
+def fetch_lyrics_file_map(folder_url):
+    folder_id = extract_lyrics_folder_id(folder_url)
+    lyrics_file_map = {}
+    page_token = None
+    while True:
+        response = drive_service.files().list(
+            q=f"'{folder_id}' in parents and mimeType = 'application/pdf' and trashed = false",
+            fields="nextPageToken, files(id, name)",
+            pageToken=page_token
+        ).execute()
+        for file in response.get('files', []):
+            filename = file['name']
+            match = re.match(r'L-(\d+)\.pdf$', filename)
+            if match:
+                lyric_no = int(match.group(1))
+                lyrics_file_map[lyric_no] = file['id']
+        page_token = response.get('nextPageToken', None)
+        if page_token is None:
+            break
+    return lyrics_file_map
+
+def download_lyrics_pdf(file_id, filename):
+    url = f"https://drive.google.com/uc?id={file_id}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        save_path = os.path.join(LYRICS_DOWNLOAD_DIR, filename)
+        with open(save_path, 'wb') as f:
+            f.write(response.content)
+        return save_path
+    else:
+        return None
+
+def get_lyrics_pdf_by_lyric_number(lyric_number, lyrics_file_map):
+    lyric_number = int(lyric_number)
+    if lyric_number in lyrics_file_map:
+        file_id = lyrics_file_map[lyric_number]
+        filename = f"L-{lyric_number}.pdf"
+        return download_lyrics_pdf(file_id, filename)
+    else:
+        return None
+
+os.makedirs(LYRICS_DOWNLOAD_DIR, exist_ok=True)
+lyrics_file_map = fetch_lyrics_file_map(LYRICS_FOLDER_URL)
+
+# --- /notation command (interactive only, no arguments supported) ---
+async def notation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📖 Please enter the hymn or lyric number (e.g. H-86 or L-222):",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return NOTATION_TYPE
+
+async def notation_code_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    code_input_raw = update.message.text
+    code_input = standardize_hlc_value(code_input_raw)
+    if code_input.startswith("H-") and code_input[2:].isdigit():
+        song_id = code_input
+        tunes = Tune_finder_of_known_songs(song_id)
+        if not tunes or tunes == "Invalid Number":
+            await update.message.reply_text(f"❌ No known tunes found for {song_id}. Try again or type /cancel to stop.")
+            return NOTATION_TYPE
+        if isinstance(tunes, str):
+            tune_list = [t.strip() for t in tunes.split(",") if t.strip()]
+        else:
+            await update.message.reply_text("⚠️ Could not parse tunes.")
+            return ConversationHandler.END
+        if not tune_list:
+            await update.message.reply_text("🎵 No tunes available.")
+            return ConversationHandler.END
+        keyboard = [
+            [InlineKeyboardButton(tune, callback_data=f"notation:{tune}|{song_id}")]
+            for tune in tune_list
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            f"🎶 Select a tune for {song_id}:", reply_markup=reply_markup
+        )
+        return ConversationHandler.END
+    elif code_input.startswith("L-") and code_input[2:].isdigit():
+        lyric_number = int(code_input[2:])
+        pdf_path = get_lyrics_pdf_by_lyric_number(lyric_number, lyrics_file_map)
+        if pdf_path:
+            with open(pdf_path, 'rb') as pdf_file:
+                await update.message.reply_document(
+                    document=pdf_file,
+                    filename=f"L-{lyric_number}.pdf",
+                    caption=f"Here is the notation for Lyric L-{lyric_number}."
+                )
+        else:
+            await update.message.reply_text(f"❌ Could not find notation PDF for Lyric L-{lyric_number}.")
+        return ConversationHandler.END
+    else:
+        await update.message.reply_text("❌ Invalid format. Please use H-<number> or L-<number> (e.g. H-86 or L-222). Try again or type /cancel to stop.")
+        return NOTATION_TYPE
+
 # --- Conversation States ---
 # Example: CHECK_SONG, ENTER_SONG, etc.
 # TODO: Define all necessary states for conversations
@@ -297,39 +406,7 @@ async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE
             sent_any = True
 
 
-# /notation command handler
-async def notation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("❗ Usage: /notation <SongID> (e.g. /notation H-86)")
-        return
 
-    song_id = standardize_hlc_value(" ".join(context.args).strip())
-
-    tunes = Tune_finder_of_known_songs(song_id)
-    if not tunes or tunes == "Invalid Number":
-        await update.message.reply_text(f"❌ No known tunes found for {song_id}")
-        return
-
-    if isinstance(tunes, str):
-        tune_list = [t.strip() for t in tunes.split(",") if t.strip()]
-    else:
-        await update.message.reply_text("⚠️ Could not parse tunes.")
-        return
-
-    if not tune_list:
-        await update.message.reply_text("🎵 No tunes available.")
-        return
-
-    # Create inline buttons: callback_data format "notation:tune|song_id"
-    keyboard = [
-        [InlineKeyboardButton(tune, callback_data=f"notation:{tune}|{song_id}")]
-        for tune in tune_list
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await update.message.reply_text(
-        f"🎶 Select a tune for {song_id}:", reply_markup=reply_markup
-    )
 async def start_notation(update: Update, context: ContextTypes.DEFAULT_TYPE):
    await update.message.reply_text("📖 Please enter the hymn number (e.g. H-86):")
    return ASK_HYMN_NO
