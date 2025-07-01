@@ -113,15 +113,18 @@ async def notation_code_input(update: Update, context: ContextTypes.DEFAULT_TYPE
         tunes = Tune_finder_of_known_songs(song_id)
         if not tunes or tunes == "Invalid Number":
             await update.message.reply_text(f"❌ No known tunes found for {song_id}. Try again or type /cancel to stop.")
+            await update.message.reply_text("Enter another hymn or lyric number, or type /cancel to stop.")
             return NOTATION_TYPE
         if isinstance(tunes, str):
             tune_list = [t.strip() for t in tunes.split(",") if t.strip()]
         else:
             await update.message.reply_text("⚠️ Could not parse tunes.")
-            return ConversationHandler.END
+            await update.message.reply_text("Enter another hymn or lyric number, or type /cancel to stop.")
+            return NOTATION_TYPE
         if not tune_list:
             await update.message.reply_text("🎵 No tunes available.")
-            return ConversationHandler.END
+            await update.message.reply_text("Enter another hymn or lyric number, or type /cancel to stop.")
+            return NOTATION_TYPE
         keyboard = [
             [InlineKeyboardButton(tune, callback_data=f"notation:{tune}|{song_id}")]
             for tune in tune_list
@@ -130,10 +133,13 @@ async def notation_code_input(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(
             f"🎶 Select a tune for {song_id}:", reply_markup=reply_markup
         )
-        return ConversationHandler.END
+        await update.message.reply_text("Enter another hymn or lyric number, or type /cancel to stop.")
+        return NOTATION_TYPE
     elif code_input.startswith("L-") and code_input[2:].isdigit():
         lyric_number = int(code_input[2:])
+        downloading_msg = await update.message.reply_text("⏳ Downloading music sheet... Please wait.")
         pdf_path = get_lyrics_pdf_by_lyric_number(lyric_number, lyrics_file_map)
+        await downloading_msg.delete()
         if pdf_path:
             with open(pdf_path, 'rb') as pdf_file:
                 await update.message.reply_document(
@@ -143,9 +149,11 @@ async def notation_code_input(update: Update, context: ContextTypes.DEFAULT_TYPE
                 )
         else:
             await update.message.reply_text(f"❌ Could not find notation PDF for Lyric L-{lyric_number}.")
-        return ConversationHandler.END
+        await update.message.reply_text("Enter another hymn or lyric number, or type /cancel to stop.")
+        return NOTATION_TYPE
     else:
         await update.message.reply_text("❌ Invalid format. Please use H-<number> or L-<number> (e.g. H-86 or L-222). Try again or type /cancel to stop.")
+        await update.message.reply_text("Enter another hymn or lyric number, or type /cancel to stop.")
         return NOTATION_TYPE
 
 # --- Conversation States ---
@@ -457,8 +465,12 @@ async def handle_notation_callback(update: Update, context: ContextTypes.DEFAULT
         await query.edit_message_text("⚠️ Invalid callback format.")
         return
 
+    # Show downloading message
+    downloading_msg = await context.bot.send_message(chat_id=query.message.chat_id, text="⏳ Downloading music sheet... Please wait.")
     # Send the image using the fixed function
     await send_notation_image(update, context, tune_name.strip(), song_id.strip())
+    # Delete the downloading message
+    await downloading_msg.delete()
 
 
 
@@ -552,7 +564,7 @@ async def download_start(update: Update, context: CallbackContext) -> int:
         "*Supported platforms:*\n"
         "• YouTube (youtube.com, youtu.be)\n"
         "• Spotify (spotify.com)\n"
-        "• SoundCloud (soundcloud.com)\n\n"
+        "\n"
         "Just paste the link and I'll download the audio for you!",
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardRemove()
@@ -570,7 +582,7 @@ async def download_url_input(update: Update, context: CallbackContext) -> int:
     # Check if URL is supported
     if not downloader.is_supported_url(user_input):
         await update.message.reply_text(
-            "❌ This URL is not supported. Please send a YouTube, Spotify, or SoundCloud link.",
+            "❌ This URL is not supported. Please send a YouTube or Spotify link.",
             reply_markup=ReplyKeyboardRemove()
         )
         return ENTER_URL

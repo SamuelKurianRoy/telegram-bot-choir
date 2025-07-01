@@ -13,9 +13,10 @@ try:
     from data.vocabulary import ChoirVocabulary
     from utils.search import setup_search
     from telegram_handlers.handlers import (
-        start, help_command, refresh_command, admin_reply, cancel, date_command, 
+        start, help_command, refresh_command, admin_reply, cancel, 
         check_song_start, last_sung_start, check_song_input, ENTER_SONG, 
-        last_sung_input, last_sung_show_all, ENTER_LAST_SONG, ASK_SHOW_ALL
+        last_sung_input, last_sung_show_all, ENTER_LAST_SONG, ASK_SHOW_ALL,
+        date_start, date_input, ASK_DATE
     )
     from telegram_handlers.conversations import (
         SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT,
@@ -148,14 +149,18 @@ notation_conv_handler = ConversationHandler(
     fallbacks=[CommandHandler("cancel", cancel)],
 )
 
+# Register the new date conversation handler
+date_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("date", date_start)],
+    states={
+        ASK_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, date_input)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
 
-
- 
- 
- 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
-app.add_handler(CommandHandler("date", date_command))
+app.add_handler(date_conv_handler)
 app.add_handler(CommandHandler("refresh", refresh_command))
 app.add_handler(CommandHandler("reply", admin_reply))
 app.add_handler(CallbackQueryHandler(handle_notation_callback, pattern="^notation:"))

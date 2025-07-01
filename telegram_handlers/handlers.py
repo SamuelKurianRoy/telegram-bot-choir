@@ -19,16 +19,12 @@ bot_logger, user_logger = setup_loggers()
 authorized_users_str = st.secrets["AUTHORIZED_USERS"]
 authorized_users = list(map(int, authorized_users_str.split(','))) if authorized_users_str else []
 
-
-
 # Log messages from users
 async def log_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     msg = update.message.text
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /start")
     await update.message.reply_text("Message received!")
-
-
 
 #Authorization
 async def is_authorized(update: Update) -> bool:
@@ -50,9 +46,6 @@ async def is_authorized(update: Update) -> bool:
    return True
 
 ADMIN_ID = int(st.secrets["ADMIN_ID"])
-
-
-
 
 #Start
 async def start(update: Update, context: CallbackContext) -> None:
@@ -86,10 +79,6 @@ async def start(update: Update, context: CallbackContext) -> None:
 
     await update.message.reply_text(welcome_text, parse_mode="HTML")
 
-
-
-
-
 #Help
 async def help_command(update: Update, context: CallbackContext) -> None:
      user = update.effective_user
@@ -120,21 +109,20 @@ async def help_command(update: Update, context: CallbackContext) -> None:
 "     - _By Tune Index:_ Provides the top matching hymns using fuzzy matching on tune names.\n"
 "  - *Example:* Type `/tune` and choose either *Hymn Number* or *Tune Index*, then enter your query (e.g. `Whit` or `29`).\n\n"
 "• **/notation**\n"
-"  - *Description:* Interactive notation lookup. Start by typing `/notation`, and the bot will ask you for the hymn number (e.g. `H-86`). Then you'll be able to choose a tune and receive the notation image if available.\n"
-"  - *Example:* Type `/notation`, then enter a hymn number like `H-86`, and choose a tune to view notation.\n\n"
+"  - *Description:* Interactive notation lookup. Start by typing `/notation`, and the bot will ask you for a hymn or lyric number (e.g. `H-86` or `L-222`). You can enter multiple hymn or lyric numbers one after another, and for hymns, select a tune to view the notation. Type `/cancel` to stop.\n"
+"  - *Example:* Type `/notation`, then enter a hymn number like `H-86` or a lyric number like `L-222`, and follow the prompts.\n\n"
 "• **/theme**\n"
 "  - *Description:* Initiates an interactive theme filter. You will be presented with a list of unique themes (collected from all comma-separated entries in the database), and you can select or type a theme to display the hymns related to it.\n"
 "  - *Example:* Type `/theme` and choose from the displayed themes, or type a custom theme like `Additional Hymns`.\n\n"
 "• **/date**\n"
-"  - *Description:* Shows the songs sung on a specific date or the next available date if none found. Accepts various date formats.\n"
-"  - *Examples:*\n"
-"     - `/date 05/04/2024`\n\n"
+"  - *Description:* Interactive date lookup. Start by typing `/date`, and the bot will ask you to enter a date (DD/MM/YYYY, DD/MM, or DD). You can enter multiple dates one after another to see the songs sung on those dates, until you type `/cancel` to stop.\n"
+"  - *Example:* Type `/date`, then enter a date like `05/04/2024`, and keep entering dates as needed.\n\n"
 "• **/vocabulary**\n"
 "  - *Description:* Starts the vocabulary export conversation.\n"
 "  - *Example:* Type `/vocabulary` and follow the instructions.\n\n"
 "• **/download**\n"
-"  - *Description:* Download audio from YouTube, Spotify, or SoundCloud links. The bot will extract the audio and send it to you as an MP3 file.\n"
-"  - *Supported platforms:* YouTube, Spotify, SoundCloud\n"
+"  - *Description:* Download audio from YouTube, or Spotify links. The bot will extract the audio and send it to you as an MP3 file.\n"
+"  - *Supported platforms:* YouTube, Spotify\n"
 "  - *Example:* Type `/download`, then paste a YouTube or Spotify link, and select your preferred audio quality.\n\n"
 "• **/comment**\n"
 "  - *Description:* Allows you to submit comments, recommendations, or feedback directly to the bot administrator.\n"
@@ -146,14 +134,6 @@ async def help_command(update: Update, context: CallbackContext) -> None:
 )
 
      await update.message.reply_text(help_text, parse_mode="Markdown")
-
-
-
-
-
-
-
-
 
 #Refresh
  
@@ -196,8 +176,6 @@ async def admin_reply(update: Update, context: CallbackContext) -> None:
     )
     await update.message.reply_text(f"✅ Reply sent to user {target_user_id}.")
 
-
-
 #Cancel
 
 async def cancel(update: Update, context: CallbackContext) -> int:
@@ -206,28 +184,33 @@ async def cancel(update: Update, context: CallbackContext) -> int:
     await update.message.reply_text("Operation canceled.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
+# Fix state definition for date conversation
+ASK_DATE = 1000
 
-
-#/date
-async def date_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.args:
-        input_date = " ".join(context.args)
-        result = get_songs_by_date(input_date)
-        
-        if isinstance(result, dict):
-         songs_text = "\n".join(
-        f"{i + 1}. {s} - {IndexFinder(s)}" for i, s in enumerate(result["songs"])
+# Conversation handler for /date
+async def date_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📅 Please enter a date (DD/MM/YYYY, DD/MM, or DD):",
+        reply_markup=ReplyKeyboardRemove()
     )
-         response = f"{result['message']}:\n\n{songs_text}"
+    return ASK_DATE
 
-        else:
-            response = result  # This will be the error message from get_songs_by_date
+async def date_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    input_date = update.message.text.strip()
+    result = get_songs_by_date(input_date)
+    if isinstance(result, dict):
+        songs_text = "\n".join(
+            f"{i + 1}. {s} - {IndexFinder(s)}" for i, s in enumerate(result["songs"])
+        )
+        response = f"{result['message']}:\n\n{songs_text}"
     else:
-        response = "Please provide a date. Usage: `/date DD/MM/YYYY`, `/date DD/MM`, or `/date DD`"
-
+        response = result
     await update.message.reply_text(response, parse_mode='Markdown')
-
-
+    await update.message.reply_text(
+        "You can enter another date, or type /cancel to stop.",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ASK_DATE
 
 #Check
 ADMIN_ID = int(st.secrets["ADMIN_ID"])
@@ -256,9 +239,7 @@ async def check_song_start(update: Update, context: CallbackContext) -> int:
     )
     return ENTER_SONG
 
-
- 
- # Handle song input
+# Handle song input
 async def check_song_input(update: Update, context: CallbackContext) -> int:
     user_input = update.message.text.strip().upper()
     user_input = standardize_hlc_value(user_input)
@@ -320,9 +301,7 @@ async def check_song_input(update: Update, context: CallbackContext) -> int:
 
     return ConversationHandler.END
 
-
-
-#/last
+# /last
 
 # States
 ENTER_LAST_SONG, ASK_SHOW_ALL = range(2)
