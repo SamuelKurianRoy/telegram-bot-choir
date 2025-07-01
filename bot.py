@@ -15,8 +15,8 @@ try:
     from telegram_handlers.handlers import (
         start, help_command, refresh_command, admin_reply, cancel, 
         check_song_start, last_sung_start, check_song_input, ENTER_SONG, 
-        last_sung_input, last_sung_show_all, ENTER_LAST_SONG, ASK_SHOW_ALL,
-        date_start, date_input, ASK_DATE
+        last_sung_input, ENTER_LAST_SONG, 
+        date_start, date_input, ASK_DATE, last_show_all_dates_callback
     )
     from telegram_handlers.conversations import (
         SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT,
@@ -88,22 +88,22 @@ theme_handler = ConversationHandler(
     fallbacks=[CommandHandler("cancel", cancel)],
 )
      
-check_conv = ConversationHandler(
+# Register the new check conversation handler
+check_conv_handler = ConversationHandler(
     entry_points=[CommandHandler('check', check_song_start)],
     states={
         ENTER_SONG: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_song_input)],
     },
-    fallbacks=[CommandHandler("cancel", cancel)],
+    fallbacks=[CommandHandler('cancel', cancel)],
 )
 
-     
+# Register the new last conversation handler
 last_conv_handler = ConversationHandler(
-    entry_points=[CommandHandler("last", last_sung_start)],
+    entry_points=[CommandHandler('last', last_sung_start)],
     states={
         ENTER_LAST_SONG: [MessageHandler(filters.TEXT & ~filters.COMMAND, last_sung_input)],
-        ASK_SHOW_ALL: [MessageHandler(filters.TEXT & ~filters.COMMAND, last_sung_show_all)],
     },
-    fallbacks=[CommandHandler("cancel", cancel)],
+    fallbacks=[CommandHandler('cancel', cancel)],
 )
 
 comment_handler = ConversationHandler(
@@ -167,7 +167,7 @@ app.add_handler(CallbackQueryHandler(handle_notation_callback, pattern="^notatio
 
 app.add_handler(tune_conv_handler)
 app.add_handler(last_conv_handler)
-app.add_handler(check_conv)
+app.add_handler(check_conv_handler)
 app.add_handler(theme_handler)
 app.add_handler(search_conv_handler)
 app.add_handler(conv_handler)
@@ -176,6 +176,9 @@ app.add_handler(reply_conv_handler)
 app.add_handler(download_conv_handler)
 app.add_handler(notation_conv_handler)
 app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
+
+# Register the callback handler for 'Show all dates' button in /last
+app.add_handler(CallbackQueryHandler(last_show_all_dates_callback, pattern="^showalldates:"))
 
 bot_should_run = True
 

@@ -2,8 +2,8 @@
 # Telegram command/callback handlers
 
 import streamlit as st
-from telegram import Update, ReplyKeyboardRemove, ReplyKeyboardMarkup
-from telegram.ext import CallbackContext, ConversationHandler, ContextTypes
+from telegram import Update, ReplyKeyboardRemove, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CallbackContext, ConversationHandler, ContextTypes, CallbackQueryHandler
 from config import get_config
 from logging_utils import setup_loggers
 from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
@@ -11,6 +11,9 @@ from data.drive import upload_log_to_google_doc
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
 import pandas as pd
 from datetime import date
+
+# Add this near the top of the file, with other state constants if present
+ENTER_SONG = 0
 
 bot_logger, user_logger = setup_loggers()
 
@@ -212,34 +215,14 @@ async def date_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ASK_DATE
 
-#Check
-ADMIN_ID = int(st.secrets["ADMIN_ID"])
-ENTER_SONG = 0  # Ensure this is defined somewhere globally
+# Conversation handler for /check
 async def check_song_start(update: Update, context: CallbackContext) -> int:
-    user = update.effective_user
-
-    if not await is_authorized(update):
-        user_logger.warning(f"Unauthorized access attempt to /checksong by {user.full_name} (@{user.username}, ID: {user.id})")
-
-        # Notify the admin
-        await context.bot.send_message(
-            chat_id=ADMIN_ID,
-            text=(
-                f"🚨 <b>Unauthorized user accessed /checksong</b>\n\n"
-                f"<b>Name:</b> {user.full_name}\n"
-                f"<b>Username:</b> @{user.username}\n"
-                f"<b>User ID:</b> <code>{user.id}</code>"
-            ),
-            parse_mode="HTML"
-        )
-
     await update.message.reply_text(
-        "🎵 Please enter the song (e.g. H-27, L-14, C-5):",
+        "🔎 Please enter a song code (e.g. H-27, L-14, or C-5):",
         reply_markup=ReplyKeyboardRemove()
     )
     return ENTER_SONG
 
-# Handle song input
 async def check_song_input(update: Update, context: CallbackContext) -> int:
     user_input = update.message.text.strip().upper()
     user_input = standardize_hlc_value(user_input)
@@ -250,6 +233,7 @@ async def check_song_input(update: Update, context: CallbackContext) -> int:
             "❌ Invalid format. Please use format like H-27.",
             reply_markup=ReplyKeyboardRemove()
         )
+        await update.message.reply_text("Enter another song code, or type /cancel to stop.")
         return ENTER_SONG
 
     song_type, _, song_number = user_input.partition('-')
@@ -259,6 +243,7 @@ async def check_song_input(update: Update, context: CallbackContext) -> int:
             "❌ Invalid input. Use H-, L-, or C- followed by a number (e.g. H-27).",
             reply_markup=ReplyKeyboardRemove()
         )
+        await update.message.reply_text("Enter another song code, or type /cancel to stop.")
         return ENTER_SONG
 
     # Prepare arguments for isVocabulary
@@ -286,20 +271,17 @@ async def check_song_input(update: Update, context: CallbackContext) -> int:
     from data.datasets import IndexFinder
     song_index = IndexFinder(user_input)
     song_display = f"{user_input}: {song_index}" if song_index and song_index != "Invalid Number" else user_input
-    # Replace the code in the result with the code+name
     if result.startswith(user_input):
         result = result.replace(user_input, song_display, 1)
-    reply_text = result
 
-    # Send back the result with HTML parsing and no link preview
     await update.message.reply_text(
-        reply_text,
-        parse_mode="HTML",  # <-- Required for clickable links
+        result,
+        parse_mode="HTML",
         disable_web_page_preview=True,
         reply_markup=ReplyKeyboardRemove()
     )
-
-    return ConversationHandler.END
+    await update.message.reply_text("Enter another song code, or type /cancel to stop.")
+    return ENTER_SONG
 
 # /last
 
@@ -310,60 +292,52 @@ ENTER_URL, SELECT_QUALITY = range(2, 4)
  
  # /last entry point
 async def last_sung_start(update: Update, context: CallbackContext) -> int:
-     await update.message.reply_text(
-         "🎼 Please enter the song (e.g. H-27, L-14, C-5):",
-         reply_markup=ReplyKeyboardRemove()
-     )
-     return ENTER_LAST_SONG
+    await update.message.reply_text(
+        "🎼 Please enter the song (e.g. H-27, L-14, C-5):",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ENTER_LAST_SONG
  
  # Handle song input
 async def last_sung_input(update: Update, context: CallbackContext) -> int:
-     user_input = update.message.text.strip().upper()
-     user_input = standardize_hlc_value(user_input)
- 
-     if not user_input or '-' not in user_input:
-         await update.message.reply_text("❌ Invalid format. Please use format like H-27.")
-         return ENTER_LAST_SONG
- 
-     song_type, _, song_number = user_input.partition('-')
- 
-     if song_type not in ['H', 'L', 'C'] or not song_number.isdigit():
-         await update.message.reply_text("❌ Invalid code. Use H-, L-, or C- followed by a number (e.g. H-27).")
-         return ENTER_LAST_SONG
- 
-     full_song = f"{song_type}-{song_number}"
-     context.user_data["last_category"] = song_type
-     context.user_data["last_song"] = full_song
- 
-     # Get last sung date
-     result = Datefinder(full_song, song_type, first=True)
-     await update.message.reply_text(result)
- 
-     # Ask if user wants all dates
-     reply_keyboard = [["Yes", "No"]]
-     await update.message.reply_text(
-         "Would you like to see all the dates on which this song was sung?",
-         reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
-     )
-     return ASK_SHOW_ALL
- 
- # Handle "show all dates?" step
-async def last_sung_show_all(update: Update, context: CallbackContext) -> int:
-     reply = update.message.text.strip().lower()
-     category = context.user_data.get("last_category")
-     full_song = context.user_data.get("last_song")
- 
-     if reply == "yes":
-         result = Datefinder(full_song, category, first=False)
-         await update.message.reply_text(result, reply_markup=ReplyKeyboardRemove())
-     else:
-         await update.message.reply_text(
-             "May the music stay in your heart 🎵\n(❁´◡`❁)\n<b><i>S.D.G</i></b>",
-             parse_mode="HTML",
-             reply_markup=ReplyKeyboardRemove()
-         )
- 
-     return ConversationHandler.END
+    user_input = update.message.text.strip().upper()
+    user_input = standardize_hlc_value(user_input)
+
+    if not user_input or '-' not in user_input:
+        await update.message.reply_text("❌ Invalid format. Please use format like H-27.")
+        await update.message.reply_text("Enter another song code, or type /cancel to stop.")
+        return ENTER_LAST_SONG
+
+    song_type, _, song_number = user_input.partition('-')
+
+    if song_type not in ['H', 'L', 'C'] or not song_number.isdigit():
+        await update.message.reply_text("❌ Invalid code. Use H-, L-, or C- followed by a number (e.g. H-27).")
+        await update.message.reply_text("Enter another song code, or type /cancel to stop.")
+        return ENTER_LAST_SONG
+
+    full_song = f"{song_type}-{song_number}"
+    context.user_data["last_category"] = song_type
+    context.user_data["last_song"] = full_song
+
+    # Get last sung date
+    result = Datefinder(full_song, song_type, first=True)
+    keyboard = [[InlineKeyboardButton("Show all dates", callback_data=f"showalldates:{full_song}")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(result, reply_markup=reply_markup)
+    await update.message.reply_text("Enter another song code, or type /cancel to stop.")
+    return ENTER_LAST_SONG
+
+async def last_show_all_dates_callback(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    await query.answer()
+    if not query.data.startswith("showalldates:"):
+        return
+    song_code = query.data.replace("showalldates:", "")
+    song_type, _, _ = song_code.partition('-')
+    result = Datefinder(song_code, song_type, first=False)
+    await query.edit_message_text(result)
+    # Optionally, prompt again for another song
+    await context.bot.send_message(chat_id=query.message.chat_id, text="Enter another song code, or type /cancel to stop.")
 
 # TODO: Add more command handlers (check, last, search, tune, notation, theme, vocabulary, download, comment, refresh, reply, cancel, etc.) 
 
