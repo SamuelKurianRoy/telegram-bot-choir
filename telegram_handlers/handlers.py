@@ -11,6 +11,8 @@ from data.drive import upload_log_to_google_doc
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
 import pandas as pd
 from datetime import date
+from telegram_handlers.conversations import fetch_lyrics_file_map, LYRICS_FOLDER_URL
+import telegram_handlers.conversations as conversations
 
 # Add this near the top of the file, with other state constants if present
 ENTER_SONG = 0
@@ -150,10 +152,12 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
         yrDataPreprocessing()
         dfcleaning()
         df = standardize_song_columns()
+        # Refresh lyrics_file_map
+        conversations.lyrics_file_map = fetch_lyrics_file_map(LYRICS_FOLDER_URL)
         # Upload logs
         upload_log_to_google_doc(config.BFILE_ID, "bot_log.txt")
         upload_log_to_google_doc(config.UFILE_ID, "user_log.txt")
-        await update.message.reply_text("Datasets reloaded successfully!")
+        await update.message.reply_text("Datasets and lyrics file map reloaded successfully!")
     except Exception as e:
         await update.message.reply_text(f"Error reloading datasets: {e}")
 
