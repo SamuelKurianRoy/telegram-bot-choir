@@ -11,8 +11,6 @@ from data.drive import upload_log_to_google_doc
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
 import pandas as pd
 from datetime import date
-from telegram_handlers.conversations import fetch_lyrics_file_map, LYRICS_FOLDER_URL
-import telegram_handlers.conversations as conversations
 
 # Add this near the top of the file, with other state constants if present
 ENTER_SONG = 0
@@ -143,6 +141,10 @@ async def help_command(update: Update, context: CallbackContext) -> None:
 #Refresh
  
 async def refresh_command(update: Update, context: CallbackContext) -> None:
+    # Move imports here to avoid circular import
+    import telegram_handlers.conversations as conversations
+    from telegram_handlers.conversations import fetch_lyrics_file_map, LYRICS_FOLDER_URL
+
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) used /refresh")
     config = get_config()
