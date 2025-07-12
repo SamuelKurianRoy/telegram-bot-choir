@@ -42,15 +42,36 @@ def extract_bible_chapter_text(url: str) -> str:
 
 def clean_malayalam_bible_text(text: str) -> str:
     lines = text.strip().splitlines()
-
-    # Start from the end and move backwards to find the last verse line
-    for i in range(len(lines) - 1, -1, -1):
-        # Malayalam Unicode range check (basic heuristic)
-        if any('\u0D00' <= char <= '\u0D7F' for char in lines[i]):
-            cleaned = "\n".join(lines[:i + 1])
-            return cleaned.strip()
-
-    return text  # fallback if nothing matches
+    cleaned_lines = []
+    
+    for line in lines:
+        # Skip lines that are just numbers (chapter navigation)
+        if line.strip().isdigit() and len(line.strip()) <= 3:
+            continue
+        
+        # Skip lines that contain only chapter numbers like "123456789..."
+        if len(line.strip()) > 10 and all(c.isdigit() for c in line.strip()):
+            continue
+            
+        # Skip empty lines
+        if not line.strip():
+            continue
+            
+        # Clean the line
+        cleaned_line = line.strip()
+        if cleaned_line:
+            cleaned_lines.append(cleaned_line)
+    
+    # Join lines and do final cleaning
+    result = "\n".join(cleaned_lines)
+    
+    # Remove any remaining chapter navigation patterns
+    result = re.sub(r'\b\d{1,3}\s*\d{1,3}\s*\d{1,3}\b', '', result)
+    
+    # Clean up multiple spaces
+    result = re.sub(r'\s+', ' ', result)
+    
+    return result.strip()
 
 def clean_english_bible_text(text: str) -> str:
     lines = text.strip().splitlines()

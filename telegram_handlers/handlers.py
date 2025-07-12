@@ -515,14 +515,19 @@ async def bible_start(update: Update, context: CallbackContext) -> int:
                             await update.message.reply_text(header + chunk, parse_mode="Markdown")
                         else:
                             await update.message.reply_text(chunk)
+                    
+                    # Add link in a separate message
+                    link_text = f"🔗 [View on WordProject]({url})"
+                    await update.message.reply_text(link_text, parse_mode="Markdown", disable_web_page_preview=True)
                 else:
                     response_text = (
                         f"📖 *Bible Passage*\n\n"
                         f"*Reference:* {user_input.title()}\n"
                         f"*Language:* Malayalam (default)\n\n"
-                        f"{cleaned_text}"
+                        f"{cleaned_text}\n\n"
+                        f"🔗 [View on WordProject]({url})"
                     )
-                    await update.message.reply_text(response_text, parse_mode="Markdown")
+                    await update.message.reply_text(response_text, parse_mode="Markdown", disable_web_page_preview=True)
         return ConversationHandler.END
     
     # Start interactive mode
@@ -598,14 +603,19 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
                             await update.message.reply_text(header + chunk, parse_mode="Markdown")
                         else:
                             await update.message.reply_text(chunk)
+                    
+                    # Add link in a separate message
+                    link_text = f"🔗 [View on WordProject]({url})"
+                    await update.message.reply_text(link_text, parse_mode="Markdown", disable_web_page_preview=True)
                 else:
                     response_text = (
                         f"📖 *Bible Passage Found!*\n\n"
                         f"*Reference:* {book_chapter_input.title()}\n"
                         f"*Language:* {language.title()}\n\n"
-                        f"{cleaned_text}"
+                        f"{cleaned_text}\n\n"
+                        f"🔗 [View on WordProject]({url})"
                     )
-                    await update.message.reply_text(response_text, parse_mode="Markdown")
+                    await update.message.reply_text(response_text, parse_mode="Markdown", disable_web_page_preview=True)
         
         # Ask for next passage
         next_text = (
