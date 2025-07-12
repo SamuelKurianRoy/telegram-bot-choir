@@ -82,6 +82,18 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
         "revelation": 66, "rev": 66, "വെളിപാട്": 66, "വെളി" : 66
     }
 
+    # Chapter counts for each book (book number -> chapter count)
+    book_chapter_counts = {
+        1: 50, 2: 40, 3: 27, 4: 36, 5: 34, 6: 24, 7: 21, 8: 4, 9: 31,
+        10: 24, 11: 22, 12: 25, 13: 29, 14: 36, 15: 10, 16: 13, 17: 10,
+        18: 42, 19: 150, 20: 31, 21: 12, 22: 8, 23: 66, 24: 52, 25: 5,
+        26: 48, 27: 12, 28: 14, 29: 3, 30: 9, 31: 1, 32: 4, 33: 7,
+        34: 3, 35: 3, 36: 3, 37: 2, 38: 14, 39: 4, 40: 28, 41: 16,
+        42: 24, 43: 21, 44: 28, 45: 16, 46: 16, 47: 13, 48: 6, 49: 6,
+        50: 4, 51: 4, 52: 5, 53: 3, 54: 6, 55: 4, 56: 3, 57: 1,
+        58: 13, 59: 5, 60: 5, 61: 3, 62: 5, 63: 1, 64: 1, 65: 1, 66: 22
+    }
+
     # Language code map with short names
     language_code_map = {
         "malayalam": "ml", "mal": "ml",
@@ -109,7 +121,18 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
             raise ValueError(f"Unsupported language '{lang}'")
         lc = language_code_map[key]
 
-        parts = user_input.strip().lower().split()
+        # Clean and process the input
+        user_input = user_input.strip()
+        
+        # Handle verse references like "Gen 3:3" - extract just book and chapter
+        if ':' in user_input:
+            # Split by colon and take the part before it
+            parts = user_input.split(':')
+            if len(parts) >= 2:
+                # Take everything before the colon (book and chapter)
+                user_input = parts[0].strip()
+        
+        parts = user_input.lower().split()
         if len(parts) < 2:
             raise ValueError("Input must be 'Book Chapter'")
 
@@ -119,6 +142,15 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
             if name in book_map:
                 chap = int(parts[i])
                 bn = book_map[name]
+                
+                # Validate chapter number
+                if bn in book_chapter_counts:
+                    max_chapters = book_chapter_counts[bn]
+                    if chap < 1 or chap > max_chapters:
+                        raise ValueError(f"Chapter {chap} does not exist in this book. Valid chapters are 1-{max_chapters}")
+                else:
+                    raise ValueError(f"Invalid book number: {bn}")
+                
                 return f"https://www.wordproject.org/bibles/{lc}/{bn:02d}/{chap}.htm#0"
 
         raise ValueError("Book name not recognized")

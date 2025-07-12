@@ -572,7 +572,28 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
                 disable_web_page_preview=False
             )
         
+        # Ask for next passage
+        next_text = (
+            "📖 *Enter another Bible reference, or type /cancel to stop:*\n\n"
+            "*Examples:*\n"
+            "• `Gen 10`\n"
+            "• `Exodus 12 english`\n"
+            "• `John 3`\n"
+            "• `യോഹന്നാൻ 3`"
+        )
+        await update.message.reply_text(next_text, parse_mode="Markdown")
+        
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
+        # Still ask for next passage even if there was an error
+        next_text = (
+            "📖 *Enter another Bible reference, or type /cancel to stop:*\n\n"
+            "*Examples:*\n"
+            "• `Gen 10`\n"
+            "• `Exodus 12 english`\n"
+            "• `John 3`\n"
+            "• `യോഹന്നാൻ 3`"
+        )
+        await update.message.reply_text(next_text, parse_mode="Markdown")
     
-    return ConversationHandler.END 
+    return BIBLE_INPUT 
