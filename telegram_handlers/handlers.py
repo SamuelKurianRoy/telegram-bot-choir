@@ -9,7 +9,7 @@ from logging_utils import setup_loggers
 from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
 from data.drive import upload_log_to_google_doc
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
-from telegram_handlers.utils import get_wordproject_url_from_input
+from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import pandas as pd
 from datetime import date
 
@@ -497,17 +497,32 @@ async def bible_start(update: Update, context: CallbackContext) -> int:
         if url.startswith("❌"):
             await update.message.reply_text(url)
         else:
-            response_text = (
-                f"📖 *Bible Passage*\n\n"
-                f"*Reference:* {user_input.title()}\n"
-                f"*Language:* Malayalam (default)\n\n"
-                f"[🔗 Open on WordProject]({url})"
-            )
-            await update.message.reply_text(
-                response_text,
-                parse_mode="Markdown",
-                disable_web_page_preview=False
-            )
+            # Extract and display the Bible text
+            raw_text = extract_bible_chapter_text(url)
+            if raw_text.startswith("❌"):
+                await update.message.reply_text(raw_text)
+            else:
+                # Clean the text based on language
+                cleaned_text = clean_bible_text(raw_text, 'ml')
+                
+                # Split long text into multiple messages if needed
+                if len(cleaned_text) > 4000:
+                    # Split into chunks
+                    chunks = [cleaned_text[i:i+4000] for i in range(0, len(cleaned_text), 4000)]
+                    for i, chunk in enumerate(chunks):
+                        if i == 0:
+                            header = f"📖 *Bible Passage*\n\n*Reference:* {user_input.title()}\n*Language:* Malayalam (default)\n\n"
+                            await update.message.reply_text(header + chunk, parse_mode="Markdown")
+                        else:
+                            await update.message.reply_text(chunk)
+                else:
+                    response_text = (
+                        f"📖 *Bible Passage*\n\n"
+                        f"*Reference:* {user_input.title()}\n"
+                        f"*Language:* Malayalam (default)\n\n"
+                        f"{cleaned_text}"
+                    )
+                    await update.message.reply_text(response_text, parse_mode="Markdown")
         return ConversationHandler.END
     
     # Start interactive mode
@@ -560,17 +575,37 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
         if url.startswith("❌"):
             await update.message.reply_text(url)
         else:
-            response_text = (
-                f"📖 *Bible Passage Found!*\n\n"
-                f"*Reference:* {book_chapter_input.title()}\n"
-                f"*Language:* {language.title()}\n\n"
-                f"[🔗 Open on WordProject]({url})"
-            )
-            await update.message.reply_text(
-                response_text,
-                parse_mode="Markdown",
-                disable_web_page_preview=False
-            )
+            # Extract and display the Bible text
+            raw_text = extract_bible_chapter_text(url)
+            if raw_text.startswith("❌"):
+                await update.message.reply_text(raw_text)
+            else:
+                # Determine language code for text cleaning
+                lang_code = 'ml'  # default to Malayalam
+                if language in ['english', 'eng']:
+                    lang_code = 'kj'
+                
+                # Clean the text based on language
+                cleaned_text = clean_bible_text(raw_text, lang_code)
+                
+                # Split long text into multiple messages if needed
+                if len(cleaned_text) > 4000:
+                    # Split into chunks
+                    chunks = [cleaned_text[i:i+4000] for i in range(0, len(cleaned_text), 4000)]
+                    for i, chunk in enumerate(chunks):
+                        if i == 0:
+                            header = f"📖 *Bible Passage Found!*\n\n*Reference:* {book_chapter_input.title()}\n*Language:* {language.title()}\n\n"
+                            await update.message.reply_text(header + chunk, parse_mode="Markdown")
+                        else:
+                            await update.message.reply_text(chunk)
+                else:
+                    response_text = (
+                        f"📖 *Bible Passage Found!*\n\n"
+                        f"*Reference:* {book_chapter_input.title()}\n"
+                        f"*Language:* {language.title()}\n\n"
+                        f"{cleaned_text}"
+                    )
+                    await update.message.reply_text(response_text, parse_mode="Markdown")
         
         # Ask for next passage
         next_text = (

@@ -1,12 +1,89 @@
 # telegram/utils.py
 # Telegram-specific helpers
 
+import requests
+from bs4 import BeautifulSoup
+import re
+
 def send_long_message(update, message_parts, parse_mode="Markdown", max_length=3500):
     """
     Sends a message, splitting it into multiple messages if it's too long.
     """
     # TODO: Implement message chunking logic
     pass
+
+def extract_bible_chapter_text(url: str) -> str:
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # Extract all <p> tags that contain verse text
+        paragraphs = soup.find_all("p")
+
+        verses = []
+        for p in paragraphs:
+            text = p.get_text(strip=True)
+            # Skip empty and non-verse lines
+            if not text:
+                continue
+            # Heuristically exclude junk like "JavaScript is required"
+            if "javascript" in text.lower() or "wordproject" in text.lower():
+                continue
+            # Exclude overly long strings of digits (chapter nav)
+            if text.strip().isdigit() and len(text.strip()) > 2:
+                continue
+            verses.append(text)
+
+        return "\n".join(verses) if verses else "❌ No verses found on the page."
+
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
+
+def clean_malayalam_bible_text(text: str) -> str:
+    lines = text.strip().splitlines()
+
+    # Start from the end and move backwards to find the last verse line
+    for i in range(len(lines) - 1, -1, -1):
+        # Malayalam Unicode range check (basic heuristic)
+        if any('\u0D00' <= char <= '\u0D7F' for char in lines[i]):
+            cleaned = "\n".join(lines[:i + 1])
+            return cleaned.strip()
+
+    return text  # fallback if nothing matches
+
+def clean_english_bible_text(text: str) -> str:
+    lines = text.strip().splitlines()
+
+    # Go backwards to find the last valid verse line
+    for i in range(len(lines) - 1, -1, -1):
+        # Match lines that contain verse numbers, e.g., "18Then..." or "4 Unto..."
+        if re.search(r'\b\d{1,3}(?:\s*[A-Z])', lines[i]):
+            return "\n".join(lines[:i + 1]).strip()
+
+    return text.strip()
+
+def normalize_and_format_bible_text(text: str) -> str:
+    # Fix spacing between concatenated words (e.g., Abramwent → Abram went)
+    text = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', text)              # between lowercase-uppercase
+    text = re.sub(r'(?<=[A-Z][a-z])(?=[A-Z][a-z])', ' ', text)    # between proper nouns
+    text = re.sub(r'(?<=[a-zA-Z])(?=\d)', ' ', text)              # letter-digit
+    text = re.sub(r'(?<=\d)(?=[A-Za-z])', ' ', text)              # digit-letter
+
+    # Ensure verse numbers start on a new line (e.g., "2 And" → "\n2 And")
+    text = re.sub(r'(?<!\n)(?<!\d)(\s*)(\d{1,3})(\s+)(?=[A-Z])', r'\n\2 ', text)
+
+    return text.strip()
+
+def clean_bible_text(text: str, language: str = 'ml') -> str:
+    if language == 'ml':
+        text = re.sub(r'(?<=[\u0D00-\u0D7F]\.)(\d{1,3})(?=[\u0D00-\u0D7F])', r'\n\1 ', text)
+        return clean_malayalam_bible_text(text)
+    elif language == 'kj':  # English
+        text = normalize_and_format_bible_text(text)
+        return clean_english_bible_text(text)
+
+    return text.strip()  # fallback
 
 def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
     # Bible book name to number map (with English and Malayalam full & short names)
