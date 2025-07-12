@@ -17,7 +17,8 @@ try:
         check_song_start, last_sung_start, check_song_input, ENTER_SONG, 
         last_sung_input, ENTER_LAST_SONG, 
         date_start, date_input, ASK_DATE, last_show_all_dates_callback,
-        bible_command
+        bible_start, bible_language_input, bible_book_input, bible_chapter_input,
+        BIBLE_LANGUAGE, BIBLE_BOOK, BIBLE_CHAPTER
     )
     from telegram_handlers.conversations import (
         SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT,
@@ -159,9 +160,20 @@ date_conv_handler = ConversationHandler(
     fallbacks=[CommandHandler("cancel", cancel)],
 )
 
+# Register the new Bible conversation handler
+bible_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("bible", bible_start)],
+    states={
+        BIBLE_LANGUAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_language_input)],
+        BIBLE_BOOK: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_book_input)],
+        BIBLE_CHAPTER: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_chapter_input)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
+
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
-app.add_handler(CommandHandler("bible", bible_command))
+app.add_handler(bible_conv_handler)
 app.add_handler(date_conv_handler)
 app.add_handler(CommandHandler("refresh", refresh_command))
 app.add_handler(CommandHandler("reply", admin_reply))
