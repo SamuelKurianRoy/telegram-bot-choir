@@ -90,10 +90,25 @@ def clean_malayalam_bible_text(text: str) -> str:
     # Remove footer content that might have been missed
     result = re.sub(r'Contact\|Disclaimer\|Statement of Faith\|Mission\|Copyrights.*$', '', result, flags=re.MULTILINE)
     
-    # Clean up verse formatting - ensure proper spacing around verse numbers
-    result = re.sub(r'(\d+)([അ-ഹ])', r'\1 \2', result)  # Add space between verse number and Malayalam text
+    # Format verses to start on new lines
+    # Split by verse numbers and format each verse
+    verses = re.split(r'(\d+)\s+', result)
+    formatted_verses = []
     
-    return result.strip()
+    for i in range(0, len(verses), 2):
+        if i + 1 < len(verses):
+            verse_num = verses[i]
+            verse_text = verses[i + 1].strip()
+            if verse_num.isdigit() and verse_text:
+                formatted_verses.append(f"{verse_num} {verse_text}")
+    
+    # If no verses were found with the above method, try alternative formatting
+    if not formatted_verses:
+        # Add newlines before verse numbers
+        result = re.sub(r'(\d+)\s+([അ-ഹ])', r'\n\1 \2', result)
+        return result.strip()
+    
+    return "\n".join(formatted_verses)
 
 def clean_english_bible_text(text: str) -> str:
     lines = text.strip().splitlines()
