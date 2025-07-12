@@ -9,6 +9,7 @@ from logging_utils import setup_loggers
 from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
 from data.drive import upload_log_to_google_doc
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
+from telegram_handlers.utils import get_wordproject_url_from_input
 import pandas as pd
 from datetime import date
 
@@ -475,3 +476,27 @@ async def handle_song_code(update: Update, context: CallbackContext) -> None:
         disable_web_page_preview=True,
         reply_markup=ReplyKeyboardRemove()
     ) 
+
+async def bible_command(update: Update, context: CallbackContext) -> None:
+    try:
+        # Accept input as: /bible <language> <book> <chapter>
+        args = context.args
+        if len(args) < 2:
+            await update.message.reply_text(
+                "Usage: /bible <language> <book> <chapter>\n"
+                "Example: /bible malayalam John 3"
+            )
+            return
+        lang = args[0]
+        user_input = " ".join(args[1:])
+        url = get_wordproject_url_from_input(lang, user_input)
+        if url.startswith("❌"):
+            await update.message.reply_text(url)
+        else:
+            await update.message.reply_text(
+                f"📖 [Open Bible passage]({url})",
+                parse_mode="Markdown",
+                disable_web_page_preview=False
+            )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}") 

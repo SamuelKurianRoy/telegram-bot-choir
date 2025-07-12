@@ -8,4 +8,121 @@ def send_long_message(update, message_parts, parse_mode="Markdown", max_length=3
     # TODO: Implement message chunking logic
     pass
 
+def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
+    # Bible book name to number map (with English and Malayalam full & short names)
+    book_map = {
+        # Old Testament
+        "genesis": 1, "gen": 1, "ഉല്പത്തി": 1, "ഉല്പ": 1,
+        "exodus": 2, "exo": 2, "ex": 2, "പുറപ്പാടു്": 2, "പുറ": 2,
+        "leviticus": 3, "lev": 3, "ലേവ്യപുസ്തകം": 3, "ലേവ്യ": 3,
+        "numbers": 4, "num": 4, "സംഖ്യാപുസ്തകം": 4, "സംഖ്യ": 4,
+        "deuteronomy": 5, "deut": 5, "dt": 5, "ആവർത്തനം": 5, "ആവ": 5,
+        "joshua": 6, "josh": 6, "യോശുവ": 6, "യോശ": 6,
+        "judges": 7, "judg": 7, "ന്യായാധിപന്മാർ": 7, "ന്യായാ": 7,
+        "ruth": 8, "രൂത്ത്": 8,
+        "1 samuel": 9, "1 sam": 9, "i samuel": 9, "ശമൂവേൽ 1": 9, "1 ശമൂ": 9,
+        "2 samuel": 10, "2 sam": 10, "ii samuel": 10, "ശമൂവേൽ 2": 10, "2 ശമൂ": 10,
+        "1 kings": 11, "1 kgs": 11, "i kings": 11, "രാജാക്കന്മാർ 1": 11, "1 രാജാ": 11,
+        "2 kings": 12, "2 kgs": 12, "ii kings": 12, "രാജാക്കന്മാർ 2": 12, "2 രാജാ": 12,
+        "1 chronicles": 13, "1 chr": 13, "ദിനവൃത്താന്തം 1": 13, "1 ദിന": 13,
+        "2 chronicles": 14, "2 chr": 14, "ദിനവൃത്താന്തം 2": 14, "2 ദിന": 14,
+        "ezra": 15, "എസ്രാ": 15,
+        "nehemiah": 16, "neh": 16, "നെഹെമ്യാവു": 16, "നെഹെ": 16,
+        "esther": 17, "esth": 17, "എസ്ഥേർ": 17,
+        "job": 18, "യോബ്": 18,
+        "psalms": 19, "ps": 19, "psalm": 19, "സങ്കീർത്തനങ്ങൾ": 19, "സങ്കീ": 19,
+        "proverbs": 20, "prov": 20, "പ്രവൃത്തിയുടെ പാഠങ്ങൾ": 20, "പ്രവാ": 20,
+        "ecclesiastes": 21, "eccl": 21, "സഭാപ്രസംഗി": 21, "സഭാ": 21,
+        "song of solomon": 22, "song": 22, "songs": 22, "sos": 22, "ഉത്തമഗീതം": 22, "ഉത്ത": 22,
+        "isaiah": 23, "isa": 23, "യെശയ്യാ": 23, "യെശ": 23,
+        "jeremiah": 24, "jer": 24, "യിരേമ്യാവു": 24, "യിരേ": 24,
+        "lamentations": 25, "lam": 25, "വിലാപങ്ങൾ": 25, "വിലാ": 25,
+        "ezekiel": 26, "ezek": 26, "യേഹേസ്കേൽ": 26, "യേഹേ": 26,
+        "daniel": 27, "dan": 27, "ദാനീയേൽ": 27, "ദാനീ": 27,
+        "hosea": 28, "hos": 28, "ഹോശേയ": 28, "ഹോഷ": 28,
+        "joel": 29, "യോവേൽ": 29,
+        "amos": 30, "ആമോസ്": 30,
+        "obadiah": 31, "obad": 31, "ഓബദ്യാവു": 31,
+        "jonah": 32, "jon": 32, "യോനാ": 32,
+        "micah": 33, "mic": 33, "മീഖാ": 33,
+        "nahum": 34, "nah": 34, "നാഹും": 34,
+        "habakkuk": 35, "hab": 35, "ഹബക്കുക്ക്‍": 35,
+        "zephaniah": 36, "zeph": 36, "സെഫാനിയാവു": 36,
+        "haggai": 37, "hag": 37, "ഹഗ്ഗായി": 37,
+        "zechariah": 38, "zech": 38, "സെഖർയ്യാവു": 38,
+        "malachi": 39, "mal": 39, "മലാഖി": 39,
+
+        # New Testament
+        "matthew": 40, "matt": 40, "mt": 40, "മത്തായി": 40, "മത്താ": 40,
+        "mark": 41, "mk": 41, "മർക്കൊസ്": 41, "മർക്ക": 41,
+        "luke": 42, "lk": 42, "ലൂക്കോസ്": 42, "ലൂക്കോ": 42,
+        "john": 43, "jn": 43, "യോഹന്നാൻ": 43, "യോഹ": 43,
+        "acts": 44, "പ്രവൃത്തികൾ": 44, "പ്രവൃ": 44,
+        "romans": 45, "rom": 45, "റോമർ": 45,
+        "1 corinthians": 46, "1 cor": 46, "കൊരിന്ത്യർ 1": 46, "1 കൊരി": 46,
+        "2 corinthians": 47, "2 cor": 47, "കൊരിന്ത്യർ 2": 47, "2 കൊരി": 47,
+        "galatians": 48, "gal": 48, "ഗലാത്യർ": 48,
+        "ephesians": 49, "eph": 49, "എഫെസ്യർ": 49,
+        "philippians": 50, "phil": 50, "ഫിലിപ്പിയർ": 50,
+        "colossians": 51, "col": 51, "കൊലൊസ്സ്യർ": 51,
+        "1 thessalonians": 52, "1 thess": 52, "തെസ്സലൊനീക്യർ 1": 52, "1 തെസ്സ": 52,
+        "2 thessalonians": 53, "2 thess": 53, "തെസ്സലൊനീക്യർ 2": 53, "2 തെസ്സ": 53,
+        "1 timothy": 54, "1 tim": 54, "തിമൊഥെയൊസ് 1": 54, "1 തിമൊ": 54,
+        "2 timothy": 55, "2 tim": 55, "തിമൊഥെയൊസ് 2": 55, "2 തിമൊ": 55,
+        "titus": 56, "തീത്തൊസ്": 56,
+        "philemon": 57, "philem": 57, "ഫിലേമോൻ": 57,
+        "hebrews": 58, "heb": 58, "എബ്രായർ": 58,
+        "james": 59, "jas": 59, "യാക്കോബ്": 59,
+        "1 peter": 60, "1 pet": 60, "പത്രൊസ് 1": 60, "1 പത്രോ": 60,
+        "2 peter": 61, "2 pet": 61, "പത്രൊസ് 2": 61, "2 പത്രോ": 61,
+        "1 john": 62, "1 jn": 62, "യോഹന്നാൻ 1": 62, "1 യോഹ": 62,
+        "2 john": 63, "2 jn": 63, "യോഹന്നാൻ 2": 63, "2 യോഹ": 63,
+        "3 john": 64, "3 jn": 64, "യോഹന്നാൻ 3": 64, "3 യോഹ": 64,
+        "jude": 65, "യുദാ": 65,
+        "revelation": 66, "rev": 66, "വെളിപാട്": 66, "വെളി" : 66
+    }
+
+    # Language code map with short names
+    language_code_map = {
+        "malayalam": "ml", "mal": "ml",
+        "english": "kj", "eng": "kj",
+        "hindi": "hi", "hin": "hi",
+        "tamil": "ta", "tam": "ta",
+        "telugu": "te", "tel": "te",
+        "kannada": "kn", "kan": "kn",
+        "marathi": "mr", "mar": "mr",
+        "gujarati": "gu", "guj": "gu",
+        "punjabi": "pa", "pun": "pa",
+        "bengali": "bn", "ben": "bn",
+        "urdu": "ur", "urd": "ur",
+        "spanish": "es", "spa": "es",
+        "french": "fr", "fre": "fr",
+        "german": "de", "ger": "de",
+        "chinese": "zh", "chi": "zh",
+        "japanese": "ja", "jap": "ja",
+        "russian": "ru", "rus": "ru",
+    }
+
+    try:
+        key = lang.strip().lower()
+        if key not in language_code_map:
+            raise ValueError(f"Unsupported language '{lang}'")
+        lc = language_code_map[key]
+
+        parts = user_input.strip().lower().split()
+        if len(parts) < 2:
+            raise ValueError("Input must be 'Book Chapter'")
+
+        # Match the longest possible book name
+        for i in range(len(parts)-1, 0, -1):
+            name = ' '.join(parts[:i])
+            if name in book_map:
+                chap = int(parts[i])
+                bn = book_map[name]
+                return f"https://www.wordproject.org/bibles/{lc}/{bn:02d}/{chap}.htm#0"
+
+        raise ValueError("Book name not recognized")
+    except Exception as e:
+        return f"❌ Error: {e}"
+
 # TODO: Add more Telegram-specific helpers as needed 
