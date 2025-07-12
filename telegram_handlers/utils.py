@@ -147,7 +147,7 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
                 if bn in book_chapter_counts:
                     max_chapters = book_chapter_counts[bn]
                     if chap < 1 or chap > max_chapters:
-                        raise ValueError(f"Chapter {chap} does not exist in this book. Valid chapters are 1-{max_chapters}")
+                        raise ValueError(f"Chapter {chap} does not exist in the selected book. Valid chapters are 1-{max_chapters}")
                 else:
                     raise ValueError(f"Invalid book number: {bn}")
                 
