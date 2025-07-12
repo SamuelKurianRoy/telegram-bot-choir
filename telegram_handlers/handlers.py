@@ -478,9 +478,7 @@ async def handle_song_code(update: Update, context: CallbackContext) -> None:
     ) 
 
 # Bible conversation states
-BIBLE_LANGUAGE = 2000
-BIBLE_BOOK = 2001
-BIBLE_CHAPTER = 2002
+BIBLE_INPUT = 2000
 
 # Interactive Bible command handler
 async def bible_start(update: Update, context: CallbackContext) -> int:
@@ -490,19 +488,19 @@ async def bible_start(update: Update, context: CallbackContext) -> int:
     
     # Check if user provided arguments
     args = context.args
-    if len(args) >= 2:
-        # User provided language and book/chapter directly
-        lang = args[0]
-        user_input = " ".join(args[1:])
-        url = get_wordproject_url_from_input(lang, user_input)
+    if len(args) >= 1:
+        # User provided book/chapter directly
+        user_input = " ".join(args)
+        # Default to Malayalam if no language specified
+        url = get_wordproject_url_from_input('malayalam', user_input)
         
         if url.startswith("❌"):
             await update.message.reply_text(url)
         else:
             response_text = (
                 f"📖 *Bible Passage*\n\n"
-                f"*Language:* {lang.title()}\n"
-                f"*Reference:* {user_input.title()}\n\n"
+                f"*Reference:* {user_input.title()}\n"
+                f"*Language:* Malayalam (default)\n\n"
                 f"[🔗 Open on WordProject]({url})"
             )
             await update.message.reply_text(
@@ -514,82 +512,58 @@ async def bible_start(update: Update, context: CallbackContext) -> int:
     
     # Start interactive mode
     welcome_text = (
-        "📖 *Welcome to the Bible Command!*\n\n"
-        "I'll help you find Bible passages step by step.\n\n"
-        "First, please choose your preferred language:\n\n"
-        "*Available Languages:*\n"
-        "• Malayalam (default) - `mal` or `malayalam`\n"
-        "• English - `eng` or `english`\n"
-        "• Hindi - `hin` or `hindi`\n"
-        "• Tamil - `tam` or `tamil`\n"
-        "• Telugu - `tel` or `telugu`\n"
-        "• And many more...\n\n"
-        "Type your language choice, or just press Enter for Malayalam:"
+        "📖 *Bible Command*\n\n"
+        "Please enter the book and chapter:\n\n"
+        "*Examples:*\n"
+        "• `Gen 10`\n"
+        "• `Exodus 12`\n"
+        "• `John 3`\n"
+        "• `യോഹന്നാൻ 3`\n"
+        "• `Gen 10 mal` (for Malayalam)\n"
+        "• `Exodus 12 english` (for English)\n\n"
+        "*Note:* If no language is specified, Malayalam will be used by default."
     )
     
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
-    return BIBLE_LANGUAGE
+    return BIBLE_INPUT
 
-async def bible_language_input(update: Update, context: CallbackContext) -> int:
-    """Handle language input"""
-    user_input = update.message.text.strip().lower()
-    
-    # Set default language if empty
-    if not user_input:
-        context.user_data['bible_language'] = 'malayalam'
-    else:
-        context.user_data['bible_language'] = user_input
-    
-    # Show book selection prompt
-    book_text = (
-        "📚 *Now, please enter the Bible book name:*\n\n"
-        "*Examples:*\n"
-        "• Genesis, Exodus, Matthew, John\n"
-        "• Gen, Exo, Matt, Jn (short names)\n"
-        "• ഉല്പത്തി, മത്തായി, യോഹന്നാൻ (Malayalam)\n\n"
-        "Type the book name:"
-    )
-    
-    await update.message.reply_text(book_text, parse_mode="Markdown")
-    return BIBLE_BOOK
-
-async def bible_book_input(update: Update, context: CallbackContext) -> int:
-    """Handle book input"""
-    user_input = update.message.text.strip()
-    context.user_data['bible_book'] = user_input
-    
-    # Show chapter prompt
-    chapter_text = (
-        "📖 *Finally, please enter the chapter number:*\n\n"
-        "*Examples:*\n"
-        "• 1, 2, 3, 10, 25\n\n"
-        "Type the chapter number:"
-    )
-    
-    await update.message.reply_text(chapter_text, parse_mode="Markdown")
-    return BIBLE_CHAPTER
-
-async def bible_chapter_input(update: Update, context: CallbackContext) -> int:
-    """Handle chapter input and generate URL"""
+async def bible_input_handler(update: Update, context: CallbackContext) -> int:
+    """Handle book, chapter, and optional language input"""
     try:
-        chapter = update.message.text.strip()
-        book = context.user_data.get('bible_book', '')
-        language = context.user_data.get('bible_language', 'malayalam')
+        user_input = update.message.text.strip()
         
-        # Combine book and chapter
-        user_input = f"{book} {chapter}"
+        # Parse the input to extract language if specified
+        parts = user_input.split()
+        
+        # Check if the last part is a language code
+        language = 'malayalam'  # default
+        book_chapter_input = user_input
+        
+        # Common language codes
+        language_codes = {
+            'mal', 'malayalam', 'eng', 'english', 'hin', 'hindi', 
+            'tam', 'tamil', 'tel', 'telugu', 'kan', 'kannada',
+            'mar', 'marathi', 'guj', 'gujarati', 'pun', 'punjabi',
+            'ben', 'bengali', 'ur', 'urdu', 'es', 'spanish',
+            'fr', 'french', 'de', 'german', 'zh', 'chinese',
+            'ja', 'japanese', 'ru', 'russian'
+        }
+        
+        if len(parts) >= 2 and parts[-1].lower() in language_codes:
+            # Language specified at the end
+            language = parts[-1].lower()
+            book_chapter_input = ' '.join(parts[:-1])
         
         # Get the URL
-        url = get_wordproject_url_from_input(language, user_input)
+        url = get_wordproject_url_from_input(language, book_chapter_input)
         
         if url.startswith("❌"):
             await update.message.reply_text(url)
         else:
             response_text = (
                 f"📖 *Bible Passage Found!*\n\n"
-                f"*Language:* {language.title()}\n"
-                f"*Book:* {book.title()}\n"
-                f"*Chapter:* {chapter}\n\n"
+                f"*Reference:* {book_chapter_input.title()}\n"
+                f"*Language:* {language.title()}\n\n"
                 f"[🔗 Open on WordProject]({url})"
             )
             await update.message.reply_text(
@@ -597,9 +571,6 @@ async def bible_chapter_input(update: Update, context: CallbackContext) -> int:
                 parse_mode="Markdown",
                 disable_web_page_preview=False
             )
-        
-        # Clear user data
-        context.user_data.clear()
         
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
