@@ -33,7 +33,15 @@ def extract_bible_chapter_text(url: str) -> str:
             # Exclude overly long strings of digits (chapter nav)
             if text.strip().isdigit() and len(text.strip()) > 2:
                 continue
-            verses.append(text)
+            # Exclude footer content
+            if any(footer_word in text.lower() for footer_word in ['contact', 'disclaimer', 'statement', 'mission', 'copyrights']):
+                continue
+            # Exclude lines that are just punctuation
+            if text.strip() in ['|', '|', '|', '|', '|']:
+                continue
+            # Only include lines that contain Malayalam text or verse numbers
+            if any('\u0D00' <= char <= '\u0D7F' for char in text) or re.search(r'\b\d{1,3}\b', text):
+                verses.append(text)
 
         return "\n".join(verses) if verses else "❌ No verses found on the page."
 
@@ -57,6 +65,14 @@ def clean_malayalam_bible_text(text: str) -> str:
         if not line.strip():
             continue
             
+        # Skip footer content
+        if any(footer_word in line.lower() for footer_word in ['contact', 'disclaimer', 'statement', 'mission', 'copyrights']):
+            continue
+            
+        # Skip lines that are just punctuation or special characters
+        if line.strip() in ['|', '|', '|', '|', '|']:
+            continue
+            
         # Clean the line
         cleaned_line = line.strip()
         if cleaned_line:
@@ -70,6 +86,12 @@ def clean_malayalam_bible_text(text: str) -> str:
     
     # Clean up multiple spaces
     result = re.sub(r'\s+', ' ', result)
+    
+    # Remove footer content that might have been missed
+    result = re.sub(r'Contact\|Disclaimer\|Statement of Faith\|Mission\|Copyrights.*$', '', result, flags=re.MULTILINE)
+    
+    # Clean up verse formatting - ensure proper spacing around verse numbers
+    result = re.sub(r'(\d+)([അ-ഹ])', r'\1 \2', result)  # Add space between verse number and Malayalam text
     
     return result.strip()
 
