@@ -39,8 +39,10 @@ def extract_bible_chapter_text(url: str) -> str:
             # Exclude lines that are just punctuation
             if text.strip() in ['|', '|', '|', '|', '|']:
                 continue
-            # Only include lines that contain Malayalam text or verse numbers
-            if any('\u0D00' <= char <= '\u0D7F' for char in text) or re.search(r'\b\d{1,3}\b', text):
+            # Include lines that contain Malayalam text, English text, or verse numbers
+            if (any('\u0D00' <= char <= '\u0D7F' for char in text) or  # Malayalam
+                any(ord('A') <= ord(char) <= ord('Z') or ord('a') <= ord(char) <= ord('z') for char in text) or  # English
+                re.search(r'\b\d{1,3}\b', text)):  # Verse numbers
                 verses.append(text)
 
         return "\n".join(verses) if verses else "❌ No verses found on the page."
@@ -112,14 +114,65 @@ def clean_malayalam_bible_text(text: str) -> str:
 
 def clean_english_bible_text(text: str) -> str:
     lines = text.strip().splitlines()
-
-    # Go backwards to find the last valid verse line
-    for i in range(len(lines) - 1, -1, -1):
-        # Match lines that contain verse numbers, e.g., "18Then..." or "4 Unto..."
-        if re.search(r'\b\d{1,3}(?:\s*[A-Z])', lines[i]):
-            return "\n".join(lines[:i + 1]).strip()
-
-    return text.strip()
+    cleaned_lines = []
+    
+    for line in lines:
+        # Skip empty lines
+        if not line.strip():
+            continue
+            
+        # Skip lines that are just numbers (chapter navigation)
+        if line.strip().isdigit() and len(line.strip()) <= 3:
+            continue
+        
+        # Skip lines that contain only chapter numbers like "123456789..."
+        if len(line.strip()) > 10 and all(c.isdigit() for c in line.strip()):
+            continue
+            
+        # Skip footer content
+        if any(footer_word in line.lower() for footer_word in ['contact', 'disclaimer', 'statement', 'mission', 'copyrights']):
+            continue
+            
+        # Skip lines that are just punctuation
+        if line.strip() in ['|', '|', '|', '|', '|']:
+            continue
+            
+        # Clean the line
+        cleaned_line = line.strip()
+        if cleaned_line:
+            cleaned_lines.append(cleaned_line)
+    
+    # Join lines and do final cleaning
+    result = "\n".join(cleaned_lines)
+    
+    # Remove any remaining chapter navigation patterns
+    result = re.sub(r'\b\d{1,3}\s*\d{1,3}\s*\d{1,3}\b', '', result)
+    
+    # Clean up multiple spaces
+    result = re.sub(r'\s+', ' ', result)
+    
+    # Remove footer content that might have been missed
+    result = re.sub(r'Contact\|Disclaimer\|Statement of Faith\|Mission\|Copyrights.*$', '', result, flags=re.MULTILINE)
+    
+    # Format verses to start on new lines
+    # Split by verse numbers and format each verse
+    verses = re.split(r'(\d+)\s+', result)
+    formatted_verses = []
+    
+    for i in range(0, len(verses), 2):
+        if i + 1 < len(verses):
+            verse_num = verses[i]
+            verse_text = verses[i + 1].strip()
+            if verse_num.isdigit() and verse_text:
+                formatted_verses.append(f"{verse_num} {verse_text}")
+    
+    # If no verses were found with the above method, try alternative formatting
+    if not formatted_verses:
+        # Add newlines before verse numbers
+        result = re.sub(r'(\d+)\s+([A-Za-z])', r'\n\1 \2', result)
+        return result.strip()
+    
+    return "\n".join(formatted_verses)
 
 def normalize_and_format_bible_text(text: str) -> str:
     # Fix spacing between concatenated words (e.g., Abramwent → Abram went)
