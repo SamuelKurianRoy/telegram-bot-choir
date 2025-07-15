@@ -12,6 +12,7 @@ from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import pandas as pd
 from datetime import date
+import re
 
 # Add this near the top of the file, with other state constants if present
 ENTER_SONG = 0
@@ -496,25 +497,35 @@ async def bible_start(update: Update, context: CallbackContext) -> int:
     # Check if user provided arguments
     args = context.args
     if len(args) >= 1:
-        # User provided book/chapter directly
         user_input = " ".join(args)
+        # --- New: Parse for verse or range ---
+        book_chapter_input = user_input
+        verse_spec = None
+        # Detect verse or range (e.g., Gen 1:1 or Gen 2:4-7)
+        m = re.search(r":\s*(\d+)(?:\s*-\s*(\d+))?$", user_input)
+        if m:
+            verse_spec = (int(m.group(1)), int(m.group(2)) if m.group(2) else int(m.group(1)))
+            book_chapter_input = user_input[:m.start()].strip()
         # Default to Malayalam if no language specified
-        url = get_wordproject_url_from_input('malayalam', user_input)
+        url = get_wordproject_url_from_input('malayalam', book_chapter_input)
         
         if url.startswith("❌"):
             await update.message.reply_text(url)
         else:
-            # Extract and display the Bible text
             raw_text = extract_bible_chapter_text(url)
             if raw_text.startswith("❌"):
                 await update.message.reply_text(raw_text)
             else:
-                # Clean the text based on language
                 cleaned_text = clean_bible_text(raw_text, 'ml')
-                
+                # --- New: Extract verses if verse_spec is set ---
+                if verse_spec:
+                    verses = extract_verses_from_cleaned_text(cleaned_text, verse_spec[0], verse_spec[1])
+                    if not verses:
+                        await update.message.reply_text("❌ Verse(s) not found in this chapter.")
+                        return ConversationHandler.END
+                    cleaned_text = "\n".join(verses)
                 # Split long text into multiple messages if needed
                 if len(cleaned_text) > 4000:
-                    # Split into chunks
                     chunks = [cleaned_text[i:i+4000] for i in range(0, len(cleaned_text), 4000)]
                     for i, chunk in enumerate(chunks):
                         if i == 0:
@@ -522,8 +533,6 @@ async def bible_start(update: Update, context: CallbackContext) -> int:
                             await update.message.reply_text(header + chunk, parse_mode="Markdown")
                         else:
                             await update.message.reply_text(chunk)
-                    
-                    # Add link in a separate message
                     link_text = f"🔗 [View on WordProject]({url})"
                     await update.message.reply_text(link_text, parse_mode="Markdown", disable_web_page_preview=True)
                 else:
@@ -558,15 +567,9 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
     """Handle book, chapter, and optional language input"""
     try:
         user_input = update.message.text.strip()
-        
-        # Parse the input to extract language if specified
         parts = user_input.split()
-        
-        # Check if the last part is a language code
         language = 'malayalam'  # default
         book_chapter_input = user_input
-        
-        # Common language codes
         language_codes = {
             'mal', 'malayalam', 'eng', 'english', 'hin', 'hindi', 
             'tam', 'tamil', 'tel', 'telugu', 'kan', 'kannada',
@@ -575,34 +578,44 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
             'fr', 'french', 'de', 'german', 'zh', 'chinese',
             'ja', 'japanese', 'ru', 'russian'
         }
-        
         if len(parts) >= 2 and parts[-1].lower() in language_codes:
-            # Language specified at the end
             language = parts[-1].lower()
             book_chapter_input = ' '.join(parts[:-1])
-        
-        # Get the URL
+        # --- New: Parse for verse or range ---
+        verse_spec = None
+        m = re.search(r":\s*(\d+)(?:\s*-\s*(\d+))?$", book_chapter_input)
+        if m:
+            verse_spec = (int(m.group(1)), int(m.group(2)) if m.group(2) else int(m.group(1)))
+            book_chapter_input = book_chapter_input[:m.start()].strip()
         url = get_wordproject_url_from_input(language, book_chapter_input)
-        
         if url.startswith("❌"):
             await update.message.reply_text(url)
         else:
-            # Extract and display the Bible text
             raw_text = extract_bible_chapter_text(url)
             if raw_text.startswith("❌"):
                 await update.message.reply_text(raw_text)
             else:
-                # Determine language code for text cleaning
                 lang_code = 'ml'  # default to Malayalam
                 if language in ['english', 'eng']:
                     lang_code = 'kj'
-                
-                # Clean the text based on language
                 cleaned_text = clean_bible_text(raw_text, lang_code)
-                
-                # Split long text into multiple messages if needed
+                # --- New: Extract verses if verse_spec is set ---
+                if verse_spec:
+                    verses = extract_verses_from_cleaned_text(cleaned_text, verse_spec[0], verse_spec[1])
+                    if not verses:
+                        await update.message.reply_text("❌ Verse(s) not found in this chapter.")
+                        next_text = (
+                            "📖 *Enter another Bible reference, or type /cancel to stop:*\n\n"
+                            "*Examples:*\n"
+                            "• `Gen 10`\n"
+                            "• `Exodus 12 english`\n"
+                            "• `John 3`\n"
+                            "• `യോഹന്നാൻ 3`"
+                        )
+                        await update.message.reply_text(next_text, parse_mode="Markdown")
+                        return BIBLE_INPUT
+                    cleaned_text = "\n".join(verses)
                 if len(cleaned_text) > 4000:
-                    # Split into chunks
                     chunks = [cleaned_text[i:i+4000] for i in range(0, len(cleaned_text), 4000)]
                     for i, chunk in enumerate(chunks):
                         if i == 0:
@@ -610,8 +623,6 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
                             await update.message.reply_text(header + chunk, parse_mode="Markdown")
                         else:
                             await update.message.reply_text(chunk)
-                    
-                    # Add link in a separate message
                     link_text = f"🔗 [View on WordProject]({url})"
                     await update.message.reply_text(link_text, parse_mode="Markdown", disable_web_page_preview=True)
                 else:
@@ -623,8 +634,6 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
                         f"🔗 [View on WordProject]({url})"
                     )
                     await update.message.reply_text(response_text, parse_mode="Markdown", disable_web_page_preview=True)
-        
-        # Ask for next passage
         next_text = (
             "📖 *Enter another Bible reference, or type /cancel to stop:*\n\n"
             "*Examples:*\n"
@@ -634,10 +643,8 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
             "• `യോഹന്നാൻ 3`"
         )
         await update.message.reply_text(next_text, parse_mode="Markdown")
-        
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
-        # Still ask for next passage even if there was an error
         next_text = (
             "📖 *Enter another Bible reference, or type /cancel to stop:*\n\n"
             "*Examples:*\n"
@@ -647,5 +654,16 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
             "• `യോഹന്നാൻ 3`"
         )
         await update.message.reply_text(next_text, parse_mode="Markdown")
-    
-    return BIBLE_INPUT 
+    return BIBLE_INPUT
+
+# --- Helper for extracting verses from cleaned text ---
+def extract_verses_from_cleaned_text(cleaned_text, start_verse, end_verse):
+    """Extracts verses from cleaned text (one verse per line, starting with number)"""
+    verses = []
+    for line in cleaned_text.splitlines():
+        m = re.match(r"^(\d+)\s+(.*)", line)
+        if m:
+            vnum = int(m.group(1))
+            if start_verse <= vnum <= end_verse:
+                verses.append(line)
+    return verses 
