@@ -53,18 +53,23 @@ def extract_bible_chapter_text(url: str) -> str:
 def clean_malayalam_bible_text(text: str) -> str:
     lines = text.strip().splitlines()
     cleaned_lines = []
-    first_verse_found = False
     for line in lines:
         lstripped = line.strip()
-        # If line starts with 'അദ്ധ്യായം', try to extract the first verse after navigation digits
+        # If line starts with 'അദ്ധ്യായം', extract the Malayalam text after the navigation digits as verse 1
         if lstripped.startswith('അദ്ധ്യായം'):
-            # Remove 'അദ്ധ്യായം' and any non-Malayalam, non-digit chars up to the first Malayalam letter
-            after_nav = re.sub(r'^അദ്ധ്യായം[^\u0D00-\u0D7F\d]*', '', lstripped)
-            # Find the first verse number and its text (e.g., '1 ആദിയിൽ ...')
-            m = re.search(r'(\d+)\s*([അ-ഹ].+)', after_nav)
+            # Remove 'അദ്ധ്യായം' and everything up to and including the last digit in a run of digits
+            m = re.search(r'^അദ്ധ്യായം[^\u0D00-\u0D7F\d]*([\d]+)([^\u0D00-\u0D7F\d]*)', lstripped)
             if m:
-                cleaned_lines.append(f"{m.group(1)} {m.group(2).strip()}")
-                first_verse_found = True
+                # Find the position after the last digit run
+                idx = m.end()
+                after_nav = lstripped[idx:].lstrip()
+                # If there is Malayalam text after, treat it as verse 1
+                if after_nav and any('\u0D00' <= c <= '\u0D7F' for c in after_nav):
+                    # Only prepend '1 ' if it doesn't already start with a number
+                    if not re.match(r'^\d+', after_nav):
+                        cleaned_lines.append(f"1 {after_nav}")
+                    else:
+                        cleaned_lines.append(after_nav)
             continue
         # Skip lines that are just numbers (chapter navigation)
         if lstripped.isdigit() and len(lstripped) <= 3:
