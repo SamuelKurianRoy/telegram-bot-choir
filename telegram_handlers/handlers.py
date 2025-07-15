@@ -659,15 +659,17 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
 # --- Helper for extracting verses from cleaned text ---
 def extract_verses_from_cleaned_text(cleaned_text, start_verse, end_verse):
     """Extracts verses from cleaned text, even if multiple verses are on the same line."""
-    # Combine all lines into one string to handle cases like '2 ... 3 ...'
-    text = '\n'.join(cleaned_text.splitlines())
-    # Find all verse number and text pairs
-    # This regex matches Malayalam and English verse numbers at the start or after a newline
-    verse_pattern = re.compile(r'(?<=^|\n)(\d{1,3})\s+([^\n]+)')
-    matches = list(verse_pattern.finditer(text))
+    # Use re.findall to match all verse numbers and their text
+    # This will match verse numbers followed by text, even if multiple on one line
+    # Handles both Malayalam and English
+    pattern = re.compile(r'(\d{1,3})\s+([^\d\n]+)')
+    matches = pattern.findall(cleaned_text)
     verses = []
-    for m in matches:
-        vnum = int(m.group(1))
-        if start_verse <= vnum <= end_verse:
-            verses.append(f"{vnum} {m.group(2).strip()}")
+    for vnum_str, vtext in matches:
+        try:
+            vnum = int(vnum_str)
+            if start_verse <= vnum <= end_verse:
+                verses.append(f"{vnum} {vtext.strip()}")
+        except Exception:
+            continue
     return verses 
