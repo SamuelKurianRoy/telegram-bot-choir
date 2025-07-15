@@ -55,61 +55,52 @@ def clean_malayalam_bible_text(text: str) -> str:
     cleaned_lines = []
     
     for line in lines:
+        lstripped = line.strip()
         # Skip lines that are just numbers (chapter navigation)
-        if line.strip().isdigit() and len(line.strip()) <= 3:
+        if lstripped.isdigit() and len(lstripped) <= 3:
             continue
-        
         # Skip lines that contain only chapter numbers like "123456789..."
-        if len(line.strip()) > 10 and all(c.isdigit() for c in line.strip()):
+        if len(lstripped) > 10 and all(c.isdigit() for c in lstripped):
             continue
-            
+        # Skip lines that start with 'അദ്ധ്യായം' (chapter navigation)
+        if lstripped.startswith('അദ്ധ്യായം'):
+            continue
         # Skip empty lines
-        if not line.strip():
+        if not lstripped:
             continue
-            
         # Skip footer content
-        if any(footer_word in line.lower() for footer_word in ['contact', 'disclaimer', 'statement', 'mission', 'copyrights']):
+        if any(footer_word in lstripped.lower() for footer_word in ['contact', 'disclaimer', 'statement', 'mission', 'copyrights']):
             continue
-            
         # Skip lines that are just punctuation or special characters
-        if line.strip() in ['|', '|', '|', '|', '|']:
+        if lstripped in ['|', '|', '|', '|', '|']:
             continue
-            
         # Clean the line
-        cleaned_line = line.strip()
+        cleaned_line = lstripped
         if cleaned_line:
             cleaned_lines.append(cleaned_line)
-    
+    # Remove any leading lines until the first verse (should start with a number)
+    while cleaned_lines and not cleaned_lines[0].lstrip().split(' ', 1)[0].isdigit():
+        cleaned_lines.pop(0)
     # Join lines and do final cleaning
     result = "\n".join(cleaned_lines)
-    
     # Remove any remaining chapter navigation patterns
     result = re.sub(r'\b\d{1,3}\s*\d{1,3}\s*\d{1,3}\b', '', result)
-    
     # Clean up multiple spaces
     result = re.sub(r'\s+', ' ', result)
-    
     # Remove footer content that might have been missed
     result = re.sub(r'Contact\|Disclaimer\|Statement of Faith\|Mission\|Copyrights.*$', '', result, flags=re.MULTILINE)
-    
     # Format verses to start on new lines
-    # Split by verse numbers and format each verse
     verses = re.split(r'(\d+)\s+', result)
     formatted_verses = []
-    
     for i in range(0, len(verses), 2):
         if i + 1 < len(verses):
             verse_num = verses[i]
             verse_text = verses[i + 1].strip()
             if verse_num.isdigit() and verse_text:
                 formatted_verses.append(f"{verse_num} {verse_text}")
-    
-    # If no verses were found with the above method, try alternative formatting
     if not formatted_verses:
-        # Add newlines before verse numbers
         result = re.sub(r'(\d+)\s+([അ-ഹ])', r'\n\1 \2', result)
         return result.strip()
-    
     return "\n".join(formatted_verses)
 
 def clean_english_bible_text(text: str) -> str:
