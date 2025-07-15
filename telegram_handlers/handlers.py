@@ -521,7 +521,7 @@ async def bible_start(update: Update, context: CallbackContext) -> int:
                 if verse_spec:
                     verses = extract_verses_from_cleaned_text(cleaned_text, verse_spec[0], verse_spec[1])
                     if not verses:
-                        await update.message.reply_text("❌ Verse(s) not found in this chapter.")
+                        await update.message.reply_text(f"❌ Verse(s) not found in this chapter.\n🔗 [View on WordProject]({url})", parse_mode="Markdown", disable_web_page_preview=True)
                         return ConversationHandler.END
                     cleaned_text = "\n".join(verses)
                 # Split long text into multiple messages if needed
@@ -603,7 +603,7 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
                 if verse_spec:
                     verses = extract_verses_from_cleaned_text(cleaned_text, verse_spec[0], verse_spec[1])
                     if not verses:
-                        await update.message.reply_text("❌ Verse(s) not found in this chapter.")
+                        await update.message.reply_text(f"❌ Verse(s) not found in this chapter.\n🔗 [View on WordProject]({url})", parse_mode="Markdown", disable_web_page_preview=True)
                         next_text = (
                             "📖 *Enter another Bible reference, or type /cancel to stop:*\n\n"
                             "*Examples:*\n"
@@ -658,12 +658,16 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
 
 # --- Helper for extracting verses from cleaned text ---
 def extract_verses_from_cleaned_text(cleaned_text, start_verse, end_verse):
-    """Extracts verses from cleaned text (one verse per line, starting with number)"""
+    """Extracts verses from cleaned text, even if multiple verses are on the same line."""
+    # Combine all lines into one string to handle cases like '2 ... 3 ...'
+    text = '\n'.join(cleaned_text.splitlines())
+    # Find all verse number and text pairs
+    # This regex matches Malayalam and English verse numbers at the start or after a newline
+    verse_pattern = re.compile(r'(?<=^|\n)(\d{1,3})\s+([^\n]+)')
+    matches = list(verse_pattern.finditer(text))
     verses = []
-    for line in cleaned_text.splitlines():
-        m = re.match(r"^(\d+)\s+(.*)", line)
-        if m:
-            vnum = int(m.group(1))
-            if start_verse <= vnum <= end_verse:
-                verses.append(line)
+    for m in matches:
+        vnum = int(m.group(1))
+        if start_verse <= vnum <= end_verse:
+            verses.append(f"{vnum} {m.group(2).strip()}")
     return verses 
