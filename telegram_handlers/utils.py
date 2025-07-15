@@ -53,17 +53,21 @@ def extract_bible_chapter_text(url: str) -> str:
 def clean_malayalam_bible_text(text: str) -> str:
     lines = text.strip().splitlines()
     cleaned_lines = []
-    
     for line in lines:
         lstripped = line.strip()
+        # If line starts with 'അദ്ധ്യായം' but contains a verse, extract the verse part
+        if lstripped.startswith('അദ്ധ്യായം'):
+            # Try to find the first verse number and its text
+            import re
+            m = re.search(r'(\d+)([അ-ഹ].*)', lstripped)
+            if m:
+                cleaned_lines.append(f"{m.group(1)} {m.group(2).strip()}")
+            continue
         # Skip lines that are just numbers (chapter navigation)
         if lstripped.isdigit() and len(lstripped) <= 3:
             continue
         # Skip lines that contain only chapter numbers like "123456789..."
         if len(lstripped) > 10 and all(c.isdigit() for c in lstripped):
-            continue
-        # Skip lines that start with 'അദ്ധ്യായം' (chapter navigation)
-        if lstripped.startswith('അദ്ധ്യായം'):
             continue
         # Skip empty lines
         if not lstripped:
