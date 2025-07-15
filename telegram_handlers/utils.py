@@ -101,8 +101,8 @@ def clean_malayalam_bible_text(text: str) -> str:
     result = re.sub(r'\s+', ' ', result)
     # Remove footer content that might have been missed
     result = re.sub(r'Contact\|Disclaimer\|Statement of Faith\|Mission\|Copyrights.*$', '', result, flags=re.MULTILINE)
-    # --- Insert newline before every verse number (except at start) ---
-    result = re.sub(r'(?<!^)\s(\d{1,3})\s+', r'\n\1 ', result)
+    # --- Insert newline before every verse number (except at start, and after any non-digit char) ---
+    result = re.sub(r'([^\d])(\d{1,3})\s+', r'\1\n\2 ', result)
     # Format verses to start on new lines
     verses = re.split(r'(\d+)\s+', result)
     formatted_verses = []
