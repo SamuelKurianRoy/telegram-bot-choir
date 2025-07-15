@@ -55,21 +55,16 @@ def clean_malayalam_bible_text(text: str) -> str:
     cleaned_lines = []
     for line in lines:
         lstripped = line.strip()
-        # If line starts with 'അദ്ധ്യായം', extract the Malayalam text after the navigation digits as verse 1
+        # If line starts with 'അദ്ധ്യായം', extract Malayalam text after navigation digits
         if lstripped.startswith('അദ്ധ്യായം'):
             # Remove 'അദ്ധ്യായം' and everything up to and including the last digit in a run of digits
             m = re.search(r'^അദ്ധ്യായം[^\u0D00-\u0D7F\d]*([\d]+)([^\u0D00-\u0D7F\d]*)', lstripped)
             if m:
-                # Find the position after the last digit run
                 idx = m.end()
                 after_nav = lstripped[idx:].lstrip()
-                # If there is Malayalam text after, treat it as verse 1
+                # If there is Malayalam text after, add it (don't require a number)
                 if after_nav and any('\u0D00' <= c <= '\u0D7F' for c in after_nav):
-                    # Only prepend '1 ' if it doesn't already start with a number
-                    if not re.match(r'^\d+', after_nav):
-                        cleaned_lines.append(f"1 {after_nav}")
-                    else:
-                        cleaned_lines.append(after_nav)
+                    cleaned_lines.append(after_nav)
             continue
         # Skip lines that are just numbers (chapter navigation)
         if lstripped.isdigit() and len(lstripped) <= 3:
@@ -90,6 +85,11 @@ def clean_malayalam_bible_text(text: str) -> str:
         cleaned_line = lstripped
         if cleaned_line:
             cleaned_lines.append(cleaned_line)
+    # If the first cleaned line does not start with a number but contains Malayalam, prepend '1 '
+    if cleaned_lines:
+        first = cleaned_lines[0]
+        if not first.lstrip().split(' ', 1)[0].isdigit() and any('\u0D00' <= c <= '\u0D7F' for c in first):
+            cleaned_lines[0] = f"1 {first}"
     # Remove any leading lines until the first verse (should start with a number)
     while cleaned_lines and not cleaned_lines[0].lstrip().split(' ', 1)[0].isdigit():
         cleaned_lines.pop(0)
