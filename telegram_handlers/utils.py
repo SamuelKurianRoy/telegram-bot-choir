@@ -4,6 +4,7 @@
 import requests
 from bs4 import BeautifulSoup
 import re
+from rapidfuzz import fuzz
 
 def send_long_message(update, message_parts, parse_mode="Markdown", max_length=3500):
     """
@@ -263,6 +264,21 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
         "revelation": 66, "rev": 66, "വെളിപാട്": 66, "വെളി" : 66
     }
 
+    def fuzzy_find_book(book_input, threshold=60):
+        """Find the best matching book name using fuzzy matching"""
+        best_match = None
+        best_score = 0
+        
+        for book_name in book_map.keys():
+            score = fuzz.ratio(book_input.lower(), book_name.lower())
+            if score > best_score:
+                best_score = score
+                best_match = book_name
+        
+        if best_score >= threshold:
+            return best_match, best_score
+        return None, 0
+
     # Chapter counts for each book (book number -> chapter count)
     book_chapter_counts = {
         1: 50, 2: 40, 3: 27, 4: 36, 5: 34, 6: 24, 7: 21, 8: 4, 9: 31,
@@ -317,25 +333,34 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
         if len(parts) < 2:
             raise ValueError("Input must be 'Book Chapter'")
 
-        # Match the longest possible book name
-        for i in range(len(parts)-1, 0, -1):
-            name = ' '.join(parts[:i])
-            if name in book_map:
-                chap = int(parts[i])
-                bn = book_map[name]
-                
-                # Validate chapter number
-                if bn in book_chapter_counts:
-                    max_chapters = book_chapter_counts[bn]
-                    if chap < 1 or chap > max_chapters:
-                        raise ValueError(f"Chapter {chap} does not exist in the selected book. Valid chapters are 1-{max_chapters}")
-                else:
-                    raise ValueError(f"Invalid book number: {bn}")
-                
-                return f"https://www.wordproject.org/bibles/{lc}/{bn:02d}/{chap}.htm#0"
+        # Extract chapter number (last part should be a number)
+        try:
+            chapter = int(parts[-1])
+        except ValueError:
+            raise ValueError("Chapter must be a number")
 
-        raise ValueError("Book name not recognized")
+        # Book name is everything except the last part
+        book_input = ' '.join(parts[:-1])
+
+        # First try exact match
+        book_number = book_map.get(book_input)
+        
+        # If no exact match, try fuzzy matching
+        if book_number is None:
+            matched_book, score = fuzzy_find_book(book_input)
+            if matched_book:
+                book_number = book_map[matched_book]
+                # Optional: You could return a message indicating fuzzy match was used
+                # return f"Using fuzzy match: {matched_book} (score: {score})"
+            else:
+                available_books = list(set([k for k in book_map.keys() if not k.isdigit()]))[:10]
+                return f"❌ Book '{book_input}' not found. Available books include: {', '.join(available_books[:5])}..."
+
+        # Construct the URL
+        url = f"https://www.wordproject.org/bibles/{lc}/b{book_number:02d}c{chapter:02d}.htm"
+        return url
+
     except Exception as e:
-        return f"❌ Error: {e}"
+        return f"❌ Error: {str(e)}"
 
 # TODO: Add more Telegram-specific helpers as needed 
