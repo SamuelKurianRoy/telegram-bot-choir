@@ -105,6 +105,16 @@ def get_bible_verse(book, chapter, verse):
 
         # Extract the specific verse
         verse_text = extract_verse_from_text(cleaned_text, verse)
+
+        if verse_text:
+            # Clean up common formatting issues
+            verse_text = verse_text.replace('  ', ' ')  # Remove double spaces
+            verse_text = verse_text.strip()
+            # Fix common word concatenation issues
+            verse_text = verse_text.replace('Christwhich', 'Christ which')
+            verse_text = verse_text.replace('Godand', 'God and')
+            verse_text = verse_text.replace('Lordand', 'Lord and')
+
         return verse_text
 
     except Exception:
@@ -123,28 +133,46 @@ def generate_wrong_options(correct_reference, _):
     selected_wrong = random.sample(wrong_options, min(3, len(wrong_options)))
     return [opt["reference"] for opt in selected_wrong]
 
-def create_bible_question(difficulty):
-    """Create a new Bible question"""
+def create_bible_question(difficulty, used_verses=None):
+    """Create a new Bible question, avoiding duplicates"""
+    if used_verses is None:
+        used_verses = []
+
     verses = BIBLE_VERSES[difficulty]
-    selected_verse = random.choice(verses)
+    available_verses = [v for v in verses if v["reference"] not in used_verses]
 
-    # Get the verse text
-    verse_text = get_bible_verse(selected_verse["book"], selected_verse["chapter"], selected_verse["verse"])
+    # If all verses have been used, reset the list
+    if not available_verses:
+        available_verses = verses
+        used_verses.clear()
 
-    if not verse_text:
-        return None
+    # Try up to 3 times to get a working verse
+    for attempt in range(3):
+        selected_verse = random.choice(available_verses)
 
-    # Generate options
-    wrong_options = generate_wrong_options(selected_verse["reference"], difficulty)
-    all_options = [selected_verse["reference"]] + wrong_options
-    random.shuffle(all_options)
+        # Get the verse text
+        verse_text = get_bible_verse(selected_verse["book"], selected_verse["chapter"], selected_verse["verse"])
 
-    return {
-        "verse_text": verse_text,
-        "correct_answer": selected_verse["reference"],
-        "options": all_options,
-        "difficulty": difficulty
-    }
+        if verse_text:
+            # Generate options
+            wrong_options = generate_wrong_options(selected_verse["reference"], difficulty)
+            all_options = [selected_verse["reference"]] + wrong_options
+            random.shuffle(all_options)
+
+            return {
+                "verse_text": verse_text,
+                "correct_answer": selected_verse["reference"],
+                "options": all_options,
+                "difficulty": difficulty,
+                "reference": selected_verse["reference"]
+            }
+        else:
+            # Remove this verse from available options and try another
+            available_verses = [v for v in available_verses if v["reference"] != selected_verse["reference"]]
+            if not available_verses:
+                break
+
+    return None
 
 # Define authorized_users globally for use in all handlers
 authorized_users_str = st.secrets["AUTHORIZED_USERS"]
@@ -914,11 +942,11 @@ async def bible_game_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) started Bible game")
 
-    # Initialize user's game data if not exists
-    if 'bible_game_score' not in context.user_data:
-        context.user_data['bible_game_score'] = 0
-        context.user_data['bible_game_total'] = 0
-        context.user_data['current_difficulty'] = None
+    # Reset game data for new session
+    context.user_data['bible_game_score'] = 0
+    context.user_data['bible_game_total'] = 0
+    context.user_data['current_difficulty'] = None
+    context.user_data['used_verses'] = []  # Track used verses to avoid duplicates
 
     # Get user's best scores from database for all difficulties
     user_best_scores = get_user_best_scores_all_difficulties(user.id)
@@ -951,12 +979,12 @@ async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DE
     user = update.effective_user
 
     if user_input == "❌ Cancel":
-        # Save score if user answered at least one question
+        # Save score if user answered at least one question in current difficulty
         score = context.user_data.get('bible_game_score', 0)
         total = context.user_data.get('bible_game_total', 0)
+        current_difficulty = context.user_data.get('current_difficulty')
 
-        if total > 0:
-            current_difficulty = context.user_data.get('current_difficulty', 'Easy')
+        if total > 0 and current_difficulty:
             save_game_score(user.full_name or user.username or "Unknown", user.id, score, current_difficulty)
 
         await update.message.reply_text("Bible game cancelled. Type /games to play again!", reply_markup=ReplyKeyboardRemove())
@@ -1090,13 +1118,21 @@ async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DE
         return BIBLE_GAME_DIFFICULTY
 
     difficulty = difficulty_map[user_input]
+
+    # Reset session data when switching difficulties
+    if context.user_data.get('current_difficulty') != difficulty:
+        context.user_data['bible_game_score'] = 0
+        context.user_data['bible_game_total'] = 0
+        context.user_data['used_verses'] = []
+
     context.user_data['current_difficulty'] = difficulty  # Store current difficulty
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) chose {difficulty} difficulty")
 
     # Generate a question
     await update.message.reply_text("🔄 Loading Bible verse...", reply_markup=ReplyKeyboardRemove())
 
-    question = create_bible_question(difficulty)
+    used_verses = context.user_data.get('used_verses', [])
+    question = create_bible_question(difficulty, used_verses)
     if not question:
         await update.message.reply_text(
             "❌ Sorry, I couldn't load a Bible verse right now. Please try again with /games",
@@ -1104,8 +1140,9 @@ async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DE
         )
         return ConversationHandler.END
 
-    # Store question in context
+    # Store question in context and track used verse
     context.user_data['current_question'] = question
+    context.user_data['used_verses'].append(question['reference'])
 
     # Display the question
     question_text = (
@@ -1132,12 +1169,12 @@ async def bible_game_question_handler(update: Update, context: ContextTypes.DEFA
     user = update.effective_user
 
     if user_input == "❌ Cancel":
-        # Save score if user answered at least one question
+        # Save score if user answered at least one question in current difficulty
         score = context.user_data.get('bible_game_score', 0)
         total = context.user_data.get('bible_game_total', 0)
+        current_difficulty = context.user_data.get('current_difficulty')
 
-        if total > 0:
-            current_difficulty = context.user_data.get('current_difficulty', 'Easy')
+        if total > 0 and current_difficulty:
             save_game_score(user.full_name or user.username or "Unknown", user.id, score, current_difficulty)
 
         await update.message.reply_text("Bible game cancelled. Type /games to play again!", reply_markup=ReplyKeyboardRemove())
@@ -1196,8 +1233,9 @@ async def bible_game_question_handler(update: Update, context: ContextTypes.DEFA
     # Show loading message
     await update.message.reply_text("🔄 Loading next Bible verse...")
 
-    # Generate new question
-    new_question = create_bible_question(current_difficulty)
+    # Generate new question, avoiding duplicates
+    used_verses = context.user_data.get('used_verses', [])
+    new_question = create_bible_question(current_difficulty, used_verses)
     if not new_question:
         # If failed to load, go back to difficulty selection
         keyboard = [
@@ -1213,8 +1251,9 @@ async def bible_game_question_handler(update: Update, context: ContextTypes.DEFA
         )
         return BIBLE_GAME_DIFFICULTY
 
-    # Store new question in context
+    # Store new question in context and track used verse
     context.user_data['current_question'] = new_question
+    context.user_data['used_verses'].append(new_question['reference'])
 
     # Display the new question
     question_text = (
