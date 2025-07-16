@@ -58,7 +58,7 @@ def clean_malayalam_bible_text(text: str) -> str:
     for line in lines:
         lstripped = line.strip()
         if lstripped.startswith('അദ്ധ്യായം'):
-            m = re.search(r'^അദ്ധ്യായം[^7F\d]*([\d]+)([^\u0D00-\u0D7F\d]*)', lstripped)
+            m = re.search(r'^അദ്ധ്യായം[^00-\u0D7F\d]*([\d]+)([^\u0D00-\u0D7F\d]*)', lstripped)
             if m:
                 idx = m.end()
                 after_nav = lstripped[idx:].lstrip()
@@ -84,6 +84,11 @@ def clean_malayalam_bible_text(text: str) -> str:
     text = text.strip()
     # Split into lines
     lines = [l.strip() for l in text.split('\n') if l.strip()]
+    # Ensure a space after the verse number if followed by Malayalam
+    new_lines = []
+    for line in lines:
+        new_lines.append(re.sub(r'^(\d{1,3})(?=[\u0D00-\u0D7F])', r'\1 ', line))
+    lines = new_lines
     # If the first line does not start with a number, prepend '1 '
     if lines and not re.match(r'^\d{1,3}', lines[0]):
         lines[0] = '1 ' + lines[0]
