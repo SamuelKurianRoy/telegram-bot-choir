@@ -1347,7 +1347,7 @@ async def handle_song_code(update: Update, context: CallbackContext) -> None:
     # Get Name/Index info
     Vocabulary = ChoirVocabulary(df, dfH, dfL, dfC)[0]
     song_info = isVocabulary(user_input, Vocabulary, dfH, dfTH, Tune_finder_of_known_songs)
-    if 'not found' not in song_info:
+    if 'was not found' not in song_info:
         response_parts.append(f"🎵 <b>Song Info:</b> {song_info}")
         last_sung = Datefinder(user_input, song_type, first=True)
         response_parts.append(f"🗓️ <b>Last Sung:</b> {last_sung}")
