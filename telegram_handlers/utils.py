@@ -51,69 +51,61 @@ def extract_bible_chapter_text(url: str) -> str:
         return f"❌ Error: {str(e)}"
 
 def clean_malayalam_bible_text(text: str) -> str:
+    import re
     lines = text.strip().splitlines()
     cleaned_lines = []
     for line in lines:
         lstripped = line.strip()
         # If line starts with 'അദ്ധ്യായം', extract Malayalam text after navigation digits
         if lstripped.startswith('അദ്ധ്യായം'):
-            # Remove 'അദ്ധ്യായം' and everything up to and including the last digit in a run of digits
-            m = re.search(r'^അദ്ധ്യായം[^\u0D00-\u0D7F\d]*([\d]+)([^\u0D00-\u0D7F\d]*)', lstripped)
+            m = re.search(r'^അദ്ധ്യായം[^00-\u0D7F\d]*([\d]+)([^\u0D00-\u0D7F\d]*)', lstripped)
             if m:
                 idx = m.end()
                 after_nav = lstripped[idx:].lstrip()
-                # If there is Malayalam text after, add it (don't require a number)
                 if after_nav and any('\u0D00' <= c <= '\u0D7F' for c in after_nav):
                     cleaned_lines.append(after_nav)
             continue
-        # Skip lines that are just numbers (chapter navigation)
         if lstripped.isdigit() and len(lstripped) <= 3:
             continue
-        # Skip lines that contain only chapter numbers like "123456789..."
         if len(lstripped) > 10 and all(c.isdigit() for c in lstripped):
             continue
-        # Skip empty lines
         if not lstripped:
             continue
-        # Skip footer content
         if any(footer_word in lstripped.lower() for footer_word in ['contact', 'disclaimer', 'statement', 'mission', 'copyrights']):
             continue
-        # Skip lines that are just punctuation or special characters
         if lstripped in ['|', '|', '|', '|', '|']:
             continue
-        # Clean the line
         cleaned_line = lstripped
         if cleaned_line:
             cleaned_lines.append(cleaned_line)
-    # If the first cleaned line does not start with a number but contains Malayalam, prepend '1 '
     if cleaned_lines:
         first = cleaned_lines[0]
         if not first.lstrip().split(' ', 1)[0].isdigit() and any('\u0D00' <= c <= '\u0D7F' for c in first):
             cleaned_lines[0] = f"1 {first}"
-    # Remove any leading lines until the first verse (should start with a number)
     while cleaned_lines and not cleaned_lines[0].lstrip().split(' ', 1)[0].isdigit():
         cleaned_lines.pop(0)
-    # Join lines and do final cleaning
     result = "\n".join(cleaned_lines)
-    # Remove any remaining chapter navigation patterns
-    result = re.sub(r'\b\d{1,3}\s*\d{1,3}\s*\d{1,3}\b', '', result)
+    # --- NEW: Insert newline before any verse number (1-3 digits) that is preceded by a non-digit and followed by Malayalam ---
+    # This handles cases like ;3, :3, etc. (but not 13, 23, etc.)
+    result = re.sub(r'([^\d])(\d{1,3})(?=[\u0D00-\u0D7F])', r'\1\n\2', result)
+    # Also handle if verse number is at the very start (should not add extra newline)
     # Clean up multiple spaces
     result = re.sub(r'\s+', ' ', result)
     # Remove footer content that might have been missed
     result = re.sub(r'Contact\|Disclaimer\|Statement of Faith\|Mission\|Copyrights.*$', '', result, flags=re.MULTILINE)
-    # --- Insert newline before every verse number (except at start, and after any non-digit char) ---
-    result = re.sub(r'([^\d])(\d{1,3})\s+', r'\1\n\2 ', result)
-    # Format verses to start on new lines
-    verses = re.split(r'(\d+)\s+', result)
+    # Now, split into lines by verse numbers at the start of a line
+    # Insert newline before verse numbers at the start of a line (if not already)
+    result = re.sub(r'(?<!\n)(\d{1,3}) ', r'\n\1 ', result)
+    # Remove accidental leading newline
+    result = result.lstrip('\n')
+    # Split into lines and keep only lines that start with a verse number
+    lines = result.split('\n')
     formatted_verses = []
-    for i in range(0, len(verses), 2):
-        if i + 1 < len(verses):
-            verse_num = verses[i]
-            verse_text = verses[i + 1].strip()
-            if verse_num.isdigit() and verse_text:
-                formatted_verses.append(f"{verse_num} {verse_text}")
+    for line in lines:
+        l = line.strip()
+        if l and l.split(' ', 1)[0].isdigit():
+            formatted_verses.append(l)
     if not formatted_verses:
-        result = re.sub(r'(\d+)\s+([അ-ഹ])', r'\n\1 \2', result)
         return result.strip()
     return "\n".join(formatted_verses)
 
