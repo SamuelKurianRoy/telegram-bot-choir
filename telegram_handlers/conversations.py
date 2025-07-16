@@ -942,7 +942,7 @@ async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DE
     user = update.effective_user
 
     if user_input == "❌ Cancel":
-        await update.message.reply_text("Bible game cancelled. Type /biblegame to play again!", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("Bible game cancelled. Type /games to play again!", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
 
     elif user_input == "📊 View Stats":
@@ -980,16 +980,7 @@ async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DE
         await update.message.reply_text("🔄 Score reset! Choose your difficulty:", reply_markup=reply_markup)
         return BIBLE_GAME_DIFFICULTY
 
-    elif user_input == "🎮 Play Again":
-        keyboard = [
-            ["🟢 Easy", "🟡 Medium", "🔴 Hard"],
-            ["📊 View Stats", "🔄 Reset Score"],
-            ["❌ Cancel"]
-        ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
 
-        await update.message.reply_text("🎮 Ready for another round! Choose your difficulty:", reply_markup=reply_markup)
-        return BIBLE_GAME_DIFFICULTY
 
     elif user_input == "❌ Quit Game":
         score = context.user_data.get('bible_game_score', 0)
@@ -1003,7 +994,7 @@ async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DE
             f"❌ Wrong: {total - score}\n"
             f"📈 Total: {total}\n"
             f"🎯 Accuracy: {accuracy:.1f}%\n\n"
-            f"Thanks for playing! Type /biblegame to play again."
+            f"Thanks for playing! Type /games to play again."
         )
 
         await update.message.reply_text(final_text, parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
@@ -1029,7 +1020,7 @@ async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DE
     question = create_bible_question(difficulty)
     if not question:
         await update.message.reply_text(
-            "❌ Sorry, I couldn't load a Bible verse right now. Please try again with /biblegame",
+            "❌ Sorry, I couldn't load a Bible verse right now. Please try again with /games",
             reply_markup=ReplyKeyboardRemove()
         )
         return ConversationHandler.END
@@ -1062,13 +1053,13 @@ async def bible_game_question_handler(update: Update, context: ContextTypes.DEFA
     user = update.effective_user
 
     if user_input == "❌ Cancel":
-        await update.message.reply_text("Bible game cancelled. Type /biblegame to play again!", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("Bible game cancelled. Type /games to play again!", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
 
     # Get the current question
     question = context.user_data.get('current_question')
     if not question:
-        await update.message.reply_text("❌ Something went wrong. Please start a new game with /biblegame", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("❌ Something went wrong. Please start a new game with /games", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
 
     # Parse the user's answer (remove the letter prefix)
@@ -1093,10 +1084,8 @@ async def bible_game_question_handler(update: Update, context: ContextTypes.DEFA
     # Prepare response
     if is_correct:
         result_text = f"🎉 *Correct!* ✅\n\nThe answer is indeed *{correct_answer}*"
-        result_emoji = "🎉"
     else:
         result_text = f"❌ *Wrong!*\n\nThe correct answer is *{correct_answer}*"
-        result_emoji = "❌"
 
     # Show current stats
     score = context.user_data['bible_game_score']
@@ -1105,23 +1094,59 @@ async def bible_game_question_handler(update: Update, context: ContextTypes.DEFA
 
     stats_text = f"\n\n📊 *Your Stats:* {score}/{total} correct ({accuracy:.1f}%)"
 
-    # Create continue/quit keyboard
-    keyboard = [
-        ["🎮 Play Again", "📊 View Stats"],
-        ["🔄 Reset Score", "❌ Quit Game"]
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
-
+    # Send the result first
     await update.message.reply_text(
         result_text + stats_text,
-        parse_mode="Markdown",
-        reply_markup=reply_markup
+        parse_mode="Markdown"
     )
 
     # Clear current question
     context.user_data['current_question'] = None
 
-    return BIBLE_GAME_DIFFICULTY
+    # Automatically generate next question with same difficulty
+    current_difficulty = question['difficulty']
+
+    # Show loading message
+    await update.message.reply_text("🔄 Loading next Bible verse...")
+
+    # Generate new question
+    new_question = create_bible_question(current_difficulty)
+    if not new_question:
+        # If failed to load, go back to difficulty selection
+        keyboard = [
+            ["🟢 Easy", "🟡 Medium", "🔴 Hard"],
+            ["📊 View Stats", "🔄 Reset Score"],
+            ["❌ Quit Game"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+        await update.message.reply_text(
+            "❌ Sorry, I couldn't load the next Bible verse. Please choose difficulty again:",
+            reply_markup=reply_markup
+        )
+        return BIBLE_GAME_DIFFICULTY
+
+    # Store new question in context
+    context.user_data['current_question'] = new_question
+
+    # Display the new question
+    question_text = (
+        f"📖 *Bible Game - {current_difficulty} Level*\n\n"
+        f"*Here's your verse:*\n\n"
+        f"_{new_question['verse_text']}_\n\n"
+        f"*Which Bible reference is this verse from?*"
+    )
+
+    # Create answer options keyboard
+    keyboard = []
+    for i, option in enumerate(new_question['options']):
+        keyboard.append([f"{chr(65+i)}) {option}"])
+    keyboard.append(["❌ Cancel"])
+
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+    await update.message.reply_text(question_text, parse_mode="Markdown", reply_markup=reply_markup)
+    return BIBLE_GAME_QUESTION
 
 #/search command
 SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT = range(5)
