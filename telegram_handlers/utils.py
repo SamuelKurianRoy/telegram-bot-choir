@@ -282,7 +282,7 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
         "french": "fr", "fre": "fr",
         "german": "de", "ger": "de",
         "chinese": "zh", "chi": "zh",
-        "japanese": "ja", "jap": "ja",
+        "japanese": "jp", "jap": "jp",
         "russian": "ru", "rus": "ru",
     }
 
