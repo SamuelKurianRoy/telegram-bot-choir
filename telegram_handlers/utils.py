@@ -209,59 +209,59 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
         "1 chronicles": 13, "1 chr": 13, "ദിനവൃത്താന്തം 1": 13, "1 ദിന": 13,
         "2 chronicles": 14, "2 chr": 14, "ദിനവൃത്താന്തം 2": 14, "2 ദിന": 14,
         "ezra": 15, "എസ്രാ": 15,
-        "nehemiah": 16, "neh": 16, "നെഹെമ്യാവു": 16, "നെഹെ": 16,
-        "esther": 17, "esth": 17, "എസ്ഥേർ": 17,
-        "job": 18, "യോബ്": 18,
-        "psalms": 19, "ps": 19, "psalm": 19, "സങ്കീർത്തനങ്ങൾ": 19, "സങ്കീ": 19,
-        "proverbs": 20, "prov": 20, "പ്രവൃത്തിയുടെ പാഠങ്ങൾ": 20, "പ്രവാ": 20,
-        "ecclesiastes": 21, "eccl": 21, "സഭാപ്രസംഗി": 21, "സഭാ": 21,
-        "song of solomon": 22, "song": 22, "songs": 22, "sos": 22, "ഉത്തമഗീതം": 22, "ഉത്ത": 22,
-        "isaiah": 23, "isa": 23, "യെശയ്യാ": 23, "യെശ": 23,
-        "jeremiah": 24, "jer": 24, "യിരേമ്യാവു": 24, "യിരേ": 24,
+        "nehemiah": 16, "neh": 16, "നെഹെമ്യാവ്": 16, "നെഹെ": 16,
+        "esther": 17, "est": 17, "എസ്തേർ": 17,
+        "job": 18, "ഇയ്യോബ്": 18,
+        "psalms": 19, "ps": 19, "psa": 19, "സങ്കീർത്തനങ്ങൾ": 19, "സങ്കീ": 19,
+        "proverbs": 20, "prov": 20, "pr": 20, "സദൃശവാക്യങ്ങൾ": 20, "സദൃ": 20,
+        "ecclesiastes": 21, "ecc": 21, "സഭാപ്രസംഗി": 21, "സഭാ": 21,
+        "song of solomon": 22, "song": 22, "sos": 22, "ഉത്തമഗീതം": 22, "ഉത്തമ": 22,
+        "isaiah": 23, "isa": 23, "യെശയ്യാവ്": 23, "യെശ": 23,
+        "jeremiah": 24, "jer": 24, "യിരെമ്യാവ്": 24, "യിരെ": 24,
         "lamentations": 25, "lam": 25, "വിലാപങ്ങൾ": 25, "വിലാ": 25,
-        "ezekiel": 26, "ezek": 26, "യേഹേസ്കേൽ": 26, "യേഹേ": 26,
+        "ezekiel": 26, "eze": 26, "യെഹെസ്കേൽ": 26, "യെഹെ": 26,
         "daniel": 27, "dan": 27, "ദാനീയേൽ": 27, "ദാനീ": 27,
-        "hosea": 28, "hos": 28, "ഹോശേയ": 28, "ഹോഷ": 28,
+        "hosea": 28, "hos": 28, "ഹോശേയ": 28, "ഹോശേ": 28,
         "joel": 29, "യോവേൽ": 29,
         "amos": 30, "ആമോസ്": 30,
-        "obadiah": 31, "obad": 31, "ഓബദ്യാവു": 31,
-        "jonah": 32, "jon": 32, "യോനാ": 32,
+        "obadiah": 31, "oba": 31, "ഓബദ്യാവ്": 31, "ഓബദ്": 31,
+        "jonah": 32, "യോനാ": 32,
         "micah": 33, "mic": 33, "മീഖാ": 33,
-        "nahum": 34, "nah": 34, "നാഹും": 34,
-        "habakkuk": 35, "hab": 35, "ഹബക്കുക്ക്‍": 35,
-        "zephaniah": 36, "zeph": 36, "സെഫാനിയാവു": 36,
-        "haggai": 37, "hag": 37, "ഹഗ്ഗായി": 37,
-        "zechariah": 38, "zech": 38, "സെഖർയ്യാവു": 38,
+        "nahum": 34, "nah": 34, "നഹൂം": 34,
+        "habakkuk": 35, "hab": 35, "ഹബക്കൂക്": 35, "ഹബക്": 35,
+        "zephaniah": 36, "zep": 36, "സെഫന്യാവ്": 36, "സെഫ": 36,
+        "haggai": 37, "hag": 37, "ഹഗ്ഗായി": 37, "ഹഗ്ഗാ": 37,
+        "zechariah": 38, "zec": 38, "സെഖര്യാവ്": 38, "സെഖ": 38,
         "malachi": 39, "mal": 39, "മലാഖി": 39,
-
+        
         # New Testament
         "matthew": 40, "matt": 40, "mt": 40, "മത്തായി": 40, "മത്താ": 40,
-        "mark": 41, "mk": 41, "മർക്കൊസ്": 41, "മർക്ക": 41,
-        "luke": 42, "lk": 42, "ലൂക്കോസ്": 42, "ലൂക്കോ": 42,
+        "mark": 41, "mk": 41, "മർക്കൊസ്": 41, "മർക്": 41,
+        "luke": 42, "lk": 42, "ലൂക്കാ": 42, "ലൂക്": 42,
         "john": 43, "jn": 43, "യോഹന്നാൻ": 43, "യോഹ": 43,
-        "acts": 44, "പ്രവൃത്തികൾ": 44, "പ്രവൃ": 44,
-        "romans": 45, "rom": 45, "റോമർ": 45,
+        "acts": 44, "act": 44, "അപ്പൊസ്തലന്മാരുടെ പ്രവൃത്തികൾ": 44, "അപ്പൊ": 44,
+        "romans": 45, "rom": 45, "റോമർ": 45, "റോമ": 45,
         "1 corinthians": 46, "1 cor": 46, "കൊരിന്ത്യർ 1": 46, "1 കൊരി": 46,
         "2 corinthians": 47, "2 cor": 47, "കൊരിന്ത്യർ 2": 47, "2 കൊരി": 47,
-        "galatians": 48, "gal": 48, "ഗലാത്യർ": 48,
-        "ephesians": 49, "eph": 49, "എഫെസ്യർ": 49,
-        "philippians": 50, "phil": 50, "ഫിലിപ്പിയർ": 50,
-        "colossians": 51, "col": 51, "കൊലൊസ്സ്യർ": 51,
-        "1 thessalonians": 52, "1 thess": 52, "തെസ്സലൊനീക്യർ 1": 52, "1 തെസ്സ": 52,
-        "2 thessalonians": 53, "2 thess": 53, "തെസ്സലൊനീക്യർ 2": 53, "2 തെസ്സ": 53,
+        "galatians": 48, "gal": 48, "ഗലാത്യർ": 48, "ഗലാ": 48,
+        "ephesians": 49, "eph": 49, "എഫെസ്യർ": 49, "എഫെ": 49,
+        "philippians": 50, "phil": 50, "ഫിലിപ്പ്യർ": 50, "ഫിലി": 50,
+        "colossians": 51, "col": 51, "കൊലൊസ്സ്യർ": 51, "കൊലൊ": 51,
+        "1 thessalonians": 52, "1 thess": 52, "1 th": 52, "തെസ്സലൊനീക്യർ 1": 52, "1 തെസ്": 52,
+        "2 thessalonians": 53, "2 thess": 53, "2 th": 53, "തെസ്സലൊനീക്യർ 2": 53, "2 തെസ്": 53,
         "1 timothy": 54, "1 tim": 54, "തിമൊഥെയൊസ് 1": 54, "1 തിമൊ": 54,
         "2 timothy": 55, "2 tim": 55, "തിമൊഥെയൊസ് 2": 55, "2 തിമൊ": 55,
-        "titus": 56, "തീത്തൊസ്": 56,
-        "philemon": 57, "philem": 57, "ഫിലേമോൻ": 57,
-        "hebrews": 58, "heb": 58, "എബ്രായർ": 58,
-        "james": 59, "jas": 59, "യാക്കോബ്": 59,
-        "1 peter": 60, "1 pet": 60, "പത്രൊസ് 1": 60, "1 പത്രോ": 60,
-        "2 peter": 61, "2 pet": 61, "പത്രൊസ് 2": 61, "2 പത്രോ": 61,
+        "titus": 56, "tit": 56, "തീത്തൊസ്": 56, "തീത്": 56,
+        "philemon": 57, "phlm": 57, "ഫിലേമോൻ": 57, "ഫിലേ": 57,
+        "hebrews": 58, "heb": 58, "എബ്രായർ": 58, "എബ്രാ": 58,
+        "james": 59, "jas": 59, "യാക്കോബ്": 59, "യാക്": 59,
+        "1 peter": 60, "1 pet": 60, "പത്രൊസ് 1": 60, "1 പത്": 60,
+        "2 peter": 61, "2 pet": 61, "പത്രൊസ് 2": 61, "2 പത്": 61,
         "1 john": 62, "1 jn": 62, "യോഹന്നാൻ 1": 62, "1 യോഹ": 62,
         "2 john": 63, "2 jn": 63, "യോഹന്നാൻ 2": 63, "2 യോഹ": 63,
         "3 john": 64, "3 jn": 64, "യോഹന്നാൻ 3": 64, "3 യോഹ": 64,
-        "jude": 65, "യുദാ": 65,
-        "revelation": 66, "rev": 66, "വെളിപാട്": 66, "വെളി" : 66
+        "jude": 65, "യൂദാ": 65,
+        "revelation": 66, "rev": 66, "വെളിപ്പാടു്": 66, "വെളി": 66
     }
 
     def fuzzy_find_book(book_input, threshold=60):
@@ -279,37 +279,24 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
             return best_match, best_score
         return None, 0
 
-    # Chapter counts for each book (book number -> chapter count)
-    book_chapter_counts = {
-        1: 50, 2: 40, 3: 27, 4: 36, 5: 34, 6: 24, 7: 21, 8: 4, 9: 31,
-        10: 24, 11: 22, 12: 25, 13: 29, 14: 36, 15: 10, 16: 13, 17: 10,
-        18: 42, 19: 150, 20: 31, 21: 12, 22: 8, 23: 66, 24: 52, 25: 5,
-        26: 48, 27: 12, 28: 14, 29: 3, 30: 9, 31: 1, 32: 4, 33: 7,
-        34: 3, 35: 3, 36: 3, 37: 2, 38: 14, 39: 4, 40: 28, 41: 16,
-        42: 24, 43: 21, 44: 28, 45: 16, 46: 16, 47: 13, 48: 6, 49: 6,
-        50: 4, 51: 4, 52: 5, 53: 3, 54: 6, 55: 4, 56: 3, 57: 1,
-        58: 13, 59: 5, 60: 5, 61: 3, 62: 5, 63: 1, 64: 1, 65: 1, 66: 22
-    }
-
-    # Language code map with short names
     language_code_map = {
-        "malayalam": "ml", "mal": "ml",
-        "english": "kj", "eng": "kj",
-        "hindi": "hi", "hin": "hi",
-        "tamil": "ta", "tam": "ta",
-        "telugu": "te", "tel": "te",
-        "kannada": "kn", "kan": "kn",
-        "marathi": "mr", "mar": "mr",
-        "gujarati": "gu", "guj": "gu",
-        "punjabi": "pa", "pun": "pa",
-        "bengali": "bn", "ben": "bn",
-        "urdu": "ur", "urd": "ur",
-        "spanish": "es", "spa": "es",
-        "french": "fr", "fre": "fr",
-        "german": "de", "ger": "de",
-        "chinese": "zh", "chi": "zh",
-        "japanese": "jp", "jap": "jp",
-        "russian": "ru", "rus": "ru",
+        'malayalam': 'ml', 'mal': 'ml',
+        'english': 'kj', 'eng': 'kj',
+        'hindi': 'hi', 'hin': 'hi',
+        'tamil': 'ta', 'tam': 'ta',
+        'telugu': 'te', 'tel': 'te',
+        'kannada': 'kn', 'kan': 'kn',
+        'marathi': 'mr', 'mar': 'mr',
+        'gujarati': 'gu', 'guj': 'gu',
+        'punjabi': 'pa', 'pun': 'pa',
+        'bengali': 'bn', 'ben': 'bn',
+        'urdu': 'ur', 'ur': 'ur',
+        'spanish': 'es', 'es': 'es',
+        'french': 'fr', 'fr': 'fr',
+        'german': 'de', 'de': 'de',
+        'chinese': 'zh', 'zh': 'zh',
+        'japanese': 'ja', 'ja': 'ja',
+        'russian': 'ru', 'ru': 'ru'
     }
 
     try:
@@ -323,10 +310,8 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
         
         # Handle verse references like "Gen 3:3" - extract just book and chapter
         if ':' in user_input:
-            # Split by colon and take the part before it
             parts = user_input.split(':')
             if len(parts) >= 2:
-                # Take everything before the colon (book and chapter)
                 user_input = parts[0].strip()
         
         parts = user_input.lower().split()
@@ -350,8 +335,6 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
             matched_book, score = fuzzy_find_book(book_input)
             if matched_book:
                 book_number = book_map[matched_book]
-                # Optional: You could return a message indicating fuzzy match was used
-                # return f"Using fuzzy match: {matched_book} (score: {score})"
             else:
                 available_books = list(set([k for k in book_map.keys() if not k.isdigit()]))[:10]
                 return f"❌ Book '{book_input}' not found. Available books include: {', '.join(available_books[:5])}..."
