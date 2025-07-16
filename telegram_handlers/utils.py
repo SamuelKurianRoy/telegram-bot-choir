@@ -52,13 +52,13 @@ def extract_bible_chapter_text(url: str) -> str:
 
 def clean_malayalam_bible_text(text: str) -> str:
     import re
-    # Step 1: Remove navigation, footers, and unwanted lines
+    # Remove navigation, footers, and unwanted lines
     lines = text.strip().splitlines()
     cleaned_lines = []
     for line in lines:
         lstripped = line.strip()
         if lstripped.startswith('അദ്ധ്യായം'):
-            m = re.search(r'^അദ്ധ്യായം[^00-\u0D7F\d]*([\d]+)([^\u0D00-\u0D7F\d]*)', lstripped)
+            m = re.search(r'^അദ്ധ്യായം[^7F\d]*([\d]+)([^\u0D00-\u0D7F\d]*)', lstripped)
             if m:
                 idx = m.end()
                 after_nav = lstripped[idx:].lstrip()
@@ -76,22 +76,19 @@ def clean_malayalam_bible_text(text: str) -> str:
         if lstripped in ['|', '|', '|', '|', '|']:
             continue
         cleaned_lines.append(lstripped)
-    # Step 2: Join all lines with a single space
+    # Join all lines with a single space
     text = ' '.join(cleaned_lines)
-    # Step 3: Insert newline before every verse number (1-3 digits) that is not part of a larger number and is followed by Malayalam
+    # Insert newline before every verse number (1-3 digits) that is not part of a larger number and is followed by Malayalam
     text = re.sub(r'(?<!\d)(\d{1,3})(?=[\u0D00-\u0D7F])', r'\n\1', text)
-    # Step 4: Remove accidental leading/trailing whitespace/newlines
+    # Remove accidental leading/trailing whitespace/newlines
     text = text.strip()
-    # Step 5: Split into lines, keep only lines that start with a verse number
-    verses = []
-    for line in text.split('\n'):
-        l = line.strip()
-        if l and l.split(' ', 1)[0].isdigit():
-            verses.append(l)
-    # Step 6: If the first line does not start with a number, prepend '1 '
-    if verses and not verses[0].split(' ', 1)[0].isdigit():
-        verses[0] = '1 ' + verses[0]
-    return '\n'.join(verses)
+    # Split into lines
+    lines = [l.strip() for l in text.split('\n') if l.strip()]
+    # If the first line does not start with a number, prepend '1 '
+    if lines and not re.match(r'^\d{1,3}', lines[0]):
+        lines[0] = '1 ' + lines[0]
+    # Always return all lines joined by newline
+    return '\n'.join(lines)
 
 def clean_english_bible_text(text: str) -> str:
     lines = text.strip().splitlines()
