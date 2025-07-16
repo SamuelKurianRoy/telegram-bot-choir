@@ -25,6 +25,7 @@ class Config:
         self.UFILE_ID = self.secrets.get("UFILE_ID")
         self.YFILE_ID = self.secrets.get("YFILE_ID")
         self.COMFILE_ID = self.secrets.get("COMFILE_ID")
+        self.GAME_SCORE = self.secrets.get("GAME_SCORE")
         # Service account info (for Google APIs)
         self.service_account_data = self._load_service_account_data()
         self.KEY_PATH = "/tmp/service_account.json"

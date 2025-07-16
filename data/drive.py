@@ -8,6 +8,11 @@ import json
 import os
 from config import get_config
 import tempfile
+import pandas as pd
+import io
+from googleapiclient.http import MediaIoBaseDownload
+from datetime import datetime
+import streamlit as st
 
 # Google Drive/Docs API setup and helpers
 
@@ -103,4 +108,184 @@ def append_download_to_google_doc(yfile_id: str, download_entry: str):
     except Exception as e:
         print(f"❌ Failed to Query Youtube: {e}")
 
-# TODO: Add file download/upload helpers as needed for your bot 
+# Game Score Database Functions
+def load_game_scores():
+    """
+    Load the Game_Score Excel sheet from Google Drive
+    Returns a pandas DataFrame with columns: Date, User_Name, User_id, Score, Difficulty
+    """
+    try:
+        config = get_config()
+        drive_service = get_drive_service()
+
+        # Get the Game_Score file ID from config
+        game_score_file_id = config.GAME_SCORE
+        if not game_score_file_id:
+            print("❌ GAME_SCORE file ID not found in secrets")
+            return pd.DataFrame(columns=['Date', 'User_Name', 'User_id', 'Score'])
+
+        # Download the Excel file
+        request = drive_service.files().export_media(
+            fileId=game_score_file_id,
+            mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        file_data = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_data, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        file_data.seek(0)
+
+        # Read the Excel file
+        df = pd.read_excel(file_data)
+
+        # Ensure the required columns exist
+        required_columns = ['Date', 'User_Name', 'User_id', 'Score', 'Difficulty']
+        for col in required_columns:
+            if col not in df.columns:
+                df[col] = None if col != 'Difficulty' else 'Easy'  # Default difficulty to Easy for old records
+
+        return df
+
+    except Exception as e:
+        print(f"❌ Error loading game scores: {e}")
+        return pd.DataFrame(columns=['Date', 'User_Name', 'User_id', 'Score', 'Difficulty'])
+
+def save_game_score(user_name, user_id, score, difficulty="Easy"):
+    """
+    Save a new game score to the Game_Score Excel sheet
+    """
+    try:
+        # Load existing scores
+        df = load_game_scores()
+
+        # Create new entry
+        new_entry = {
+            'Date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'User_Name': user_name,
+            'User_id': user_id,
+            'Score': score,
+            'Difficulty': difficulty
+        }
+
+        # Add new entry to DataFrame
+        df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
+
+        # Upload back to Google Drive
+        config = get_config()
+        drive_service = get_drive_service()
+        game_score_file_id = config.GAME_SCORE
+
+        if not game_score_file_id:
+            print("❌ GAME_SCORE file ID not found in secrets")
+            return False
+
+        # Convert DataFrame to Excel
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Sheet1')
+        output.seek(0)
+
+        # Upload the file
+        from googleapiclient.http import MediaIoBaseUpload
+        media = MediaIoBaseUpload(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+        drive_service.files().update(
+            fileId=game_score_file_id,
+            media_body=media
+        ).execute()
+
+        print(f"✅ Game score saved for {user_name} (ID: {user_id}): {score} ({difficulty})")
+        return True
+
+    except Exception as e:
+        print(f"❌ Error saving game score: {e}")
+        return False
+
+def get_user_best_score(user_id, difficulty=None):
+    """
+    Get the best score for a specific user, optionally filtered by difficulty
+    """
+    try:
+        df = load_game_scores()
+        user_scores = df[df['User_id'] == user_id]
+
+        if difficulty:
+            user_scores = user_scores[user_scores['Difficulty'] == difficulty]
+
+        if user_scores.empty:
+            return 0
+
+        return user_scores['Score'].max()
+
+    except Exception as e:
+        print(f"❌ Error getting user best score: {e}")
+        return 0
+
+def get_user_best_scores_all_difficulties(user_id):
+    """
+    Get the best scores for a user across all difficulties
+    """
+    try:
+        df = load_game_scores()
+        user_scores = df[df['User_id'] == user_id]
+
+        if user_scores.empty:
+            return {"Easy": 0, "Medium": 0, "Hard": 0}
+
+        best_scores = {}
+        for difficulty in ["Easy", "Medium", "Hard"]:
+            difficulty_scores = user_scores[user_scores['Difficulty'] == difficulty]
+            best_scores[difficulty] = difficulty_scores['Score'].max() if not difficulty_scores.empty else 0
+
+        return best_scores
+
+    except Exception as e:
+        print(f"❌ Error getting user best scores: {e}")
+        return {"Easy": 0, "Medium": 0, "Hard": 0}
+
+def get_leaderboard(top_n=10, difficulty=None):
+    """
+    Get the top N scores from all users, optionally filtered by difficulty
+    """
+    try:
+        df = load_game_scores()
+
+        if df.empty:
+            return []
+
+        # Filter by difficulty if specified
+        if difficulty:
+            df = df[df['Difficulty'] == difficulty]
+
+        if df.empty:
+            return []
+
+        # Group by user and get their best score for the specified difficulty
+        user_best = df.groupby(['User_id', 'User_Name'])['Score'].max().reset_index()
+
+        # Sort by score descending and get top N
+        leaderboard = user_best.sort_values('Score', ascending=False).head(top_n)
+
+        return leaderboard.to_dict('records')
+
+    except Exception as e:
+        print(f"❌ Error getting leaderboard: {e}")
+        return []
+
+def get_combined_leaderboard(top_n=10):
+    """
+    Get a combined leaderboard showing best scores across all difficulties
+    """
+    try:
+        leaderboards = {}
+        for difficulty in ["Easy", "Medium", "Hard"]:
+            leaderboards[difficulty] = get_leaderboard(top_n, difficulty)
+
+        return leaderboards
+
+    except Exception as e:
+        print(f"❌ Error getting combined leaderboard: {e}")
+        return {"Easy": [], "Medium": [], "Hard": []}
+
+# TODO: Add file download/upload helpers as needed for your bot

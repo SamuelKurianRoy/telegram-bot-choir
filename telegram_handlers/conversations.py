@@ -12,6 +12,7 @@ from utils.search import find_best_match, search_index
 from utils.notation import Music_notation_link, getNotation
 from data.datasets import Tunenofinder, Tune_finder_of_known_songs, Datefinder, IndexFinder, Hymn_Tune_no_Finder, get_all_data
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
+from data.drive import save_game_score, get_user_best_score, get_user_best_scores_all_difficulties, get_leaderboard, get_combined_leaderboard
 import re
 import os
 import random
@@ -917,19 +918,27 @@ async def bible_game_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if 'bible_game_score' not in context.user_data:
         context.user_data['bible_game_score'] = 0
         context.user_data['bible_game_total'] = 0
+        context.user_data['current_difficulty'] = None
+
+    # Get user's best scores from database for all difficulties
+    user_best_scores = get_user_best_scores_all_difficulties(user.id)
 
     # Show welcome message and difficulty selection
     welcome_text = (
         "📖 *Welcome to the Bible Game!* 🎮\n\n"
         "Test your Bible knowledge! I'll show you a verse, and you need to guess which Bible reference it's from.\n\n"
-        f"📊 *Your Stats:* {context.user_data['bible_game_score']}/{context.user_data['bible_game_total']} correct\n\n"
+        f"📊 *Current Session:* {context.user_data['bible_game_score']}/{context.user_data['bible_game_total']} correct\n\n"
+        f"🏆 *Your Best Scores:*\n"
+        f"🟢 Easy: {user_best_scores['Easy']}\n"
+        f"🟡 Medium: {user_best_scores['Medium']}\n"
+        f"🔴 Hard: {user_best_scores['Hard']}\n\n"
         "Choose your difficulty level:"
     )
 
     keyboard = [
         ["🟢 Easy", "🟡 Medium", "🔴 Hard"],
-        ["📊 View Stats", "🔄 Reset Score"],
-        ["❌ Cancel"]
+        ["📊 View Stats", "🏅 Leaderboard"],
+        ["🔄 Reset Score", "❌ Cancel"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
 
@@ -942,29 +951,88 @@ async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DE
     user = update.effective_user
 
     if user_input == "❌ Cancel":
+        # Save score if user answered at least one question
+        score = context.user_data.get('bible_game_score', 0)
+        total = context.user_data.get('bible_game_total', 0)
+
+        if total > 0:
+            current_difficulty = context.user_data.get('current_difficulty', 'Easy')
+            save_game_score(user.full_name or user.username or "Unknown", user.id, score, current_difficulty)
+
         await update.message.reply_text("Bible game cancelled. Type /games to play again!", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
 
     elif user_input == "📊 View Stats":
         score = context.user_data.get('bible_game_score', 0)
         total = context.user_data.get('bible_game_total', 0)
+        current_difficulty = context.user_data.get('current_difficulty', 'Easy')
         accuracy = (score / total * 100) if total > 0 else 0
+
+        # Get user's best scores for all difficulties
+        user_best_scores = get_user_best_scores_all_difficulties(user.id)
 
         stats_text = (
             f"📊 *Your Bible Game Stats:*\n\n"
+            f"*Current Session ({current_difficulty}):*\n"
             f"✅ Correct Answers: {score}\n"
             f"❌ Wrong Answers: {total - score}\n"
             f"📈 Total Questions: {total}\n"
-            f"🎯 Accuracy: {accuracy:.1f}%"
+            f"🎯 Accuracy: {accuracy:.1f}%\n\n"
+            f"🏆 *Your Best Scores:*\n"
+            f"🟢 Easy: {user_best_scores['Easy']}\n"
+            f"🟡 Medium: {user_best_scores['Medium']}\n"
+            f"🔴 Hard: {user_best_scores['Hard']}\n"
         )
 
         keyboard = [
             ["🟢 Easy", "🟡 Medium", "🔴 Hard"],
-            ["🔄 Reset Score", "❌ Cancel"]
+            ["🏅 Leaderboard", "🔄 Reset Score"],
+            ["❌ Cancel"]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
 
         await update.message.reply_text(stats_text, parse_mode="Markdown", reply_markup=reply_markup)
+        return BIBLE_GAME_DIFFICULTY
+
+    elif user_input == "🏅 Leaderboard":
+        # Get leaderboards for all difficulties
+        leaderboards = get_combined_leaderboard(5)  # Top 5 for each difficulty
+
+        leaderboard_text = "🏅 *Bible Game Leaderboards - Top 5*\n\n"
+
+        for difficulty, emoji in [("Easy", "🟢"), ("Medium", "🟡"), ("Hard", "🔴")]:
+            leaderboard_text += f"{emoji} *{difficulty} Level:*\n"
+            difficulty_leaderboard = leaderboards.get(difficulty, [])
+
+            if difficulty_leaderboard:
+                for i, player in enumerate(difficulty_leaderboard, 1):
+                    if i == 1:
+                        medal = "🥇"
+                    elif i == 2:
+                        medal = "🥈"
+                    elif i == 3:
+                        medal = "🥉"
+                    else:
+                        medal = f"{i}."
+
+                    # Highlight current user
+                    if player['User_id'] == user.id:
+                        leaderboard_text += f"*{medal} {player['User_Name']}: {player['Score']} ⭐*\n"
+                    else:
+                        leaderboard_text += f"{medal} {player['User_Name']}: {player['Score']}\n"
+            else:
+                leaderboard_text += "No scores yet!\n"
+
+            leaderboard_text += "\n"
+
+        keyboard = [
+            ["🟢 Easy", "🟡 Medium", "🔴 Hard"],
+            ["📊 View Stats", "🔄 Reset Score"],
+            ["❌ Cancel"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+        await update.message.reply_text(leaderboard_text, parse_mode="Markdown", reply_markup=reply_markup)
         return BIBLE_GAME_DIFFICULTY
 
     elif user_input == "🔄 Reset Score":
@@ -973,7 +1041,8 @@ async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DE
 
         keyboard = [
             ["🟢 Easy", "🟡 Medium", "🔴 Hard"],
-            ["📊 View Stats", "❌ Cancel"]
+            ["📊 View Stats", "🏅 Leaderboard"],
+            ["❌ Cancel"]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
 
@@ -987,6 +1056,14 @@ async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DE
         total = context.user_data.get('bible_game_total', 0)
         accuracy = (score / total * 100) if total > 0 else 0
 
+        # Save score to database if user answered at least one question
+        if total > 0:
+            current_difficulty = context.user_data.get('current_difficulty', 'Easy')
+            save_success = save_game_score(user.full_name or user.username or "Unknown", user.id, score, current_difficulty)
+            save_status = "✅ Score saved!" if save_success else "⚠️ Could not save score."
+        else:
+            save_status = ""
+
         final_text = (
             f"🎮 *Game Over!*\n\n"
             f"📊 *Final Stats:*\n"
@@ -994,6 +1071,7 @@ async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DE
             f"❌ Wrong: {total - score}\n"
             f"📈 Total: {total}\n"
             f"🎯 Accuracy: {accuracy:.1f}%\n\n"
+            f"{save_status}\n"
             f"Thanks for playing! Type /games to play again."
         )
 
@@ -1012,6 +1090,7 @@ async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DE
         return BIBLE_GAME_DIFFICULTY
 
     difficulty = difficulty_map[user_input]
+    context.user_data['current_difficulty'] = difficulty  # Store current difficulty
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) chose {difficulty} difficulty")
 
     # Generate a question
@@ -1053,6 +1132,14 @@ async def bible_game_question_handler(update: Update, context: ContextTypes.DEFA
     user = update.effective_user
 
     if user_input == "❌ Cancel":
+        # Save score if user answered at least one question
+        score = context.user_data.get('bible_game_score', 0)
+        total = context.user_data.get('bible_game_total', 0)
+
+        if total > 0:
+            current_difficulty = context.user_data.get('current_difficulty', 'Easy')
+            save_game_score(user.full_name or user.username or "Unknown", user.id, score, current_difficulty)
+
         await update.message.reply_text("Bible game cancelled. Type /games to play again!", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
 
