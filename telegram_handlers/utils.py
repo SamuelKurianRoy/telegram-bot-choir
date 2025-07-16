@@ -56,9 +56,8 @@ def clean_malayalam_bible_text(text: str) -> str:
     cleaned_lines = []
     for line in lines:
         lstripped = line.strip()
-        # If line starts with 'അദ്ധ്യായം', extract Malayalam text after navigation digits
         if lstripped.startswith('അദ്ധ്യായം'):
-            m = re.search(r'^അദ്ധ്യായം[^00-\u0D7F\d]*([\d]+)([^\u0D00-\u0D7F\d]*)', lstripped)
+            m = re.search(r'^അദ്ധ്യായം[^\u0D00-\u0D7F\d]*([\d]+)([^\u0D00-\u0D7F\d]*)', lstripped)
             if m:
                 idx = m.end()
                 after_nav = lstripped[idx:].lstrip()
@@ -84,18 +83,9 @@ def clean_malayalam_bible_text(text: str) -> str:
             cleaned_lines[0] = f"1 {first}"
     while cleaned_lines and not cleaned_lines[0].lstrip().split(' ', 1)[0].isdigit():
         cleaned_lines.pop(0)
-    result = "\n".join(cleaned_lines)
-    # --- NEW: Insert newline before any verse number (1-3 digits) that is preceded by a non-digit and followed by Malayalam ---
-    # This handles cases like ;3, :3, etc. (but not 13, 23, etc.)
-    result = re.sub(r'([^\d])(\d{1,3})(?=[\u0D00-\u0D7F])', r'\1\n\2', result)
-    # Also handle if verse number is at the very start (should not add extra newline)
-    # Clean up multiple spaces
-    result = re.sub(r'\s+', ' ', result)
-    # Remove footer content that might have been missed
-    result = re.sub(r'Contact\|Disclaimer\|Statement of Faith\|Mission\|Copyrights.*$', '', result, flags=re.MULTILINE)
-    # Now, split into lines by verse numbers at the start of a line
-    # Insert newline before verse numbers at the start of a line (if not already)
-    result = re.sub(r'(?<!\n)(\d{1,3}) ', r'\n\1 ', result)
+    result = " ".join(cleaned_lines)
+    # Insert newline before any verse number (1-3 digits) that is not preceded by a digit and is followed by Malayalam text
+    result = re.sub(r'(?<!\d)(\d{1,3})(?=[\u0D00-\u0D7F])', r'\n\1', result)
     # Remove accidental leading newline
     result = result.lstrip('\n')
     # Split into lines and keep only lines that start with a verse number
