@@ -52,12 +52,13 @@ def extract_bible_chapter_text(url: str) -> str:
 
 def clean_malayalam_bible_text(text: str) -> str:
     import re
+    # Step 1: Remove navigation, footers, and unwanted lines
     lines = text.strip().splitlines()
     cleaned_lines = []
     for line in lines:
         lstripped = line.strip()
         if lstripped.startswith('അദ്ധ്യായം'):
-            m = re.search(r'^അദ്ധ്യായം[^\u0D00-\u0D7F\d]*([\d]+)([^\u0D00-\u0D7F\d]*)', lstripped)
+            m = re.search(r'^അദ്ധ്യായം[^00-\u0D7F\d]*([\d]+)([^\u0D00-\u0D7F\d]*)', lstripped)
             if m:
                 idx = m.end()
                 after_nav = lstripped[idx:].lstrip()
@@ -74,30 +75,23 @@ def clean_malayalam_bible_text(text: str) -> str:
             continue
         if lstripped in ['|', '|', '|', '|', '|']:
             continue
-        cleaned_line = lstripped
-        if cleaned_line:
-            cleaned_lines.append(cleaned_line)
-    if cleaned_lines:
-        first = cleaned_lines[0]
-        if not first.lstrip().split(' ', 1)[0].isdigit() and any('\u0D00' <= c <= '\u0D7F' for c in first):
-            cleaned_lines[0] = f"1 {first}"
-    while cleaned_lines and not cleaned_lines[0].lstrip().split(' ', 1)[0].isdigit():
-        cleaned_lines.pop(0)
-    result = " ".join(cleaned_lines)
-    # Insert newline before any verse number (1-3 digits) that is not preceded by a digit and is followed by Malayalam text
-    result = re.sub(r'(?<!\d)(\d{1,3})(?=[\u0D00-\u0D7F])', r'\n\1', result)
-    # Remove accidental leading newline
-    result = result.lstrip('\n')
-    # Split into lines and keep only lines that start with a verse number
-    lines = result.split('\n')
-    formatted_verses = []
-    for line in lines:
+        cleaned_lines.append(lstripped)
+    # Step 2: Join all lines with a single space
+    text = ' '.join(cleaned_lines)
+    # Step 3: Insert newline before every verse number (1-3 digits) that is not part of a larger number and is followed by Malayalam
+    text = re.sub(r'(?<!\d)(\d{1,3})(?=[\u0D00-\u0D7F])', r'\n\1', text)
+    # Step 4: Remove accidental leading/trailing whitespace/newlines
+    text = text.strip()
+    # Step 5: Split into lines, keep only lines that start with a verse number
+    verses = []
+    for line in text.split('\n'):
         l = line.strip()
         if l and l.split(' ', 1)[0].isdigit():
-            formatted_verses.append(l)
-    if not formatted_verses:
-        return result.strip()
-    return "\n".join(formatted_verses)
+            verses.append(l)
+    # Step 6: If the first line does not start with a number, prepend '1 '
+    if verses and not verses[0].split(' ', 1)[0].isdigit():
+        verses[0] = '1 ' + verses[0]
+    return '\n'.join(verses)
 
 def clean_english_bible_text(text: str) -> str:
     lines = text.strip().splitlines()
