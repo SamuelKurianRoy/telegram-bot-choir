@@ -11,8 +11,10 @@ from data.vocabulary import ChoirVocabulary, isVocabulary, standardize_hlc_value
 from utils.search import find_best_match, search_index
 from utils.notation import Music_notation_link, getNotation
 from data.datasets import Tunenofinder, Tune_finder_of_known_songs, Datefinder, IndexFinder, Hymn_Tune_no_Finder, get_all_data
+from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import re
 import os
+import random
 import requests
 from data.drive import get_drive_service, append_download_to_google_doc, get_docs_service
 from datetime import datetime
@@ -31,6 +33,117 @@ HYMN_FOLDER_URL = f'https://drive.google.com/drive/folders/{get_config().H_SHEET
 drive_service = get_drive_service()
 file_map = {}
 bot_logger, user_logger = setup_loggers()
+
+# Bible Game Data
+BIBLE_VERSES = {
+    "Easy": [
+        {"reference": "John 3:16", "book": "john", "chapter": 3, "verse": 16},
+        {"reference": "Genesis 1:1", "book": "genesis", "chapter": 1, "verse": 1},
+        {"reference": "Psalm 23:1", "book": "psalms", "chapter": 23, "verse": 1},
+        {"reference": "Romans 3:23", "book": "romans", "chapter": 3, "verse": 23},
+        {"reference": "Romans 6:23", "book": "romans", "chapter": 6, "verse": 23},
+        {"reference": "Ephesians 2:8", "book": "ephesians", "chapter": 2, "verse": 8},
+        {"reference": "1 John 1:9", "book": "1 john", "chapter": 1, "verse": 9},
+        {"reference": "Matthew 28:19", "book": "matthew", "chapter": 28, "verse": 19},
+        {"reference": "Acts 1:8", "book": "acts", "chapter": 1, "verse": 8},
+        {"reference": "Philippians 4:13", "book": "philippians", "chapter": 4, "verse": 13},
+    ],
+    "Medium": [
+        {"reference": "Isaiah 53:5", "book": "isaiah", "chapter": 53, "verse": 5},
+        {"reference": "Jeremiah 29:11", "book": "jeremiah", "chapter": 29, "verse": 11},
+        {"reference": "Proverbs 3:5", "book": "proverbs", "chapter": 3, "verse": 5},
+        {"reference": "2 Timothy 3:16", "book": "2 timothy", "chapter": 3, "verse": 16},
+        {"reference": "Hebrews 11:1", "book": "hebrews", "chapter": 11, "verse": 1},
+        {"reference": "James 1:17", "book": "james", "chapter": 1, "verse": 17},
+        {"reference": "1 Peter 5:7", "book": "1 peter", "chapter": 5, "verse": 7},
+        {"reference": "Galatians 2:20", "book": "galatians", "chapter": 2, "verse": 20},
+        {"reference": "Colossians 3:23", "book": "colossians", "chapter": 3, "verse": 23},
+        {"reference": "1 Thessalonians 5:16", "book": "1 thessalonians", "chapter": 5, "verse": 16},
+    ],
+    "Hard": [
+        {"reference": "Habakkuk 2:4", "book": "habakkuk", "chapter": 2, "verse": 4},
+        {"reference": "Malachi 3:10", "book": "malachi", "chapter": 3, "verse": 10},
+        {"reference": "Zephaniah 3:17", "book": "zephaniah", "chapter": 3, "verse": 17},
+        {"reference": "Nahum 1:7", "book": "nahum", "chapter": 1, "verse": 7},
+        {"reference": "Micah 6:8", "book": "micah", "chapter": 6, "verse": 8},
+        {"reference": "Jonah 2:8", "book": "jonah", "chapter": 2, "verse": 8},
+        {"reference": "Obadiah 1:15", "book": "obadiah", "chapter": 1, "verse": 15},
+        {"reference": "Amos 5:24", "book": "amos", "chapter": 5, "verse": 24},
+        {"reference": "Joel 2:32", "book": "joel", "chapter": 2, "verse": 32},
+        {"reference": "Hosea 6:6", "book": "hosea", "chapter": 6, "verse": 6},
+    ]
+}
+
+# Bible Game Helper Functions
+def extract_verse_from_text(text, verse_number):
+    """Extract a specific verse from cleaned Bible text"""
+    lines = text.strip().split('\n')
+    for line in lines:
+        line = line.strip()
+        if line.startswith(f"{verse_number} "):
+            return line[len(f"{verse_number} "):].strip()
+    return None
+
+def get_bible_verse(book, chapter, verse):
+    """Fetch a specific Bible verse"""
+    try:
+        # Get the URL for the chapter
+        result = get_wordproject_url_from_input('english', f"{book} {chapter}")
+        url, _, _, _ = result
+
+        if url.startswith("❌"):
+            return None
+
+        # Extract the chapter text
+        raw_text = extract_bible_chapter_text(url)
+        if raw_text.startswith("❌"):
+            return None
+
+        # Clean the text
+        cleaned_text = clean_bible_text(raw_text, 'kj')
+
+        # Extract the specific verse
+        verse_text = extract_verse_from_text(cleaned_text, verse)
+        return verse_text
+
+    except Exception:
+        return None
+
+def generate_wrong_options(correct_reference, _):
+    """Generate 3 wrong options for the multiple choice"""
+    all_verses = []
+    for diff_level in BIBLE_VERSES.values():
+        all_verses.extend(diff_level)
+
+    # Remove the correct answer from options
+    wrong_options = [v for v in all_verses if v["reference"] != correct_reference]
+
+    # Select 3 random wrong options
+    selected_wrong = random.sample(wrong_options, min(3, len(wrong_options)))
+    return [opt["reference"] for opt in selected_wrong]
+
+def create_bible_question(difficulty):
+    """Create a new Bible question"""
+    verses = BIBLE_VERSES[difficulty]
+    selected_verse = random.choice(verses)
+
+    # Get the verse text
+    verse_text = get_bible_verse(selected_verse["book"], selected_verse["chapter"], selected_verse["verse"])
+
+    if not verse_text:
+        return None
+
+    # Generate options
+    wrong_options = generate_wrong_options(selected_verse["reference"], difficulty)
+    all_options = [selected_verse["reference"]] + wrong_options
+    random.shuffle(all_options)
+
+    return {
+        "verse_text": verse_text,
+        "correct_answer": selected_verse["reference"],
+        "options": all_options,
+        "difficulty": difficulty
+    }
 
 # Define authorized_users globally for use in all handlers
 authorized_users_str = st.secrets["AUTHORIZED_USERS"]
@@ -735,6 +848,9 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
 
 # States for ConversationHandler
 CHOOSE_METHOD, GET_INPUT = range(2)
+
+# Bible Game States
+BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION = range(2)
  
 # Store user input temporarily
 user_input_method = {}
@@ -791,9 +907,222 @@ async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(result)
     return ConversationHandler.END
 
+# Bible Game Handlers
+async def bible_game_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start the Bible game"""
+    user = update.effective_user
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) started Bible game")
 
- 
- 
+    # Initialize user's game data if not exists
+    if 'bible_game_score' not in context.user_data:
+        context.user_data['bible_game_score'] = 0
+        context.user_data['bible_game_total'] = 0
+
+    # Show welcome message and difficulty selection
+    welcome_text = (
+        "📖 *Welcome to the Bible Game!* 🎮\n\n"
+        "Test your Bible knowledge! I'll show you a verse, and you need to guess which Bible reference it's from.\n\n"
+        f"📊 *Your Stats:* {context.user_data['bible_game_score']}/{context.user_data['bible_game_total']} correct\n\n"
+        "Choose your difficulty level:"
+    )
+
+    keyboard = [
+        ["🟢 Easy", "🟡 Medium", "🔴 Hard"],
+        ["📊 View Stats", "🔄 Reset Score"],
+        ["❌ Cancel"]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+    await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=reply_markup)
+    return BIBLE_GAME_DIFFICULTY
+
+async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle difficulty selection and other options"""
+    user_input = update.message.text.strip()
+    user = update.effective_user
+
+    if user_input == "❌ Cancel":
+        await update.message.reply_text("Bible game cancelled. Type /biblegame to play again!", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
+
+    elif user_input == "📊 View Stats":
+        score = context.user_data.get('bible_game_score', 0)
+        total = context.user_data.get('bible_game_total', 0)
+        accuracy = (score / total * 100) if total > 0 else 0
+
+        stats_text = (
+            f"📊 *Your Bible Game Stats:*\n\n"
+            f"✅ Correct Answers: {score}\n"
+            f"❌ Wrong Answers: {total - score}\n"
+            f"📈 Total Questions: {total}\n"
+            f"🎯 Accuracy: {accuracy:.1f}%"
+        )
+
+        keyboard = [
+            ["🟢 Easy", "🟡 Medium", "🔴 Hard"],
+            ["🔄 Reset Score", "❌ Cancel"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+        await update.message.reply_text(stats_text, parse_mode="Markdown", reply_markup=reply_markup)
+        return BIBLE_GAME_DIFFICULTY
+
+    elif user_input == "🔄 Reset Score":
+        context.user_data['bible_game_score'] = 0
+        context.user_data['bible_game_total'] = 0
+
+        keyboard = [
+            ["🟢 Easy", "🟡 Medium", "🔴 Hard"],
+            ["📊 View Stats", "❌ Cancel"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+        await update.message.reply_text("🔄 Score reset! Choose your difficulty:", reply_markup=reply_markup)
+        return BIBLE_GAME_DIFFICULTY
+
+    elif user_input == "🎮 Play Again":
+        keyboard = [
+            ["🟢 Easy", "🟡 Medium", "🔴 Hard"],
+            ["📊 View Stats", "🔄 Reset Score"],
+            ["❌ Cancel"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+        await update.message.reply_text("🎮 Ready for another round! Choose your difficulty:", reply_markup=reply_markup)
+        return BIBLE_GAME_DIFFICULTY
+
+    elif user_input == "❌ Quit Game":
+        score = context.user_data.get('bible_game_score', 0)
+        total = context.user_data.get('bible_game_total', 0)
+        accuracy = (score / total * 100) if total > 0 else 0
+
+        final_text = (
+            f"🎮 *Game Over!*\n\n"
+            f"📊 *Final Stats:*\n"
+            f"✅ Correct: {score}\n"
+            f"❌ Wrong: {total - score}\n"
+            f"📈 Total: {total}\n"
+            f"🎯 Accuracy: {accuracy:.1f}%\n\n"
+            f"Thanks for playing! Type /biblegame to play again."
+        )
+
+        await update.message.reply_text(final_text, parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
+
+    # Handle difficulty selection
+    difficulty_map = {
+        "🟢 Easy": "Easy",
+        "🟡 Medium": "Medium",
+        "🔴 Hard": "Hard"
+    }
+
+    if user_input not in difficulty_map:
+        await update.message.reply_text("Please choose a valid option from the keyboard.")
+        return BIBLE_GAME_DIFFICULTY
+
+    difficulty = difficulty_map[user_input]
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) chose {difficulty} difficulty")
+
+    # Generate a question
+    await update.message.reply_text("🔄 Loading Bible verse...", reply_markup=ReplyKeyboardRemove())
+
+    question = create_bible_question(difficulty)
+    if not question:
+        await update.message.reply_text(
+            "❌ Sorry, I couldn't load a Bible verse right now. Please try again with /biblegame",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
+    # Store question in context
+    context.user_data['current_question'] = question
+
+    # Display the question
+    question_text = (
+        f"📖 *Bible Game - {difficulty} Level*\n\n"
+        f"*Here's your verse:*\n\n"
+        f"_{question['verse_text']}_\n\n"
+        f"*Which Bible reference is this verse from?*"
+    )
+
+    # Create answer options keyboard
+    keyboard = []
+    for i, option in enumerate(question['options']):
+        keyboard.append([f"{chr(65+i)}) {option}"])
+    keyboard.append(["❌ Cancel"])
+
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+    await update.message.reply_text(question_text, parse_mode="Markdown", reply_markup=reply_markup)
+    return BIBLE_GAME_QUESTION
+
+async def bible_game_question_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle answer selection"""
+    user_input = update.message.text.strip()
+    user = update.effective_user
+
+    if user_input == "❌ Cancel":
+        await update.message.reply_text("Bible game cancelled. Type /biblegame to play again!", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
+
+    # Get the current question
+    question = context.user_data.get('current_question')
+    if not question:
+        await update.message.reply_text("❌ Something went wrong. Please start a new game with /biblegame", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
+
+    # Parse the user's answer (remove the letter prefix)
+    if len(user_input) > 3 and user_input[1:3] == ") ":
+        selected_answer = user_input[3:]
+    else:
+        await update.message.reply_text("Please select a valid option from the keyboard.")
+        return BIBLE_GAME_QUESTION
+
+    # Check if the answer is correct
+    correct_answer = question['correct_answer']
+    is_correct = selected_answer == correct_answer
+
+    # Update score
+    context.user_data['bible_game_total'] += 1
+    if is_correct:
+        context.user_data['bible_game_score'] += 1
+
+    # Log the answer
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) answered {selected_answer} - {'Correct' if is_correct else 'Wrong'}")
+
+    # Prepare response
+    if is_correct:
+        result_text = f"🎉 *Correct!* ✅\n\nThe answer is indeed *{correct_answer}*"
+        result_emoji = "🎉"
+    else:
+        result_text = f"❌ *Wrong!*\n\nThe correct answer is *{correct_answer}*"
+        result_emoji = "❌"
+
+    # Show current stats
+    score = context.user_data['bible_game_score']
+    total = context.user_data['bible_game_total']
+    accuracy = (score / total * 100) if total > 0 else 0
+
+    stats_text = f"\n\n📊 *Your Stats:* {score}/{total} correct ({accuracy:.1f}%)"
+
+    # Create continue/quit keyboard
+    keyboard = [
+        ["🎮 Play Again", "📊 View Stats"],
+        ["🔄 Reset Score", "❌ Quit Game"]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+    await update.message.reply_text(
+        result_text + stats_text,
+        parse_mode="Markdown",
+        reply_markup=reply_markup
+    )
+
+    # Clear current question
+    context.user_data['current_question'] = None
+
+    return BIBLE_GAME_DIFFICULTY
+
 #/search command
 SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT = range(5)
  

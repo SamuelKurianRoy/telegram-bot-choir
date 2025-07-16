@@ -27,7 +27,8 @@ try:
         theme_type_choice, handle_theme_type, handle_theme_selection, handle_year_filter, handle_theme_typo_confirm, THEME_TYPE, THEME_SELECTION, YEAR_FILTER, TYPO_CONFIRM,
         start_vocabulary, category_selection, CATEGORY_SELECTION,
         download_start, download_url_input, download_quality_selection, ENTER_URL, SELECT_QUALITY,
-        start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback, handle_song_code
+        start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback, handle_song_code,
+        bible_game_start, bible_game_difficulty_handler, bible_game_question_handler, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION
     )
 except ImportError as e:
     print(f"[DEBUG] ImportError during project imports: {e}")
@@ -172,9 +173,20 @@ bible_conv_handler = ConversationHandler(
     fallbacks=[CommandHandler("cancel", cancel)],
 )
 
+# Register the Bible game conversation handler
+bible_game_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("games", bible_game_start)],
+    states={
+        BIBLE_GAME_DIFFICULTY: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_game_difficulty_handler)],
+        BIBLE_GAME_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_game_question_handler)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
+
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
 app.add_handler(bible_conv_handler)
+app.add_handler(bible_game_conv_handler)
 app.add_handler(date_conv_handler)
 app.add_handler(CommandHandler("refresh", refresh_command))
 app.add_handler(CommandHandler("reply", admin_reply))

@@ -14,6 +14,9 @@ from googleapiclient.http import MediaIoBaseDownload
 from googleapiclient.errors import HttpError
 import subprocess
 import psutil
+import random
+import re
+from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 
 # Add at the top of the file
 STOP_SIGNAL_FILE = "/tmp/telegram_bot_stop_signal"
@@ -80,6 +83,16 @@ if "refresh_interval" not in st.session_state:
     st.session_state["refresh_interval"] = 30
 if "logs_initialized" not in st.session_state:
     st.session_state["logs_initialized"] = False
+
+# Bible game session state
+if "bible_game_score" not in st.session_state:
+    st.session_state["bible_game_score"] = 0
+if "bible_game_total" not in st.session_state:
+    st.session_state["bible_game_total"] = 0
+if "current_question" not in st.session_state:
+    st.session_state["current_question"] = None
+if "game_difficulty" not in st.session_state:
+    st.session_state["game_difficulty"] = "Easy"
 
 # Setup logging (using the same configuration as in bot.py)
 def setup_logging():
@@ -346,6 +359,117 @@ def debug_bot_processes():
             continue
     return processes
 
+# Bible Game Data
+BIBLE_VERSES = {
+    "Easy": [
+        {"reference": "John 3:16", "book": "john", "chapter": 3, "verse": 16},
+        {"reference": "Genesis 1:1", "book": "genesis", "chapter": 1, "verse": 1},
+        {"reference": "Psalm 23:1", "book": "psalms", "chapter": 23, "verse": 1},
+        {"reference": "Romans 3:23", "book": "romans", "chapter": 3, "verse": 23},
+        {"reference": "Romans 6:23", "book": "romans", "chapter": 6, "verse": 23},
+        {"reference": "Ephesians 2:8", "book": "ephesians", "chapter": 2, "verse": 8},
+        {"reference": "1 John 1:9", "book": "1 john", "chapter": 1, "verse": 9},
+        {"reference": "Matthew 28:19", "book": "matthew", "chapter": 28, "verse": 19},
+        {"reference": "Acts 1:8", "book": "acts", "chapter": 1, "verse": 8},
+        {"reference": "Philippians 4:13", "book": "philippians", "chapter": 4, "verse": 13},
+    ],
+    "Medium": [
+        {"reference": "Isaiah 53:5", "book": "isaiah", "chapter": 53, "verse": 5},
+        {"reference": "Jeremiah 29:11", "book": "jeremiah", "chapter": 29, "verse": 11},
+        {"reference": "Proverbs 3:5", "book": "proverbs", "chapter": 3, "verse": 5},
+        {"reference": "2 Timothy 3:16", "book": "2 timothy", "chapter": 3, "verse": 16},
+        {"reference": "Hebrews 11:1", "book": "hebrews", "chapter": 11, "verse": 1},
+        {"reference": "James 1:17", "book": "james", "chapter": 1, "verse": 17},
+        {"reference": "1 Peter 5:7", "book": "1 peter", "chapter": 5, "verse": 7},
+        {"reference": "Galatians 2:20", "book": "galatians", "chapter": 2, "verse": 20},
+        {"reference": "Colossians 3:23", "book": "colossians", "chapter": 3, "verse": 23},
+        {"reference": "1 Thessalonians 5:16", "book": "1 thessalonians", "chapter": 5, "verse": 16},
+    ],
+    "Hard": [
+        {"reference": "Habakkuk 2:4", "book": "habakkuk", "chapter": 2, "verse": 4},
+        {"reference": "Malachi 3:10", "book": "malachi", "chapter": 3, "verse": 10},
+        {"reference": "Zephaniah 3:17", "book": "zephaniah", "chapter": 3, "verse": 17},
+        {"reference": "Nahum 1:7", "book": "nahum", "chapter": 1, "verse": 7},
+        {"reference": "Micah 6:8", "book": "micah", "chapter": 6, "verse": 8},
+        {"reference": "Jonah 2:8", "book": "jonah", "chapter": 2, "verse": 8},
+        {"reference": "Obadiah 1:15", "book": "obadiah", "chapter": 1, "verse": 15},
+        {"reference": "Amos 5:24", "book": "amos", "chapter": 5, "verse": 24},
+        {"reference": "Joel 2:32", "book": "joel", "chapter": 2, "verse": 32},
+        {"reference": "Hosea 6:6", "book": "hosea", "chapter": 6, "verse": 6},
+    ]
+}
+
+def extract_verse_from_text(text, verse_number):
+    """Extract a specific verse from cleaned Bible text"""
+    lines = text.strip().split('\n')
+    for line in lines:
+        line = line.strip()
+        if line.startswith(f"{verse_number} "):
+            return line[len(f"{verse_number} "):].strip()
+    return None
+
+def get_bible_verse(book, chapter, verse):
+    """Fetch a specific Bible verse"""
+    try:
+        # Get the URL for the chapter
+        result = get_wordproject_url_from_input('english', f"{book} {chapter}")
+        url, _, _, _ = result
+
+        if url.startswith("❌"):
+            return None
+
+        # Extract the chapter text
+        raw_text = extract_bible_chapter_text(url)
+        if raw_text.startswith("❌"):
+            return None
+
+        # Clean the text
+        cleaned_text = clean_bible_text(raw_text, 'kj')
+
+        # Extract the specific verse
+        verse_text = extract_verse_from_text(cleaned_text, verse)
+        return verse_text
+
+    except Exception as e:
+        st.error(f"Error fetching verse: {e}")
+        return None
+
+def generate_wrong_options(correct_reference, _):
+    """Generate 3 wrong options for the multiple choice"""
+    all_verses = []
+    for diff_level in BIBLE_VERSES.values():
+        all_verses.extend(diff_level)
+
+    # Remove the correct answer from options
+    wrong_options = [v for v in all_verses if v["reference"] != correct_reference]
+
+    # Select 3 random wrong options
+    selected_wrong = random.sample(wrong_options, min(3, len(wrong_options)))
+    return [opt["reference"] for opt in selected_wrong]
+
+def create_bible_question(difficulty):
+    """Create a new Bible question"""
+    verses = BIBLE_VERSES[difficulty]
+    selected_verse = random.choice(verses)
+
+    # Get the verse text
+    verse_text = get_bible_verse(selected_verse["book"], selected_verse["chapter"], selected_verse["verse"])
+
+    if not verse_text:
+        return None
+
+    # Generate options
+    wrong_options = generate_wrong_options(selected_verse["reference"], difficulty)
+    all_options = [selected_verse["reference"]] + wrong_options
+    random.shuffle(all_options)
+
+    return {
+        "verse_text": verse_text,
+        "correct_answer": selected_verse["reference"],
+        "options": all_options,
+        "difficulty": difficulty
+    }
+
 # Initialize logging
 bot_logger, user_logger = setup_logging()
 
@@ -354,7 +478,7 @@ with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/musical-notes.png", width=100)
     st.title("Navigation")
     
-    page = st.radio("Go to", ["Dashboard", "Logs", "Settings", "About"])
+    page = st.radio("Go to", ["Dashboard", "Logs", "Settings", "Bible Game", "About"])
     
     st.markdown("---")
     
@@ -611,6 +735,121 @@ elif page == "Logs":
         if st.button("Refresh Logs"):
             st.rerun()
 
+elif page == "Bible Game":
+    st.markdown("<h1 class='main-header'>📖 Bible Verse Game</h1>", unsafe_allow_html=True)
+
+    # Game description
+    st.markdown("""
+    <div class='info-box'>
+        <h3>How to Play</h3>
+        <p>Test your Bible knowledge! A verse will be displayed, and you need to guess which Bible reference it's from.</p>
+        <p>Choose your difficulty level and start playing!</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Difficulty selection and score display
+    col1, col2, col3 = st.columns([2, 1, 1])
+
+    with col1:
+        difficulty = st.selectbox(
+            "Select Difficulty:",
+            ["Easy", "Medium", "Hard"],
+            index=["Easy", "Medium", "Hard"].index(st.session_state["game_difficulty"])
+        )
+        if difficulty != st.session_state["game_difficulty"]:
+            st.session_state["game_difficulty"] = difficulty
+            st.session_state["current_question"] = None  # Reset current question
+
+    with col2:
+        st.metric("Score", f"{st.session_state['bible_game_score']}/{st.session_state['bible_game_total']}")
+
+    with col3:
+        if st.session_state["bible_game_total"] > 0:
+            percentage = (st.session_state["bible_game_score"] / st.session_state["bible_game_total"]) * 100
+            st.metric("Accuracy", f"{percentage:.1f}%")
+
+    # Game controls
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        if st.button("🎮 New Question", type="primary"):
+            with st.spinner("Loading Bible verse..."):
+                question = create_bible_question(difficulty)
+                if question:
+                    st.session_state["current_question"] = question
+                    st.rerun()
+                else:
+                    st.error("Failed to load Bible verse. Please try again.")
+
+    with col2:
+        if st.button("🔄 Reset Score"):
+            st.session_state["bible_game_score"] = 0
+            st.session_state["bible_game_total"] = 0
+            st.session_state["current_question"] = None
+            st.success("Score reset!")
+            st.rerun()
+
+    # Display current question
+    if st.session_state["current_question"]:
+        question = st.session_state["current_question"]
+
+        st.markdown("---")
+        st.markdown(f"### 📜 Difficulty: {question['difficulty']}")
+
+        # Display the verse in a nice box
+        st.markdown(f"""
+        <div style="background-color: #f0f8ff; padding: 20px; border-radius: 10px; border-left: 5px solid #1E88E5; margin: 20px 0;">
+            <h4 style="color: #0D47A1; margin-bottom: 15px;">📖 Bible Verse:</h4>
+            <p style="font-size: 1.2em; font-style: italic; color: #333; line-height: 1.6;">
+                "{question['verse_text']}"
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("### Which Bible reference is this verse from?")
+
+        # Create answer buttons
+        for i, option in enumerate(question["options"]):
+            if st.button(f"{chr(65+i)}) {option}", key=f"option_{i}", use_container_width=True):
+                st.session_state["bible_game_total"] += 1
+
+                if option == question["correct_answer"]:
+                    st.session_state["bible_game_score"] += 1
+                    st.success(f"🎉 Correct! The answer is {question['correct_answer']}")
+                else:
+                    st.error(f"❌ Wrong! The correct answer is {question['correct_answer']}")
+
+                # Clear current question after answering
+                st.session_state["current_question"] = None
+                time.sleep(2)
+                st.rerun()
+
+    else:
+        st.markdown("---")
+        st.info("👆 Click 'New Question' to start playing!")
+
+    # Game statistics
+    if st.session_state["bible_game_total"] > 0:
+        st.markdown("---")
+        st.markdown("### 📊 Game Statistics")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("Total Questions", st.session_state["bible_game_total"])
+
+        with col2:
+            st.metric("Correct Answers", st.session_state["bible_game_score"])
+
+        with col3:
+            wrong_answers = st.session_state["bible_game_total"] - st.session_state["bible_game_score"]
+            st.metric("Wrong Answers", wrong_answers)
+
+        with col4:
+            if st.session_state["bible_game_total"] > 0:
+                accuracy = (st.session_state["bible_game_score"] / st.session_state["bible_game_total"]) * 100
+                st.metric("Overall Accuracy", f"{accuracy:.1f}%")
+
 elif page == "Settings":
     st.markdown("<h1 class='main-header'>Bot Settings</h1>", unsafe_allow_html=True)
     
@@ -650,23 +889,68 @@ elif page == "Settings":
         else:
             st.error("BFILE_ID or UFILE_ID not configured in secrets")
 
-# Bot information
-st.header("Bot Information")
-st.markdown("""
-This control panel allows you to start and stop the Railway Choir Telegram Bot.
+elif page == "About":
+    st.markdown("<h1 class='main-header'>About Railway Choir Bot</h1>", unsafe_allow_html=True)
 
-**Features:**
-- Search for hymns, lyrics, and convention songs
-- Get information about when songs were last sung
-- Search by theme or tune
-- View song details and history
+    # Bot information
+    st.markdown("## 🎶 Bot Information")
+    st.markdown("""
+    This control panel allows you to start and stop the Railway Choir Telegram Bot.
 
-**Commands:**
-- `/start` - Start the bot
-- `/help` - Show help information
-- `/search` - Search for songs
-- `/theme` - Filter songs by theme
-- `/tune` - Find tunes by hymn number or tune index
-- `/date` - Show songs sung on a specific date"""
- )
-st.write("❌ The Telegram bot is not running.")
+    **Bot Features:**
+    - Search for hymns, lyrics, and convention songs
+    - Get information about when songs were last sung
+    - Search by theme or tune
+    - View song details and history
+    - Bible verse lookup and reading
+
+    **Bot Commands:**
+    - `/start` - Start the bot
+    - `/help` - Show help information
+    - `/search` - Search for songs
+    - `/theme` - Filter songs by theme
+    - `/tune` - Find tunes by hymn number or tune index
+    - `/date` - Show songs sung on a specific date
+    - `/bible` - Look up Bible passages
+    """)
+
+    # Bible Game information
+    st.markdown("## 📖 Bible Game")
+    st.markdown("""
+    The Bible Game is an interactive feature that helps you learn and memorize Bible verses.
+
+    **Game Features:**
+    - **Three Difficulty Levels:**
+      - **Easy:** Popular and well-known verses (John 3:16, Genesis 1:1, etc.)
+      - **Medium:** Important verses that require more Bible knowledge
+      - **Hard:** Lesser-known verses from minor prophets and challenging books
+
+    - **Multiple Choice Format:** Each question provides 4 options to choose from
+    - **Score Tracking:** Keep track of your correct answers and accuracy
+    - **Real-time Verse Fetching:** Verses are fetched live from WordProject.org
+    - **Reset Functionality:** Start fresh anytime with the reset button
+
+    **How It Helps:**
+    - Prevents the Streamlit app from sleeping due to inactivity
+    - Provides an engaging way to learn Bible verses
+    - Tests your knowledge of Bible references
+    - Helps memorize important passages
+    """)
+
+    # Technical information
+    st.markdown("## ⚙️ Technical Details")
+    st.markdown("""
+    **Bible Verse Source:** WordProject.org
+    **Languages Supported:** English and Malayalam
+    **Verse Extraction:** Real-time parsing from web content
+    **Game Logic:** Random selection with difficulty-based filtering
+    """)
+
+    # Credits
+    st.markdown("## 👥 Credits")
+    st.markdown("""
+    - **Bot Development:** Railway Choir Bot Team
+    - **Bible Content:** WordProject.org
+    - **Framework:** Streamlit + Python Telegram Bot
+    - **Hosting:** Railway/Streamlit Cloud
+    """)
