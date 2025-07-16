@@ -17,7 +17,7 @@ try:
         check_song_start, last_sung_start, check_song_input, ENTER_SONG, 
         last_sung_input, ENTER_LAST_SONG, 
         date_start, date_input, ASK_DATE, last_show_all_dates_callback,
-        bible_start, bible_input_handler, BIBLE_INPUT
+        bible_start, bible_input_handler, bible_confirm_handler, BIBLE_INPUT, BIBLE_CONFIRM
     )
     from telegram_handlers.conversations import (
         SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT,
@@ -164,6 +164,7 @@ bible_conv_handler = ConversationHandler(
     entry_points=[CommandHandler("bible", bible_start)],
     states={
         BIBLE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_input_handler)],
+        BIBLE_CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_confirm_handler)],
     },
     fallbacks=[CommandHandler("cancel", cancel)],
 )

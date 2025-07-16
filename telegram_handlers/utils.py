@@ -190,7 +190,7 @@ def clean_bible_text(text: str, language: str = 'ml') -> str:
 
     return text.strip()  # fallback
 
-def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
+def get_wordproject_url_from_input(lang: str, user_input: str) -> tuple:
     # Bible book name to number map (with English and Malayalam full & short names)
     book_map = {
         # Old Testament
@@ -303,40 +303,44 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
         # Get language code
         key = lang.strip().lower()
         if key not in language_code_map:
-            return f"❌ Unsupported language '{lang}'"
+            return (f"❌ Unsupported language '{lang}'", None, None, False)
         lc = language_code_map[key]
 
         # Parse input
         parts = user_input.strip().lower().split()
         if len(parts) < 2:
-            return "❌ Please provide both book and chapter (e.g., 'Gen 1')"
+            return ("❌ Please provide both book and chapter (e.g., 'Gen 1')", None, None, False)
 
         # Extract chapter number (last part should be a number)
         try:
             chapter = int(parts[-1])
         except ValueError:
-            return "❌ Chapter must be a number"
+            return ("❌ Chapter must be a number", None, None, False)
 
         # Book name is everything except the last part
         book_input = ' '.join(parts[:-1])
 
         # First try exact match
         book_number = book_map.get(book_input)
-        
+        fuzzy_matched = False
+        matched_book_name = book_input
+
         # If no exact match, try fuzzy matching
         if book_number is None:
             matched_book, score = fuzzy_find_book(book_input)
             if matched_book:
                 book_number = book_map[matched_book]
+                fuzzy_matched = True
+                matched_book_name = matched_book
             else:
                 available_books = list(set([k for k in book_map.keys() if not k.isdigit()]))[:10]
-                return f"❌ Book '{book_input}' not found. Available books include: {', '.join(available_books[:5])}..."
+                return (f"❌ Book '{book_input}' not found. Available books include: {', '.join(available_books[:5])}...", None, None, False)
 
         # Construct the URL with the correct format
         url = f"https://www.wordproject.org/bibles/{lc}/{book_number:02d}/{chapter}.htm#0"
-        return url
+        return (url, matched_book_name, f"{matched_book_name.title()} {chapter}", fuzzy_matched)
 
     except Exception as e:
-        return f"❌ Error: {str(e)}"
+        return (f"❌ Error: {str(e)}", None, None, False)
 
 # TODO: Add more Telegram-specific helpers as needed 

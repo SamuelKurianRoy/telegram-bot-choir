@@ -487,6 +487,7 @@ async def handle_song_code(update: Update, context: CallbackContext) -> None:
 
 # Bible conversation states
 BIBLE_INPUT = 2000
+BIBLE_CONFIRM = 2001
 
 # Interactive Bible command handler
 async def bible_start(update: Update, context: CallbackContext) -> int:
@@ -507,10 +508,22 @@ async def bible_start(update: Update, context: CallbackContext) -> int:
             verse_spec = (int(m.group(1)), int(m.group(2)) if m.group(2) else int(m.group(1)))
             book_chapter_input = user_input[:m.start()].strip()
         # Default to Malayalam if no language specified
-        url = get_wordproject_url_from_input('malayalam', book_chapter_input)
-        
+        result = get_wordproject_url_from_input('malayalam', book_chapter_input)
+        url, matched_book, formatted_reference, fuzzy_matched = result
+
         if url.startswith("❌"):
             await update.message.reply_text(url)
+        elif fuzzy_matched:
+            # Store the data for confirmation
+            context.user_data['bible_url'] = url
+            context.user_data['bible_reference'] = formatted_reference
+            context.user_data['bible_verse_spec'] = verse_spec
+            context.user_data['bible_language'] = 'malayalam'
+            context.user_data['bible_original_input'] = user_input
+
+            confirmation_text = f"🤔 Did you mean *{formatted_reference}*?\n\nType 'yes' to confirm or 'no' to cancel."
+            await update.message.reply_text(confirmation_text, parse_mode="Markdown")
+            return BIBLE_CONFIRM
         else:
             raw_text = extract_bible_chapter_text(url)
             if raw_text.startswith("❌"):
@@ -587,9 +600,22 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
         if m:
             verse_spec = (int(m.group(1)), int(m.group(2)) if m.group(2) else int(m.group(1)))
             book_chapter_input = book_chapter_input[:m.start()].strip()
-        url = get_wordproject_url_from_input(language, book_chapter_input)
+        result = get_wordproject_url_from_input(language, book_chapter_input)
+        url, matched_book, formatted_reference, fuzzy_matched = result
+
         if url.startswith("❌"):
             await update.message.reply_text(url)
+        elif fuzzy_matched:
+            # Store the data for confirmation
+            context.user_data['bible_url'] = url
+            context.user_data['bible_reference'] = formatted_reference
+            context.user_data['bible_verse_spec'] = verse_spec
+            context.user_data['bible_language'] = language
+            context.user_data['bible_original_input'] = user_input
+
+            confirmation_text = f"🤔 Did you mean *{formatted_reference}*?\n\nType 'yes' to confirm or 'no' to cancel."
+            await update.message.reply_text(confirmation_text, parse_mode="Markdown")
+            return BIBLE_CONFIRM
         else:
             raw_text = extract_bible_chapter_text(url)
             if raw_text.startswith("❌"):
@@ -655,6 +681,88 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
         )
         await update.message.reply_text(next_text, parse_mode="Markdown")
     return BIBLE_INPUT
+
+async def bible_confirm_handler(update: Update, context: CallbackContext) -> int:
+    """Handle confirmation for fuzzy matched Bible references"""
+    try:
+        user_response = update.message.text.strip().lower()
+
+        if user_response in ['yes', 'y', 'yeah', 'yep', 'ok', 'okay']:
+            # User confirmed, proceed with the Bible passage
+            url = context.user_data.get('bible_url')
+            formatted_reference = context.user_data.get('bible_reference')
+            verse_spec = context.user_data.get('bible_verse_spec')
+            language = context.user_data.get('bible_language')
+            original_input = context.user_data.get('bible_original_input')
+
+            if not url:
+                await update.message.reply_text("❌ Session expired. Please try again.")
+                return ConversationHandler.END
+
+            raw_text = extract_bible_chapter_text(url)
+            if raw_text.startswith("❌"):
+                await update.message.reply_text(raw_text)
+            else:
+                lang_code = 'ml'  # default to Malayalam
+                if language in ['english', 'eng']:
+                    lang_code = 'kj'
+                cleaned_text = clean_bible_text(raw_text, lang_code)
+
+                # Extract verses if verse_spec is set
+                if verse_spec:
+                    verses = extract_verses_from_cleaned_text(cleaned_text, verse_spec[0], verse_spec[1])
+                    if not verses:
+                        await update.message.reply_text(f"❌ Verse(s) not found in this chapter.\n🔗 [View on WordProject]({url})", parse_mode="Markdown", disable_web_page_preview=True)
+                        return ConversationHandler.END
+                    cleaned_text = "\n".join(verses)
+
+                # Split long text into multiple messages if needed
+                if len(cleaned_text) > 4000:
+                    chunks = [cleaned_text[i:i+4000] for i in range(0, len(cleaned_text), 4000)]
+                    for i, chunk in enumerate(chunks):
+                        if i == 0:
+                            header = f"📖 *Bible Passage Found!*\n\n*Reference:* {formatted_reference}\n*Language:* {language.title()}\n\n"
+                            await update.message.reply_text(header + chunk, parse_mode="Markdown")
+                        else:
+                            await update.message.reply_text(chunk)
+                    link_text = f"🔗 [View on WordProject]({url})"
+                    await update.message.reply_text(link_text, parse_mode="Markdown", disable_web_page_preview=True)
+                else:
+                    response_text = (
+                        f"📖 *Bible Passage Found!*\n\n"
+                        f"*Reference:* {formatted_reference}\n"
+                        f"*Language:* {language.title()}\n\n"
+                        f"{cleaned_text}\n\n"
+                        f"🔗 [View on WordProject]({url})"
+                    )
+                    await update.message.reply_text(response_text, parse_mode="Markdown", disable_web_page_preview=True)
+
+            # Clear user data
+            context.user_data.clear()
+            return ConversationHandler.END
+
+        elif user_response in ['no', 'n', 'nope', 'cancel']:
+            # User declined
+            await update.message.reply_text("❌ Could not find the Bible reference you were looking for.")
+
+            next_text = (
+                "📖 *Enter another Bible reference, or type /cancel to stop:*\n\n"
+                "*Examples:*\n"
+                "• `Gen 10`\n"
+                "• `Exodus 12 english`\n"
+                "• `John 3`\n"
+                "• `യോഹന്നാൻ 3`"
+            )
+            await update.message.reply_text(next_text, parse_mode="Markdown")
+            return BIBLE_INPUT
+        else:
+            # Invalid response
+            await update.message.reply_text("Please type 'yes' to confirm or 'no' to cancel.")
+            return BIBLE_CONFIRM
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+        return ConversationHandler.END
 
 # --- Helper for extracting verses from cleaned text ---
 def extract_verses_from_cleaned_text(cleaned_text, start_verse, end_verse):
