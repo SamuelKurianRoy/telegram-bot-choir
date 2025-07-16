@@ -300,29 +300,22 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
     }
 
     try:
+        # Get language code
         key = lang.strip().lower()
         if key not in language_code_map:
-            raise ValueError(f"Unsupported language '{lang}'")
+            return f"❌ Unsupported language '{lang}'"
         lc = language_code_map[key]
 
-        # Clean and process the input
-        user_input = user_input.strip()
-        
-        # Handle verse references like "Gen 3:3" - extract just book and chapter
-        if ':' in user_input:
-            parts = user_input.split(':')
-            if len(parts) >= 2:
-                user_input = parts[0].strip()
-        
-        parts = user_input.lower().split()
+        # Parse input
+        parts = user_input.strip().lower().split()
         if len(parts) < 2:
-            raise ValueError("Input must be 'Book Chapter'")
+            return "❌ Please provide both book and chapter (e.g., 'Gen 1')"
 
         # Extract chapter number (last part should be a number)
         try:
             chapter = int(parts[-1])
         except ValueError:
-            raise ValueError("Chapter must be a number")
+            return "❌ Chapter must be a number"
 
         # Book name is everything except the last part
         book_input = ' '.join(parts[:-1])
@@ -339,8 +332,8 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> str:
                 available_books = list(set([k for k in book_map.keys() if not k.isdigit()]))[:10]
                 return f"❌ Book '{book_input}' not found. Available books include: {', '.join(available_books[:5])}..."
 
-        # Construct the URL
-        url = f"https://www.wordproject.org/bibles/{lc}/b{book_number:02d}c{chapter:02d}.htm"
+        # Construct the URL with the correct format
+        url = f"https://www.wordproject.org/bibles/{lc}/{book_number:02d}/{chapter}.htm#0"
         return url
 
     except Exception as e:
