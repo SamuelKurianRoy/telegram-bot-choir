@@ -164,7 +164,10 @@ bible_conv_handler = ConversationHandler(
     entry_points=[CommandHandler("bible", bible_start)],
     states={
         BIBLE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_input_handler)],
-        BIBLE_CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_confirm_handler)],
+        BIBLE_CONFIRM: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, bible_confirm_handler),
+            CallbackQueryHandler(bible_confirm_handler, pattern="^bible_confirm_")
+        ],
     },
     fallbacks=[CommandHandler("cancel", cancel)],
 )

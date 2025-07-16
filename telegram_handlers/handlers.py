@@ -521,8 +521,17 @@ async def bible_start(update: Update, context: CallbackContext) -> int:
             context.user_data['bible_language'] = 'malayalam'
             context.user_data['bible_original_input'] = user_input
 
-            confirmation_text = f"🤔 Did you mean *{formatted_reference}*?\n\nType 'yes' to confirm or 'no' to cancel."
-            await update.message.reply_text(confirmation_text, parse_mode="Markdown")
+            # Create inline keyboard with Yes/No buttons
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Yes", callback_data="bible_confirm_yes"),
+                    InlineKeyboardButton("❌ No", callback_data="bible_confirm_no")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            confirmation_text = f"🤔 Did you mean *{formatted_reference}*?"
+            await update.message.reply_text(confirmation_text, parse_mode="Markdown", reply_markup=reply_markup)
             return BIBLE_CONFIRM
         else:
             raw_text = extract_bible_chapter_text(url)
@@ -613,8 +622,17 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
             context.user_data['bible_language'] = language
             context.user_data['bible_original_input'] = user_input
 
-            confirmation_text = f"🤔 Did you mean *{formatted_reference}*?\n\nType 'yes' to confirm or 'no' to cancel."
-            await update.message.reply_text(confirmation_text, parse_mode="Markdown")
+            # Create inline keyboard with Yes/No buttons
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Yes", callback_data="bible_confirm_yes"),
+                    InlineKeyboardButton("❌ No", callback_data="bible_confirm_no")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            confirmation_text = f"🤔 Did you mean *{formatted_reference}*?"
+            await update.message.reply_text(confirmation_text, parse_mode="Markdown", reply_markup=reply_markup)
             return BIBLE_CONFIRM
         else:
             raw_text = extract_bible_chapter_text(url)
@@ -685,9 +703,15 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
 async def bible_confirm_handler(update: Update, context: CallbackContext) -> int:
     """Handle confirmation for fuzzy matched Bible references"""
     try:
-        user_response = update.message.text.strip().lower()
+        # Handle both button callbacks and text input
+        if update.callback_query:
+            query = update.callback_query
+            await query.answer()
+            user_response = query.data
+        else:
+            user_response = update.message.text.strip().lower()
 
-        if user_response in ['yes', 'y', 'yeah', 'yep', 'ok', 'okay']:
+        if user_response == 'bible_confirm_yes' or user_response in ['yes', 'y', 'yeah', 'yep', 'ok', 'okay']:
             # User confirmed, proceed with the Bible passage
             url = context.user_data.get('bible_url')
             formatted_reference = context.user_data.get('bible_reference')
@@ -735,15 +759,33 @@ async def bible_confirm_handler(update: Update, context: CallbackContext) -> int
                         f"{cleaned_text}\n\n"
                         f"🔗 [View on WordProject]({url})"
                     )
-                    await update.message.reply_text(response_text, parse_mode="Markdown", disable_web_page_preview=True)
+                    # Send to callback query if it's a button press, otherwise to message
+                    if update.callback_query:
+                        await update.callback_query.edit_message_text(response_text, parse_mode="Markdown", disable_web_page_preview=True)
+                    else:
+                        await update.message.reply_text(response_text, parse_mode="Markdown", disable_web_page_preview=True)
+
+            # Continue the conversation instead of ending it
+            next_text = (
+                "📖 *Enter another Bible reference, or type /cancel to stop:*\n\n"
+                "*Examples:*\n"
+                "• `Gen 10`\n"
+                "• `Exodus 12 english`\n"
+                "• `John 3`\n"
+                "• `യോഹന്നാൻ 3`"
+            )
+            if update.callback_query:
+                await update.callback_query.message.reply_text(next_text, parse_mode="Markdown")
+            else:
+                await update.message.reply_text(next_text, parse_mode="Markdown")
 
             # Clear user data
             context.user_data.clear()
-            return ConversationHandler.END
+            return BIBLE_INPUT
 
-        elif user_response in ['no', 'n', 'nope', 'cancel']:
+        elif user_response == 'bible_confirm_no' or user_response in ['no', 'n', 'nope', 'cancel']:
             # User declined
-            await update.message.reply_text("❌ Could not find the Bible reference you were looking for.")
+            decline_text = "❌ Could not find the Bible reference you were looking for."
 
             next_text = (
                 "📖 *Enter another Bible reference, or type /cancel to stop:*\n\n"
@@ -753,16 +795,33 @@ async def bible_confirm_handler(update: Update, context: CallbackContext) -> int
                 "• `John 3`\n"
                 "• `യോഹന്നാൻ 3`"
             )
-            await update.message.reply_text(next_text, parse_mode="Markdown")
+
+            if update.callback_query:
+                await update.callback_query.edit_message_text(decline_text)
+                await update.callback_query.message.reply_text(next_text, parse_mode="Markdown")
+            else:
+                await update.message.reply_text(decline_text)
+                await update.message.reply_text(next_text, parse_mode="Markdown")
+
+            # Clear user data
+            context.user_data.clear()
             return BIBLE_INPUT
         else:
             # Invalid response
-            await update.message.reply_text("Please type 'yes' to confirm or 'no' to cancel.")
+            invalid_text = "Please click one of the buttons above or type 'yes' to confirm or 'no' to cancel."
+            if update.callback_query:
+                await update.callback_query.message.reply_text(invalid_text)
+            else:
+                await update.message.reply_text(invalid_text)
             return BIBLE_CONFIRM
 
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {str(e)}")
-        return ConversationHandler.END
+        error_text = f"❌ Error: {str(e)}"
+        if update.callback_query:
+            await update.callback_query.message.reply_text(error_text)
+        else:
+            await update.message.reply_text(error_text)
+        return BIBLE_INPUT
 
 # --- Helper for extracting verses from cleaned text ---
 def extract_verses_from_cleaned_text(cleaned_text, start_verse, end_verse):
