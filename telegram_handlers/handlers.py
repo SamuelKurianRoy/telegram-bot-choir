@@ -140,7 +140,7 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "🎵 *Choir Song Bot Help* (Part 3/3)\n\n"
         "• **/games**\n"
         "  - *Description:* Play an interactive Bible verse guessing game! Test your knowledge by identifying Bible references from verses. Choose from Easy, Medium, or Hard difficulty levels.\n"
-        "  - *Features:* Multiple languages (English, Malayalam, Hindi, Tamil), score tracking, separate leaderboards by difficulty, real-time verse fetching\n"
+        "  - *Features:* Two languages (English & Malayalam), score tracking, separate leaderboards by difficulty, real-time verse fetching\n"
         "  - *Example:* Type `/games` and follow the prompts to select language and difficulty.\n\n"
         "• **/vocabulary**\n"
         "  - *Description:* Starts the vocabulary export conversation.\n"

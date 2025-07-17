@@ -187,8 +187,28 @@ def clean_bible_text(text: str, language: str = 'ml') -> str:
     elif language == 'kj':  # English
         text = normalize_and_format_bible_text(text)
         return clean_english_bible_text(text)
+    else:
+        # For other languages (Hindi, Tamil, etc.), use a generic cleaning approach
+        # This handles most Indo-European and other language scripts
+        text = normalize_and_format_bible_text(text)
+        return clean_generic_bible_text(text)
 
-    return text.strip()  # fallback
+def clean_generic_bible_text(text: str) -> str:
+    """Generic Bible text cleaning for languages other than Malayalam and English"""
+    # Remove extra whitespace
+    text = re.sub(r'\s+', ' ', text)
+
+    # Ensure verse numbers are properly formatted
+    # Look for patterns like "1 Text" or "12 Text" at the beginning of lines
+    text = re.sub(r'(?<!\n)(?<!\d)(\s*)(\d{1,3})(\s+)', r'\n\2 ', text)
+
+    # Clean up multiple newlines
+    text = re.sub(r'\n+', '\n', text)
+
+    # Remove leading/trailing whitespace from each line
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+
+    return '\n'.join(lines)
 
 def get_wordproject_url_from_input(lang: str, user_input: str) -> tuple:
     # Bible book name to number map (with English and Malayalam full & short names)
@@ -282,8 +302,8 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> tuple:
     language_code_map = {
         'malayalam': 'ml', 'mal': 'ml',
         'english': 'kj', 'eng': 'kj',
-        'hindi': 'hi', 'hin': 'hi',
-        'tamil': 'ta', 'tam': 'ta',
+        'hindi': 'in', 'hin': 'in',
+        'tamil': 'tm', 'tam': 'tm',
         'telugu': 'te', 'tel': 'te',
         'kannada': 'kn', 'kan': 'kn',
         'marathi': 'mr', 'mar': 'mr',
@@ -294,8 +314,8 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> tuple:
         'spanish': 'es', 'es': 'es',
         'french': 'fr', 'fr': 'fr',
         'german': 'de', 'de': 'de',
-        'chinese': 'zh', 'zh': 'zh',
-        'japanese': 'ja', 'ja': 'ja',
+        'chinese': 'big5', 'zh': 'big5',
+        'japanese': 'jp', 'ja': 'jp',
         'russian': 'ru', 'ru': 'ru'
     }
 
@@ -327,7 +347,7 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> tuple:
 
         # If no exact match, try fuzzy matching
         if book_number is None:
-            matched_book, score = fuzzy_find_book(book_input)
+            matched_book, _ = fuzzy_find_book(book_input)
             if matched_book:
                 book_number = book_map[matched_book]
                 fuzzy_matched = True

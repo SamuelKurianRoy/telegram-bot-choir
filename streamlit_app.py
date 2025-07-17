@@ -430,11 +430,19 @@ def get_bible_verse(book, chapter, verse, language='english'):
         if language.lower() in ['malayalam', 'mal']:
             lang_code = 'ml'
         elif language.lower() in ['hindi', 'hin']:
-            lang_code = 'hi'
+            lang_code = 'in'
         elif language.lower() in ['tamil', 'tam']:
-            lang_code = 'ta'
+            lang_code = 'tm'
         elif language.lower() in ['telugu', 'tel']:
             lang_code = 'te'
+        elif language.lower() in ['chinese', 'zh']:
+            lang_code = 'big5'
+        elif language.lower() in ['japanese', 'ja']:
+            lang_code = 'jp'
+        else:
+            # For other languages, use the language code as-is
+            # The clean_bible_text function will handle generic cleaning
+            lang_code = language.lower()
 
         # Clean the text
         cleaned_text = clean_bible_text(raw_text, lang_code)
@@ -768,7 +776,7 @@ elif page == "Bible Game":
     <div class='info-box'>
         <h3>How to Play</h3>
         <p>Test your Bible knowledge! A verse will be displayed, and you need to guess which Bible reference it's from.</p>
-        <p>Choose your difficulty level and start playing!</p>
+        <p>Choose your language (English or Malayalam), difficulty level, and start playing!</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -778,8 +786,8 @@ elif page == "Bible Game":
     with col1:
         language = st.selectbox(
             "Select Language:",
-            ["English", "Malayalam", "Hindi", "Tamil"],
-            index=["English", "Malayalam", "Hindi", "Tamil"].index(st.session_state["game_language"])
+            ["English", "Malayalam"],
+            index=["English", "Malayalam"].index(st.session_state["game_language"])
         )
         if language != st.session_state["game_language"]:
             st.session_state["game_language"] = language
