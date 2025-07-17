@@ -358,30 +358,51 @@ def extract_folder_id(folder_url):
  
  # === FETCH ALL IMAGE FILES ===
 def get_image_files_from_folder(folder_url):
-     folder_id = extract_folder_id(folder_url)
-     file_map = {}
-     page_token = None
- 
-     while True:
-         response = drive_service.files().list(
-             q=f"'{folder_id}' in parents and mimeType contains 'image/' and trashed = false",
-             fields="nextPageToken, files(id, name)",
-             pageToken=page_token
-         ).execute()
- 
-         for file in response.get('files', []):
+     try:
+         folder_id = extract_folder_id(folder_url)
+         drive_service = get_drive_service()
+         file_map = {}
+         page_token = None
+         max_retries = 3
+         retry_count = 0
+
+         while True:
              try:
-                 page_num = int(file['name'].split('.')[0])
-                 file_map[page_num] = file['id']
-             except ValueError:
-                 continue  # Skip files that don't start with a number
- 
-         page_token = response.get('nextPageToken', None)
-         if page_token is None:
-             break
- 
-     # Remove or comment out any print statements that output file_map keys or numbers
-     return file_map
+                 response = drive_service.files().list(
+                     q=f"'{folder_id}' in parents and mimeType contains 'image/' and trashed = false",
+                     fields="nextPageToken, files(id, name)",
+                     pageToken=page_token,
+                     pageSize=100  # Limit page size to avoid large responses
+                 ).execute()
+
+                 # Reset retry count on successful request
+                 retry_count = 0
+
+                 for file in response.get('files', []):
+                     try:
+                         page_num = int(file['name'].split('.')[0])
+                         file_map[page_num] = file['id']
+                     except ValueError:
+                         continue  # Skip files that don't start with a number
+
+                 page_token = response.get('nextPageToken', None)
+                 if page_token is None:
+                     break
+
+             except Exception as e:
+                 retry_count += 1
+                 if retry_count >= max_retries:
+                     print(f"❌ Failed to load images after {max_retries} retries: {e}")
+                     break
+                 print(f"⚠️ Retry {retry_count}/{max_retries} for loading images: {e}")
+                 import time
+                 time.sleep(2 ** retry_count)  # Exponential backoff
+
+         return file_map
+
+     except Exception as e:
+         print(f"❌ Error initializing image file loading: {e}")
+         return {}
  
  # === DOWNLOAD IMAGE ===
 def download_image(file_id, filename):
@@ -407,16 +428,24 @@ def get_image_by_page(page_number, file_map):
  
  # === MAIN EXECUTION ===
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-file_map = get_image_files_from_folder(HYMN_FOLDER_URL)
+# Load file_map at startup with error handling
+try:
+    print("Loading hymn image files from Google Drive...")
+    file_map = get_image_files_from_folder(HYMN_FOLDER_URL)
+    print(f"Successfully loaded {len(file_map)} hymn images")
+except Exception as e:
+    print(f"❌ Error loading hymn images: {e}")
+    print("⚠️ Bot will continue without notation images")
+    file_map = {}  # Empty dict allows bot to continue
 
 
 
-def Music_notation_downloader(hymnno, file_map): 
+def Music_notation_downloader(hymnno, file_map):
     if isinstance(hymnno, str) and hymnno.upper().startswith('H-'):
         hymnno = hymnno[2:]
     hymnno = int(hymnno)
     results = {}
-    
+
     # Get tunes for the hymn
     tunes_str = dfH["Tunes"][hymnno - 1]
     tune_names = [t.strip() for t in tunes_str.split(',')]
