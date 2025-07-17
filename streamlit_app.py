@@ -93,6 +93,8 @@ if "current_question" not in st.session_state:
     st.session_state["current_question"] = None
 if "game_difficulty" not in st.session_state:
     st.session_state["game_difficulty"] = "Easy"
+if "game_language" not in st.session_state:
+    st.session_state["game_language"] = "English"
 
 # Setup logging (using the same configuration as in bot.py)
 def setup_logging():
@@ -408,11 +410,11 @@ def extract_verse_from_text(text, verse_number):
             return line[len(f"{verse_number} "):].strip()
     return None
 
-def get_bible_verse(book, chapter, verse):
-    """Fetch a specific Bible verse"""
+def get_bible_verse(book, chapter, verse, language='english'):
+    """Fetch a specific Bible verse in the specified language"""
     try:
         # Get the URL for the chapter
-        result = get_wordproject_url_from_input('english', f"{book} {chapter}")
+        result = get_wordproject_url_from_input(language, f"{book} {chapter}")
         url, _, _, _ = result
 
         if url.startswith("❌"):
@@ -423,11 +425,33 @@ def get_bible_verse(book, chapter, verse):
         if raw_text.startswith("❌"):
             return None
 
+        # Determine language code for cleaning
+        lang_code = 'kj'  # default English
+        if language.lower() in ['malayalam', 'mal']:
+            lang_code = 'ml'
+        elif language.lower() in ['hindi', 'hin']:
+            lang_code = 'hi'
+        elif language.lower() in ['tamil', 'tam']:
+            lang_code = 'ta'
+        elif language.lower() in ['telugu', 'tel']:
+            lang_code = 'te'
+
         # Clean the text
-        cleaned_text = clean_bible_text(raw_text, 'kj')
+        cleaned_text = clean_bible_text(raw_text, lang_code)
 
         # Extract the specific verse
         verse_text = extract_verse_from_text(cleaned_text, verse)
+
+        if verse_text:
+            # Clean up common formatting issues
+            verse_text = verse_text.replace('  ', ' ')  # Remove double spaces
+            verse_text = verse_text.strip()
+            # Fix common word concatenation issues (mainly for English)
+            if language.lower() in ['english', 'eng']:
+                verse_text = verse_text.replace('Christwhich', 'Christ which')
+                verse_text = verse_text.replace('Godand', 'God and')
+                verse_text = verse_text.replace('Lordand', 'Lord and')
+
         return verse_text
 
     except Exception as e:
@@ -447,13 +471,13 @@ def generate_wrong_options(correct_reference, _):
     selected_wrong = random.sample(wrong_options, min(3, len(wrong_options)))
     return [opt["reference"] for opt in selected_wrong]
 
-def create_bible_question(difficulty):
+def create_bible_question(difficulty, language='english'):
     """Create a new Bible question"""
     verses = BIBLE_VERSES[difficulty]
     selected_verse = random.choice(verses)
 
-    # Get the verse text
-    verse_text = get_bible_verse(selected_verse["book"], selected_verse["chapter"], selected_verse["verse"])
+    # Get the verse text in the specified language
+    verse_text = get_bible_verse(selected_verse["book"], selected_verse["chapter"], selected_verse["verse"], language)
 
     if not verse_text:
         return None
@@ -467,7 +491,8 @@ def create_bible_question(difficulty):
         "verse_text": verse_text,
         "correct_answer": selected_verse["reference"],
         "options": all_options,
-        "difficulty": difficulty
+        "difficulty": difficulty,
+        "language": language
     }
 
 # Initialize logging
@@ -747,10 +772,20 @@ elif page == "Bible Game":
     </div>
     """, unsafe_allow_html=True)
 
-    # Difficulty selection and score display
-    col1, col2, col3 = st.columns([2, 1, 1])
+    # Language and difficulty selection
+    col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
 
     with col1:
+        language = st.selectbox(
+            "Select Language:",
+            ["English", "Malayalam", "Hindi", "Tamil"],
+            index=["English", "Malayalam", "Hindi", "Tamil"].index(st.session_state["game_language"])
+        )
+        if language != st.session_state["game_language"]:
+            st.session_state["game_language"] = language
+            st.session_state["current_question"] = None  # Reset current question
+
+    with col2:
         difficulty = st.selectbox(
             "Select Difficulty:",
             ["Easy", "Medium", "Hard"],
@@ -760,10 +795,10 @@ elif page == "Bible Game":
             st.session_state["game_difficulty"] = difficulty
             st.session_state["current_question"] = None  # Reset current question
 
-    with col2:
+    with col3:
         st.metric("Score", f"{st.session_state['bible_game_score']}/{st.session_state['bible_game_total']}")
 
-    with col3:
+    with col4:
         if st.session_state["bible_game_total"] > 0:
             percentage = (st.session_state["bible_game_score"] / st.session_state["bible_game_total"]) * 100
             st.metric("Accuracy", f"{percentage:.1f}%")
@@ -774,7 +809,9 @@ elif page == "Bible Game":
     with col1:
         if st.button("🎮 New Question", type="primary"):
             with st.spinner("Loading Bible verse..."):
-                question = create_bible_question(difficulty)
+                # Convert language name to lowercase for the function
+                lang_code = language.lower()
+                question = create_bible_question(difficulty, lang_code)
                 if question:
                     st.session_state["current_question"] = question
                     st.rerun()
@@ -794,7 +831,7 @@ elif page == "Bible Game":
         question = st.session_state["current_question"]
 
         st.markdown("---")
-        st.markdown(f"### 📜 Difficulty: {question['difficulty']}")
+        st.markdown(f"### 📜 {question['difficulty']} Level - {question.get('language', 'English').title()}")
 
         # Display the verse in a nice box
         st.markdown(f"""

@@ -85,11 +85,11 @@ def extract_verse_from_text(text, verse_number):
             return line[len(f"{verse_number} "):].strip()
     return None
 
-def get_bible_verse(book, chapter, verse):
-    """Fetch a specific Bible verse"""
+def get_bible_verse(book, chapter, verse, language='english'):
+    """Fetch a specific Bible verse in the specified language"""
     try:
         # Get the URL for the chapter
-        result = get_wordproject_url_from_input('english', f"{book} {chapter}")
+        result = get_wordproject_url_from_input(language, f"{book} {chapter}")
         url, _, _, _ = result
 
         if url.startswith("❌"):
@@ -100,8 +100,19 @@ def get_bible_verse(book, chapter, verse):
         if raw_text.startswith("❌"):
             return None
 
+        # Determine language code for cleaning
+        lang_code = 'kj'  # default English
+        if language.lower() in ['malayalam', 'mal']:
+            lang_code = 'ml'
+        elif language.lower() in ['hindi', 'hin']:
+            lang_code = 'hi'
+        elif language.lower() in ['tamil', 'tam']:
+            lang_code = 'ta'
+        elif language.lower() in ['telugu', 'tel']:
+            lang_code = 'te'
+
         # Clean the text
-        cleaned_text = clean_bible_text(raw_text, 'kj')
+        cleaned_text = clean_bible_text(raw_text, lang_code)
 
         # Extract the specific verse
         verse_text = extract_verse_from_text(cleaned_text, verse)
@@ -110,10 +121,11 @@ def get_bible_verse(book, chapter, verse):
             # Clean up common formatting issues
             verse_text = verse_text.replace('  ', ' ')  # Remove double spaces
             verse_text = verse_text.strip()
-            # Fix common word concatenation issues
-            verse_text = verse_text.replace('Christwhich', 'Christ which')
-            verse_text = verse_text.replace('Godand', 'God and')
-            verse_text = verse_text.replace('Lordand', 'Lord and')
+            # Fix common word concatenation issues (mainly for English)
+            if language.lower() in ['english', 'eng']:
+                verse_text = verse_text.replace('Christwhich', 'Christ which')
+                verse_text = verse_text.replace('Godand', 'God and')
+                verse_text = verse_text.replace('Lordand', 'Lord and')
 
         return verse_text
 
@@ -133,7 +145,7 @@ def generate_wrong_options(correct_reference, _):
     selected_wrong = random.sample(wrong_options, min(3, len(wrong_options)))
     return [opt["reference"] for opt in selected_wrong]
 
-def create_bible_question(difficulty, used_verses=None):
+def create_bible_question(difficulty, used_verses=None, language='english'):
     """Create a new Bible question, avoiding duplicates"""
     if used_verses is None:
         used_verses = []
@@ -150,8 +162,8 @@ def create_bible_question(difficulty, used_verses=None):
     for attempt in range(3):
         selected_verse = random.choice(available_verses)
 
-        # Get the verse text
-        verse_text = get_bible_verse(selected_verse["book"], selected_verse["chapter"], selected_verse["verse"])
+        # Get the verse text in the specified language
+        verse_text = get_bible_verse(selected_verse["book"], selected_verse["chapter"], selected_verse["verse"], language)
 
         if verse_text:
             # Generate options
@@ -164,7 +176,8 @@ def create_bible_question(difficulty, used_verses=None):
                 "correct_answer": selected_verse["reference"],
                 "options": all_options,
                 "difficulty": difficulty,
-                "reference": selected_verse["reference"]
+                "reference": selected_verse["reference"],
+                "language": language
             }
         else:
             # Remove this verse from available options and try another
@@ -879,7 +892,7 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
 CHOOSE_METHOD, GET_INPUT = range(2)
 
 # Bible Game States
-BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION = range(2)
+BIBLE_GAME_LANGUAGE, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION = range(3)
  
 # Store user input temporarily
 user_input_method = {}
@@ -946,21 +959,137 @@ async def bible_game_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     context.user_data['bible_game_score'] = 0
     context.user_data['bible_game_total'] = 0
     context.user_data['current_difficulty'] = None
+    context.user_data['current_language'] = None
     context.user_data['used_verses'] = []  # Track used verses to avoid duplicates
 
     # Get user's best scores from database for all difficulties
     user_best_scores = get_user_best_scores_all_difficulties(user.id)
 
-    # Show welcome message and difficulty selection
+    # Show welcome message and language selection
     welcome_text = (
         "📖 *Welcome to the Bible Game!* 🎮\n\n"
         "Test your Bible knowledge! I'll show you a verse, and you need to guess which Bible reference it's from.\n\n"
-        f"📊 *Current Session:* {context.user_data['bible_game_score']}/{context.user_data['bible_game_total']} correct\n\n"
         f"🏆 *Your Best Scores:*\n"
         f"🟢 Easy: {user_best_scores['Easy']}\n"
         f"🟡 Medium: {user_best_scores['Medium']}\n"
         f"🔴 Hard: {user_best_scores['Hard']}\n\n"
-        "Choose your difficulty level:"
+        "First, choose your preferred language:"
+    )
+
+    keyboard = [
+        ["🇺🇸 English", "🇮🇳 Malayalam"],
+        ["🇮🇳 Hindi", "🇮🇳 Tamil"],
+        ["📊 View Stats", "🏅 Leaderboard"],
+        ["❌ Cancel"]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+    await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=reply_markup)
+    return BIBLE_GAME_LANGUAGE
+
+async def bible_game_language_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle language selection"""
+    user_input = update.message.text.strip()
+    user = update.effective_user
+
+    if user_input == "❌ Cancel":
+        await update.message.reply_text("Bible game cancelled. Type /games to play again!", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
+
+    elif user_input == "📊 View Stats":
+        score = context.user_data.get('bible_game_score', 0)
+        total = context.user_data.get('bible_game_total', 0)
+        current_difficulty = context.user_data.get('current_difficulty', 'Easy')
+        accuracy = (score / total * 100) if total > 0 else 0
+
+        # Get user's best scores for all difficulties
+        user_best_scores = get_user_best_scores_all_difficulties(user.id)
+
+        stats_text = (
+            f"📊 *Your Bible Game Stats:*\n\n"
+            f"*Current Session ({current_difficulty}):*\n"
+            f"✅ Correct Answers: {score}\n"
+            f"❌ Wrong Answers: {total - score}\n"
+            f"📈 Total Questions: {total}\n"
+            f"🎯 Accuracy: {accuracy:.1f}%\n\n"
+            f"🏆 *Your Best Scores:*\n"
+            f"🟢 Easy: {user_best_scores['Easy']}\n"
+            f"🟡 Medium: {user_best_scores['Medium']}\n"
+            f"🔴 Hard: {user_best_scores['Hard']}\n"
+        )
+
+        keyboard = [
+            ["🇺🇸 English", "🇮🇳 Malayalam"],
+            ["🇮🇳 Hindi", "🇮🇳 Tamil"],
+            ["🏅 Leaderboard", "❌ Cancel"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+        await update.message.reply_text(stats_text, parse_mode="Markdown", reply_markup=reply_markup)
+        return BIBLE_GAME_LANGUAGE
+
+    elif user_input == "🏅 Leaderboard":
+        # Get leaderboards for all difficulties
+        leaderboards = get_combined_leaderboard(5)  # Top 5 for each difficulty
+
+        leaderboard_text = "🏅 *Bible Game Leaderboards - Top 5*\n\n"
+
+        for difficulty, emoji in [("Easy", "🟢"), ("Medium", "🟡"), ("Hard", "🔴")]:
+            leaderboard_text += f"{emoji} *{difficulty} Level:*\n"
+            difficulty_leaderboard = leaderboards.get(difficulty, [])
+
+            if difficulty_leaderboard:
+                for i, player in enumerate(difficulty_leaderboard, 1):
+                    if i == 1:
+                        medal = "🥇"
+                    elif i == 2:
+                        medal = "🥈"
+                    elif i == 3:
+                        medal = "🥉"
+                    else:
+                        medal = f"{i}."
+
+                    # Highlight current user
+                    if player['User_id'] == user.id:
+                        leaderboard_text += f"*{medal} {player['User_Name']}: {player['Score']} ⭐*\n"
+                    else:
+                        leaderboard_text += f"{medal} {player['User_Name']}: {player['Score']}\n"
+            else:
+                leaderboard_text += "No scores yet!\n"
+
+            leaderboard_text += "\n"
+
+        keyboard = [
+            ["🇺🇸 English", "🇮🇳 Malayalam"],
+            ["🇮🇳 Hindi", "🇮🇳 Tamil"],
+            ["📊 View Stats", "❌ Cancel"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+        await update.message.reply_text(leaderboard_text, parse_mode="Markdown", reply_markup=reply_markup)
+        return BIBLE_GAME_LANGUAGE
+
+    # Handle language selection
+    language_map = {
+        "🇺🇸 English": "english",
+        "🇮🇳 Malayalam": "malayalam",
+        "🇮🇳 Hindi": "hindi",
+        "🇮🇳 Tamil": "tamil"
+    }
+
+    if user_input not in language_map:
+        await update.message.reply_text("Please choose a valid language from the keyboard.")
+        return BIBLE_GAME_LANGUAGE
+
+    language = language_map[user_input]
+    context.user_data['current_language'] = language
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) chose {language} language")
+
+    # Show difficulty selection
+    difficulty_text = (
+        f"🌍 *Language Selected:* {user_input}\n\n"
+        f"📊 *Current Session:* {context.user_data['bible_game_score']}/{context.user_data['bible_game_total']} correct\n\n"
+        "Now choose your difficulty level:"
     )
 
     keyboard = [
@@ -970,7 +1099,7 @@ async def bible_game_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
 
-    await update.message.reply_text(welcome_text, parse_mode="Markdown", reply_markup=reply_markup)
+    await update.message.reply_text(difficulty_text, parse_mode="Markdown", reply_markup=reply_markup)
     return BIBLE_GAME_DIFFICULTY
 
 async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -1132,7 +1261,8 @@ async def bible_game_difficulty_handler(update: Update, context: ContextTypes.DE
     await update.message.reply_text("🔄 Loading Bible verse...", reply_markup=ReplyKeyboardRemove())
 
     used_verses = context.user_data.get('used_verses', [])
-    question = create_bible_question(difficulty, used_verses)
+    current_language = context.user_data.get('current_language', 'english')
+    question = create_bible_question(difficulty, used_verses, current_language)
     if not question:
         await update.message.reply_text(
             "❌ Sorry, I couldn't load a Bible verse right now. Please try again with /games",
@@ -1235,7 +1365,8 @@ async def bible_game_question_handler(update: Update, context: ContextTypes.DEFA
 
     # Generate new question, avoiding duplicates
     used_verses = context.user_data.get('used_verses', [])
-    new_question = create_bible_question(current_difficulty, used_verses)
+    current_language = context.user_data.get('current_language', 'english')
+    new_question = create_bible_question(current_difficulty, used_verses, current_language)
     if not new_question:
         # If failed to load, go back to difficulty selection
         keyboard = [

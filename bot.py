@@ -28,7 +28,7 @@ try:
         start_vocabulary, category_selection, CATEGORY_SELECTION,
         download_start, download_url_input, download_quality_selection, ENTER_URL, SELECT_QUALITY,
         start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback, handle_song_code,
-        bible_game_start, bible_game_difficulty_handler, bible_game_question_handler, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION
+        bible_game_start, bible_game_language_handler, bible_game_difficulty_handler, bible_game_question_handler, BIBLE_GAME_LANGUAGE, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION
     )
 except ImportError as e:
     print(f"[DEBUG] ImportError during project imports: {e}")
@@ -177,6 +177,7 @@ bible_conv_handler = ConversationHandler(
 bible_game_conv_handler = ConversationHandler(
     entry_points=[CommandHandler("games", bible_game_start)],
     states={
+        BIBLE_GAME_LANGUAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_game_language_handler)],
         BIBLE_GAME_DIFFICULTY: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_game_difficulty_handler)],
         BIBLE_GAME_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_game_question_handler)],
     },
