@@ -369,7 +369,7 @@ def get_image_files_from_folder(folder_url):
          while True:
              try:
                  response = drive_service.files().list(
-                     q=f"'{folder_id}' in parents and mimeType contains 'image/' and trashed = false",
+                     q=f"'{folder_id}' in parents and mimeType='application/pdf' and trashed = false",
                      fields="nextPageToken, files(id, name)",
                      pageToken=page_token,
                      pageSize=100  # Limit page size to avoid large responses
@@ -406,14 +406,19 @@ def get_image_files_from_folder(folder_url):
  
  # === DOWNLOAD IMAGE ===
 def download_image(file_id, filename):
-    url = f"https://drive.google.com/uc?id={file_id}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        save_path = os.path.join(DOWNLOAD_DIR, filename)
-        with open(save_path, 'wb') as f:
-            f.write(response.content)
-        return save_path
-    else:
+    try:
+        url = f"https://drive.google.com/uc?id={file_id}&export=download"
+        response = requests.get(url, allow_redirects=True)
+        if response.status_code == 200:
+            save_path = os.path.join(DOWNLOAD_DIR, filename)
+            with open(save_path, 'wb') as f:
+                f.write(response.content)
+            return save_path
+        else:
+            print(f"Failed to download PDF: Status code {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"Error downloading PDF: {str(e)}")
         return None
  
  # === GET IMAGE FOR PAGE ===
@@ -421,9 +426,15 @@ def get_image_by_page(page_number, file_map):
      page_number = int(page_number)
      if page_number in file_map:
          file_id = file_map[page_number]
-         filename = f"{page_number}.jpg"
-         return download_image(file_id, filename)
+         filename = f"{page_number}.pdf"
+         downloaded_path = download_image(file_id, filename)
+         if downloaded_path and os.path.exists(downloaded_path) and os.path.getsize(downloaded_path) > 0:
+             return downloaded_path
+         else:
+             print(f"Failed to download or verify PDF for page {page_number}")
+             return None
      else:
+         print(f"Page {page_number} not found in file map")
          return None
  
  # === MAIN EXECUTION ===
