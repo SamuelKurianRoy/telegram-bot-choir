@@ -54,3 +54,6 @@ rapidfuzz
 
 # Added from the code block
 mutagen
+
+# PDF manipulation
+PyPDF2>=3.0.0

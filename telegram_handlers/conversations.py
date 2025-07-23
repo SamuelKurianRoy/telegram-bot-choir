@@ -6,6 +6,8 @@ from telegram import Update, ReplyKeyboardRemove, ReplyKeyboardMarkup, InlineKey
 from telegram.ext import CallbackContext, ConversationHandler, ContextTypes
 from config import get_config
 from logging_utils import setup_loggers
+from PyPDF2 import PdfMerger
+import tempfile
 # Import isVocabulary from the appropriate module
 from data.vocabulary import ChoirVocabulary, isVocabulary, standardize_hlc_value
 from utils.search import find_best_match, search_index
@@ -593,33 +595,65 @@ async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE
         await context.bot.send_message(chat_id=chat_id, text=f"❌ Invalid or missing page number for {tune_name} ({song_id})")
         return
 
-    sent_any = False
+    # List to store paths of downloaded PDFs
+    pdf_files = []
+    
+    # Download all pages first
     for page in page_numbers:
         filename = f"{page}.pdf"
         file_path = os.path.join(DOWNLOAD_DIR, filename)
 
         if not os.path.exists(file_path):
             # Try to download the PDF from Google Drive
-            downloaded_path = get_image_by_page(page, file_map)  # Note: keeping the function name same but it should handle PDFs
+            downloaded_path = get_image_by_page(page, file_map)
             if downloaded_path and os.path.exists(downloaded_path):
-                file_path = downloaded_path
+                pdf_files.append(downloaded_path)
             else:
-                await context.bot.send_message(chat_id=chat_id, text=f"❌ PDF could not be found or downloaded.")
-                sent_any = True
+                await context.bot.send_message(chat_id=chat_id, text=f"❌ Page {page} could not be downloaded.")
                 continue
+        else:
+            pdf_files.append(file_path)
 
-        try:
-            with open(file_path, 'rb') as pdf_file:
+    if not pdf_files:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ No PDF pages could be downloaded for {song_id} ({tune_name}).")
+        return
+
+    try:
+        # If there's only one page, send it directly
+        if len(pdf_files) == 1:
+            with open(pdf_files[0], 'rb') as pdf_file:
                 await context.bot.send_document(
                     chat_id=chat_id,
                     document=pdf_file,
                     filename=f"{song_id}_{tune_name}.pdf",
                     caption=f"Notation for {song_id} ({tune_name})"
                 )
-            sent_any = True
-        except Exception as e:
-            await context.bot.send_message(chat_id=chat_id, text=f"❌ Failed to send PDF: {e}")
-            sent_any = True
+        else:
+            # If there are multiple pages, merge them
+            merger = PdfMerger()
+            for pdf in pdf_files:
+                merger.append(pdf)
+
+            # Create a temporary file for the merged PDF
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+                merger.write(tmp_file.name)
+                merger.close()
+
+                # Send the merged PDF
+                with open(tmp_file.name, 'rb') as merged_pdf:
+                    await context.bot.send_document(
+                        chat_id=chat_id,
+                        document=merged_pdf,
+                        filename=f"{song_id}_{tune_name}_complete.pdf",
+                        caption=f"Complete notation for {song_id} ({tune_name}) - {len(pdf_files)} pages"
+                    )
+
+                # Clean up the temporary file
+                os.unlink(tmp_file.name)
+
+    except Exception as e:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ Error processing PDFs: {str(e)}")
+        print(f"Error processing PDFs: {str(e)}")  # For debugging
 
 
 
