@@ -613,8 +613,8 @@ async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE
                 await context.bot.send_document(
                     chat_id=chat_id,
                     document=pdf_file,
-                    filename=f"{song_id}_{tune_name}_page{page}.pdf",
-                    caption=f"Notation for {song_id} ({tune_name}) - Page {page}"
+                    filename=f"{song_id}_{tune_name}.pdf",
+                    caption=f"Notation for {song_id} ({tune_name})"
                 )
             sent_any = True
         except Exception as e:
