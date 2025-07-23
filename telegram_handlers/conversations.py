@@ -584,25 +584,30 @@ async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     sent_any = False
     for page in page_numbers:
-        filename = f"{page}.jpg"
+        filename = f"{page}.pdf"
         file_path = os.path.join(DOWNLOAD_DIR, filename)
 
         if not os.path.exists(file_path):
-            # Try to download the image from Google Drive
-            downloaded_path = get_image_by_page(page, file_map)
+            # Try to download the PDF from Google Drive
+            downloaded_path = get_image_by_page(page, file_map)  # Note: keeping the function name same but it should handle PDFs
             if downloaded_path and os.path.exists(downloaded_path):
                 file_path = downloaded_path
             else:
-                await context.bot.send_message(chat_id=chat_id, text=f"❌ Image could not be found or downloaded.")
+                await context.bot.send_message(chat_id=chat_id, text=f"❌ PDF could not be found or downloaded.")
                 sent_any = True
                 continue
 
         try:
-            with open(file_path, 'rb') as photo:
-                await context.bot.send_photo(chat_id=chat_id, photo=photo, caption=f"{tune_name}")
+            with open(file_path, 'rb') as pdf_file:
+                await context.bot.send_document(
+                    chat_id=chat_id,
+                    document=pdf_file,
+                    filename=f"{song_id}_{tune_name}_page{page}.pdf",
+                    caption=f"Notation for {song_id} ({tune_name}) - Page {page}"
+                )
             sent_any = True
         except Exception as e:
-            await context.bot.send_message(chat_id=chat_id, text=f"❌ Failed to send image: {e}")
+            await context.bot.send_message(chat_id=chat_id, text=f"❌ Failed to send PDF: {e}")
             sent_any = True
 
 
