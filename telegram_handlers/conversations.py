@@ -1,6 +1,5 @@
 # telegram/conversations.py
 # ConversationHandler states and flows
-import asyncio
 import pandas as pd
 import streamlit as st
 from telegram import Update, ReplyKeyboardRemove, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
@@ -819,13 +818,6 @@ async def download_url_input(update: Update, context: CallbackContext) -> int:
     user_input = update.message.text.strip()
     user = update.effective_user
 
-    if user_input.lower() in ['/cancel', 'cancel']:
-        await update.message.reply_text(
-            "Download cancelled.",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        return ConversationHandler.END
-
     # Initialize downloader
     downloader = AudioDownloader()
 
@@ -860,24 +852,19 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
     quality_text = update.message.text.strip()
     user = update.effective_user
 
-    # Check for /cancel command
-    if quality_text.lower() in ['/cancel', 'cancel', '❌ cancel']:
-        if 'download_task' in context.chat_data:
-            context.chat_data['cancel_event'].set()
-            context.chat_data['download_task'].cancel()
-            del context.chat_data['download_task']
-        await update.message.reply_text(
-            "❌ Download cancelled.",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        return ConversationHandler.END
-
     # Map quality selection
     quality_map = {
         "🔥 High Quality (320kbps)": "high",
         "🎵 Medium Quality (192kbps)": "medium",
         "💾 Low Quality (128kbps)": "low"
     }
+
+    if quality_text == "❌ Cancel":
+        await update.message.reply_text(
+            "❌ Download cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
 
     if quality_text not in quality_map:
         await update.message.reply_text(
@@ -902,9 +889,6 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
     )
 
     try:
-        # Initialize cancellation event
-        context.chat_data['cancel_event'] = asyncio.Event()
-        
         # Log download request to Google Doc (similar to comment function)
         yfile_id = st.secrets["YFILE_ID"]
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -915,33 +899,11 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
         if yfile_id:
             append_download_to_google_doc(yfile_id, download_request_entry)
 
-        # Initialize downloader and cancellation event
+        # Initialize downloader
         downloader = AudioDownloader()
-        context.chat_data['cancel_event'] = asyncio.Event()
 
-        # Create and store download task
-        download_task = asyncio.create_task(
-            downloader.download_audio(
-                url, 
-                quality, 
-                chat_id=str(chat_id),
-                cancel_event=context.chat_data['cancel_event']
-            )
-        )
-        context.chat_data['download_task'] = download_task
-
-        try:
-            # Wait for download to complete or be cancelled
-            result = await download_task
-        except asyncio.CancelledError:
-            await update.message.reply_text("✅ Download cancelled successfully.")
-            return ConversationHandler.END
-        finally:
-            # Clean up task reference
-            if 'download_task' in context.chat_data:
-                del context.chat_data['download_task']
-            if 'cancel_event' in context.chat_data:
-                del context.chat_data['cancel_event']
+        # Download the audio
+        result = await downloader.download_audio(url, quality, chat_id=chat_id)
 
         if result is None:
             # Log failed download to Google Doc

@@ -5,7 +5,7 @@ import streamlit as st
 from telegram import Update, ReplyKeyboardRemove, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext, ConversationHandler, ContextTypes, CallbackQueryHandler
 from config import get_config
-from logging_utils import setup_loggers, logger, downloader_logger
+from logging_utils import setup_loggers
 from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
 from data.drive import upload_log_to_google_doc
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
@@ -169,7 +169,6 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
     # Move imports here to avoid circular import
     import telegram_handlers.conversations as conversations
     from telegram_handlers.conversations import fetch_lyrics_file_map, LYRICS_FOLDER_URL
-    from downloader import AudioDownloader
 
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) used /refresh")
@@ -185,16 +184,7 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
         # Upload logs
         upload_log_to_google_doc(config.BFILE_ID, "bot_log.txt")
         upload_log_to_google_doc(config.UFILE_ID, "user_log.txt")
-        
-        # Rotate proxy
-        AudioDownloader.proxy_rotation = (AudioDownloader.proxy_rotation % 7) + 1
-        logger.info(f"Proxy rotation updated to: {AudioDownloader.proxy_rotation}")
-        downloader_logger.info(f"Proxy rotation updated to: {AudioDownloader.proxy_rotation}")
-        
-        await update.message.reply_text(
-            f"Datasets and lyrics file map reloaded successfully!\n"
-            f"Proxy rotation updated to {AudioDownloader.proxy_rotation}/7"
-        )
+        await update.message.reply_text("Datasets and lyrics file map reloaded successfully!")
     except Exception as e:
         await update.message.reply_text(f"Error reloading datasets: {e}")
 
