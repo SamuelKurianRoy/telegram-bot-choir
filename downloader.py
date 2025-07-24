@@ -874,6 +874,37 @@ class AudioDownloader:
         ]
         url_lower = url.lower()
         return any(domain in url_lower for domain in supported_domains)
+
+    async def cleanup_temp_files(self) -> int:
+        """Clean up temp files older than 24 hours. This should only be called by admin command."""
+        from datetime import datetime, timedelta
+        import time
+
+        now = datetime.now()
+        cleaned_count = 0
+        for f in Path(self.temp_dir).glob("*"):
+            if f.is_file() and f.suffix in {'.mp3', '.json'}:
+                try:
+                    mtime = datetime.fromtimestamp(f.stat().st_mtime)
+                    if now - mtime > timedelta(hours=24):
+                        try:
+                            initial_size = f.stat().st_size
+                            time.sleep(0.1)  # Brief pause to ensure file is not being written
+                            if f.exists() and f.stat().st_size == initial_size:
+                                f.unlink()
+                                cleaned_count += 1
+                                logger.info(f"Cleaned up old temp file: {f}")
+                        except PermissionError:
+                            logger.warning(f"File {f} is in use, skipping cleanup")
+                        except Exception as e:
+                            logger.warning(f"Failed to delete old temp file {f}: {e}")
+                except FileNotFoundError:
+                    pass  # File was already deleted
+                except Exception as e:
+                    logger.warning(f"Error checking temp file {f}: {e}")
+        
+        logger.info(f"Cleanup completed. Removed {cleaned_count} old temp files.")
+        return cleaned_count
     
     async def extract_info(self, url: str) -> Optional[Dict]:
         """Extract basic info from URL"""
