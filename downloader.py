@@ -1054,6 +1054,10 @@ class AudioDownloader:
             temp_filename = f"audio_youtube_{int(time.time())}"
             temp_filepath = self.temp_dir / temp_filename
             
+            # Get current proxy from rotation
+            current_proxy = self.PROXY_LIST[self.proxy_rotation - 1]
+            logger.info(f"Using proxy {self.proxy_rotation}/7: {current_proxy}")
+            
             ydl_opts = {
                 'format': 'bestaudio/best',
                 'outtmpl': str(temp_filepath) + '.%(ext)s',
@@ -1064,6 +1068,7 @@ class AudioDownloader:
                 }],
                 'quiet': True,
                 'no_warnings': True,
+                'proxy': current_proxy,  # Add proxy
             }
 
             # Add FFmpeg location if found (using same logic as audio_downloader_bot.py)
@@ -1081,14 +1086,21 @@ class AudioDownloader:
                 # Remove post-processors that require FFmpeg
                 ydl_opts['postprocessors'] = []
             
-            # Download with timeout
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
-                        None, lambda: ydl.extract_info(url, download=True)
-                    ),
-                    timeout=300  # 5 minute timeout
-                )
+            # Download with timeout and error handling
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = await asyncio.wait_for(
+                        asyncio.get_event_loop().run_in_executor(
+                            None, lambda: ydl.extract_info(url, download=True)
+                        ),
+                        timeout=300  # 5 minute timeout
+                    )
+                    logger.info(f"Successfully extracted video info: {info.get('title', 'Unknown')}")
+                    downloader_logger.info(f"Download successful with proxy {self.proxy_rotation}")
+            except Exception as e:
+                logger.error(f"YouTube download failed with proxy {self.proxy_rotation}: {str(e)}")
+                downloader_logger.error(f"YouTube download failed with proxy {self.proxy_rotation}: {str(e)}")
+                raise
             
             # Find downloaded file
             downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
