@@ -7,7 +7,6 @@ import os
 import re
 import time
 import asyncio
-import logging
 import subprocess as sp
 import platform
 from pathlib import Path
@@ -16,6 +15,7 @@ import hashlib
 import json
 from datetime import datetime, timedelta
 import shutil
+from logging_utils import logger, downloader_logger
 
 try:
     import yt_dlp
