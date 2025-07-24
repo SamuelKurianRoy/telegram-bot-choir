@@ -933,16 +933,16 @@ class AudioDownloader:
             logger.error(f"Error extracting Spotify info: {e}")
             return None
 
-    async def download_audio(self, url: str, quality: str = "medium", chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
-        """Download audio from URL, passing chat_id for checkpoint/resume."""
+    async def download_audio(self, url: str, quality: str = "medium", chat_id: str = None, cancel_event: asyncio.Event = None) -> Optional[Tuple[Path, Dict]]:
+        """Download audio from URL, passing chat_id for checkpoint/resume and cancel_event for cancellation."""
         platform = self.detect_platform(url)
         if platform == 'Spotify':
-            return await self.download_spotify_audio(url, quality, chat_id=chat_id)
+            return await self.download_spotify_audio(url, quality, chat_id=chat_id, cancel_event=cancel_event)
         else:
-            return await self.download_youtube_audio(url, quality, chat_id=chat_id)
+            return await self.download_youtube_audio(url, quality, chat_id=chat_id, cancel_event=cancel_event)
     
-    async def download_youtube_audio(self, url: str, quality: str, chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
-        """Download audio from YouTube using yt-dlp, with checkpoint/resume support."""
+    async def download_youtube_audio(self, url: str, quality: str, chat_id: str = None, cancel_event: asyncio.Event = None) -> Optional[Tuple[Path, Dict]]:
+        """Download audio from YouTube using yt-dlp, with checkpoint/resume support and cancellation."""
         import hashlib
         import json
         from datetime import datetime, timedelta
@@ -1116,28 +1116,73 @@ class AudioDownloader:
                     '503',  # Service unavailable
                     '504',  # Gateway timeout
                 ]
-                return any(indicator in error_str for indicator in network_indicators)
+
+                # Check for specific yt-dlp errors that indicate network issues
+                yt_dlp_network_errors = [
+                    'unable to download video data',
+                    'unable to download webpage',
+                    'unable to extract video data',
+                    'http error',
+                    'unable to download api webpage',
+                    'video unavailable',
+                    'this video is unavailable',
+                    'private video',
+                    'video is private',
+                    'sign in to confirm your age'
+                ]
+                
+                return any(indicator in error_str for indicator in network_indicators + yt_dlp_network_errors)
             
+            async def download_with_cancellation():
+                future = asyncio.get_event_loop().run_in_executor(None, lambda: ydl.extract_info(url, download=True))
+                if cancel_event:
+                    while not future.done():
+                        if cancel_event.is_set():
+                            # Attempt to cancel the running download
+                            future.cancel()
+                            raise asyncio.CancelledError("Download cancelled by user")
+                        await asyncio.sleep(0.5)  # Check cancel_event every 0.5 seconds
+                return await future
+
             while retry_count < max_retries:
                 try:
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        info = await asyncio.wait_for(
-                            asyncio.get_event_loop().run_in_executor(
-                                None, lambda: ydl.extract_info(url, download=True)
-                            ),
-                            timeout=300  # 5 minute timeout
-                        )
-                        logger.info(f"Successfully extracted video info: {info.get('title', 'Unknown')}")
-                        proxy_desc = f"proxy {self.proxy_rotation}" if current_proxy else "direct connection"
-                        downloader_logger.info(f"Download successful with {proxy_desc}")
-                        break  # Success, exit the retry loop
-                except Exception as e:
+                        try:
+                            if cancel_event and cancel_event.is_set():
+                                raise asyncio.CancelledError("Download cancelled by user")
+                                
+                            info = await asyncio.wait_for(
+                                download_with_cancellation(),
+                                timeout=300  # 5 minute timeout
+                            )
+                            logger.info(f"Successfully extracted video info: {info.get('title', 'Unknown')}")
+                            proxy_desc = f"proxy {self.proxy_rotation}" if current_proxy else "direct connection"
+                            downloader_logger.info(f"Download successful with {proxy_desc}")
+                            break  # Success, exit the retry loop
+                        except asyncio.TimeoutError:
+                            raise Exception("Download timed out after 5 minutes")
+                except (Exception, asyncio.CancelledError) as e:
+                    if isinstance(e, asyncio.CancelledError):
+                        logger.info("Download cancelled by user")
+                        downloader_logger.info("Download cancelled by user")
+                        return None
+                        
                     last_error = e
                     retry_count += 1
                     proxy_desc = f"proxy {self.proxy_rotation}" if current_proxy else "direct connection"
                     error_type = "network error" if is_network_error(e) else "error"
-                    logger.error(f"YouTube download attempt {retry_count} failed with {error_type} using {proxy_desc}: {str(e)}")
-                    downloader_logger.error(f"YouTube download attempt {retry_count} failed with {error_type} using {proxy_desc}: {str(e)}")
+                    
+                    # Enhanced error logging
+                    error_details = str(e)
+                    if hasattr(e, '__cause__') and e.__cause__:
+                        error_details += f"\nCaused by: {str(e.__cause__)}"
+                    if hasattr(e, 'exc_info'):
+                        error_details += f"\nException info: {str(e.exc_info)}"
+                        
+                    logger.error(f"YouTube download attempt {retry_count} failed with {error_type} using {proxy_desc}:")
+                    logger.error(f"Error details: {error_details}")
+                    downloader_logger.error(f"YouTube download attempt {retry_count} failed with {error_type} using {proxy_desc}:")
+                    downloader_logger.error(f"Error details: {error_details}")
                     
                     if retry_count < max_retries:
                         wait_time = retry_count * 2  # Progressive backoff: 2s, 4s, 6s
