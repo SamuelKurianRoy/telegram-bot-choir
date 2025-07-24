@@ -50,6 +50,20 @@ if not downloader_logger.handlers:
 
 class AudioDownloader:
     """Audio downloader class for YouTube and Spotify"""
+    
+    # Class variable to track proxy rotation
+    proxy_rotation = 1  # Starts from 1, can go up to 7
+    
+    # List of reliable proxies
+    PROXY_LIST = [
+        'http://proxy.scrapeops.io:5353',      # Original proxy
+        'http://proxy.tinssoft.com:80',        # Proxy 2
+        'http://proxy.zenrows.com:8001',       # Proxy 3
+        'http://proxy.crawlera.com:8010',      # Proxy 4
+        'http://proxy.brightdata.com:20000',   # Proxy 5
+        'http://proxy.oxylabs.io:7777',        # Proxy 6
+        'http://proxy.geosurf.com:9000'        # Proxy 7
+    ]
 
     def __init__(self, temp_dir: str = "temp"):
         # Detect if running on Streamlit Cloud
@@ -59,6 +73,10 @@ class AudioDownloader:
 
         self.temp_dir = Path(temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
+        
+        # Log current proxy rotation
+        logger.info(f"Current proxy rotation: {self.proxy_rotation}")
+        downloader_logger.info(f"Current proxy rotation: {self.proxy_rotation}")
 
         # Set FFmpeg path - use the complete setup from audio_downloader_bot.py
         self.ffmpeg_path = asyncio.run(self._setup_ffmpeg())
@@ -1182,8 +1200,8 @@ class AudioDownloader:
             logger.error(f"YouTube download failed: {e}")
             # Proxy fallback for 403 Forbidden
             if ("403" in str(e) or "Forbidden" in str(e)):
-                logger.warning("403 Forbidden detected. Retrying with proxy...")
-                proxy_url = 'http://proxy.scrapeops.io:5353'  # Example reliable public proxy
+                logger.warning(f"403 Forbidden detected. Retrying with proxy {self.proxy_rotation}...")
+                proxy_url = self.PROXY_LIST[self.proxy_rotation - 1]  # Get current proxy from rotation
                 ydl_opts['proxy'] = proxy_url
                 try:
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -1195,14 +1213,17 @@ class AudioDownloader:
                         )
                     downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
                     if not downloaded_files:
-                        raise FileNotFoundError("Download failed - no file found (proxy)")
+                        raise FileNotFoundError(f"Download failed with proxy {self.proxy_rotation} - no file found")
+                        
+                    logger.info(f"Download successful using proxy {self.proxy_rotation}")
+                    downloader_logger.info(f"Download successful using proxy {self.proxy_rotation} ({proxy_url})")
                     downloaded_file = downloaded_files[0]
                     file_info = {
                         'title': info.get('title', 'Unknown'),
                         'artist': info.get('uploader', 'Unknown'),
                         'duration': info.get('duration', 0),
                         'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                        'platform': 'YouTube (proxy)'
+                        'platform': f'YouTube (proxy {self.proxy_rotation})'
                     }
                     # (Optional: repeat renaming and metadata logic here if needed)
                     return downloaded_file, file_info

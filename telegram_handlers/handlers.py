@@ -169,6 +169,7 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
     # Move imports here to avoid circular import
     import telegram_handlers.conversations as conversations
     from telegram_handlers.conversations import fetch_lyrics_file_map, LYRICS_FOLDER_URL
+    from downloader import AudioDownloader
 
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) used /refresh")
@@ -184,7 +185,16 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
         # Upload logs
         upload_log_to_google_doc(config.BFILE_ID, "bot_log.txt")
         upload_log_to_google_doc(config.UFILE_ID, "user_log.txt")
-        await update.message.reply_text("Datasets and lyrics file map reloaded successfully!")
+        
+        # Rotate proxy
+        AudioDownloader.proxy_rotation = (AudioDownloader.proxy_rotation % 7) + 1
+        logger.info(f"Proxy rotation updated to: {AudioDownloader.proxy_rotation}")
+        downloader_logger.info(f"Proxy rotation updated to: {AudioDownloader.proxy_rotation}")
+        
+        await update.message.reply_text(
+            f"Datasets and lyrics file map reloaded successfully!\n"
+            f"Proxy rotation updated to {AudioDownloader.proxy_rotation}/7"
+        )
     except Exception as e:
         await update.message.reply_text(f"Error reloading datasets: {e}")
 
