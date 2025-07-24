@@ -34,19 +34,7 @@ except ImportError:
     tempfile = None
     tarfile = None
 
-# Setup logging
-logger = logging.getLogger(__name__)
-
-# Setup file logging for downloader (will be uploaded to BFILE_ID)
-downloader_logger = logging.getLogger("downloader_debug")
-if not downloader_logger.handlers:
-    downloader_logger.setLevel(logging.INFO)
-    downloader_logger.propagate = False
-
-    # File handler for downloader logs
-    downloader_handler = logging.FileHandler("downloader_log.txt", mode='w', encoding='utf-8')
-    downloader_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-    downloader_logger.addHandler(downloader_handler)
+# Note: loggers are imported from logging_utils
 
 class AudioDownloader:
     """Audio downloader class for YouTube and Spotify"""
