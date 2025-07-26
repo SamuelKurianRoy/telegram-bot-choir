@@ -19,17 +19,16 @@ import re
 import os
 import random
 import requests
-from data.drive import get_drive_service, append_download_to_google_doc, get_docs_service
+from data.drive import get_drive_service, append_download_to_google_doc, get_docs_service, get_all_users
 from datetime import datetime
 import io
 from telegram_handlers.handlers import is_authorized
+from config import get_config
 from downloader import AudioDownloader
 import logging
+import asyncio
 from telegram.constants import ParseMode
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-from rapidfuzz import process, fuzz
+
 
 DOWNLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'tmp')
 HYMN_FOLDER_URL = f'https://drive.google.com/drive/folders/{get_config().H_SHEET_MUSIC}'
@@ -409,18 +408,46 @@ def get_image_files_from_folder(folder_url):
  # === DOWNLOAD IMAGE ===
 def download_image(file_id, filename):
     try:
-        url = f"https://drive.google.com/uc?id={file_id}&export=download"
-        response = requests.get(url, allow_redirects=True)
-        if response.status_code == 200:
-            save_path = os.path.join(DOWNLOAD_DIR, filename)
-            with open(save_path, 'wb') as f:
-                f.write(response.content)
+        # Use Google Drive API instead of direct download URL for better reliability
+        drive_service = get_drive_service()
+
+        # Get file metadata first to check if it exists
+        try:
+            file_metadata = drive_service.files().get(fileId=file_id).execute()
+        except Exception as e:
+            print(f"File {file_id} not found or not accessible: {e}")
+            return None
+
+        # Download the file content
+        request = drive_service.files().get_media(fileId=file_id)
+
+        # Create a BytesIO object to store the downloaded content
+        import io
+        file_content = io.BytesIO()
+
+        from googleapiclient.http import MediaIoBaseDownload
+        downloader = MediaIoBaseDownload(file_content, request)
+
+        done = False
+        while done is False:
+            status, done = downloader.next_chunk()
+
+        # Save the content to file
+        save_path = os.path.join(DOWNLOAD_DIR, filename)
+        file_content.seek(0)
+
+        with open(save_path, 'wb') as f:
+            f.write(file_content.read())
+
+        # Verify the file was downloaded correctly
+        if os.path.exists(save_path) and os.path.getsize(save_path) > 0:
             return save_path
         else:
-            print(f"Failed to download PDF: Status code {response.status_code}")
+            print(f"Downloaded file {filename} is empty or corrupted")
             return None
+
     except Exception as e:
-        print(f"Error downloading PDF: {str(e)}")
+        print(f"Error downloading PDF {filename}: {str(e)}")
         return None
  
  # === GET IMAGE FOR PAGE ===
@@ -458,6 +485,11 @@ def Music_notation_downloader(hymnno, file_map):
         hymnno = hymnno[2:]
     hymnno = int(hymnno)
     results = {}
+
+    # Get data
+    data = get_all_data()
+    dfH = data["dfH"]
+    dfTH = data["dfTH"]
 
     # Get tunes for the hymn
     tunes_str = dfH["Tunes"][hymnno - 1]
@@ -621,6 +653,20 @@ async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         # If there's only one page, send it directly
         if len(pdf_files) == 1:
+            # Verify the PDF file is valid before sending
+            try:
+                from PyPDF2 import PdfReader
+                with open(pdf_files[0], 'rb') as test_file:
+                    reader = PdfReader(test_file)
+                    if len(reader.pages) == 0:
+                        raise Exception("PDF file is empty or corrupted")
+            except Exception as pdf_error:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"❌ PDF file for {song_id} ({tune_name}) is corrupted. Please try again later."
+                )
+                return
+
             with open(pdf_files[0], 'rb') as pdf_file:
                 await context.bot.send_document(
                     chat_id=chat_id,
@@ -629,27 +675,71 @@ async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE
                     caption=f"Notation for {song_id} ({tune_name})"
                 )
         else:
-            # If there are multiple pages, merge them
+            # If there are multiple pages, merge them with better error handling
             merger = PdfMerger()
-            for pdf in pdf_files:
-                merger.append(pdf)
+            valid_pdfs = []
+
+            # Validate each PDF before merging
+            for pdf_path in pdf_files:
+                try:
+                    from PyPDF2 import PdfReader
+                    with open(pdf_path, 'rb') as test_file:
+                        reader = PdfReader(test_file)
+                        if len(reader.pages) > 0:
+                            valid_pdfs.append(pdf_path)
+                        else:
+                            print(f"Skipping empty PDF: {pdf_path}")
+                except Exception as pdf_error:
+                    print(f"Skipping corrupted PDF {pdf_path}: {pdf_error}")
+                    continue
+
+            if not valid_pdfs:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"❌ All PDF files for {song_id} ({tune_name}) are corrupted. Please try again later."
+                )
+                return
+
+            # Merge only valid PDFs
+            for pdf_path in valid_pdfs:
+                try:
+                    merger.append(pdf_path)
+                except Exception as merge_error:
+                    print(f"Error merging {pdf_path}: {merge_error}")
+                    continue
 
             # Create a temporary file for the merged PDF
             with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
-                merger.write(tmp_file.name)
-                merger.close()
+                try:
+                    merger.write(tmp_file.name)
+                    merger.close()
 
-                # Send the merged PDF
-                with open(tmp_file.name, 'rb') as merged_pdf:
-                    await context.bot.send_document(
+                    # Verify the merged PDF is valid
+                    from PyPDF2 import PdfReader
+                    with open(tmp_file.name, 'rb') as test_file:
+                        reader = PdfReader(test_file)
+                        if len(reader.pages) == 0:
+                            raise Exception("Merged PDF is empty")
+
+                    # Send the merged PDF
+                    with open(tmp_file.name, 'rb') as merged_pdf:
+                        await context.bot.send_document(
+                            chat_id=chat_id,
+                            document=merged_pdf,
+                            filename=f"{song_id}_{tune_name}_complete.pdf",
+                            caption=f"Complete notation for {song_id} ({tune_name}) - {len(valid_pdfs)} pages"
+                        )
+                except Exception as merge_error:
+                    await context.bot.send_message(
                         chat_id=chat_id,
-                        document=merged_pdf,
-                        filename=f"{song_id}_{tune_name}_complete.pdf",
-                        caption=f"Complete notation for {song_id} ({tune_name}) - {len(pdf_files)} pages"
+                        text=f"❌ Error creating merged PDF for {song_id} ({tune_name}): {str(merge_error)}"
                     )
-
-                # Clean up the temporary file
-                os.unlink(tmp_file.name)
+                finally:
+                    # Clean up the temporary file
+                    try:
+                        os.unlink(tmp_file.name)
+                    except:
+                        pass
 
     except Exception as e:
         await context.bot.send_message(chat_id=chat_id, text=f"❌ Error processing PDFs: {str(e)}")
@@ -658,15 +748,23 @@ async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def start_notation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-   await update.message.reply_text("📖 Please enter the hymn number (e.g. H-86):")
-   return ASK_HYMN_NO
+    await update.message.reply_text(
+        "📖 Please enter the hymn or lyric number (e.g. H-86 or L-222):",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ASK_HYMN_NO
 
 async def receive_hymn_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     song_id = standardize_hlc_value(update.message.text.strip())
 
     tunes = Tune_finder_of_known_songs(song_id)
     if not tunes or tunes == "Invalid Number":
-        await update.message.reply_text(f"❌ No known tunes found for {song_id}. Try again or type /cancel to stop.")
+        await update.message.reply_text(
+            f"❌ No known tunes found for {song_id}.\n\n"
+            "Please check the number and try again, or type /cancel to stop.\n"
+            "Enter another hymn or lyric number:",
+            reply_markup=ReplyKeyboardRemove()
+        )
         return ASK_HYMN_NO
 
     if isinstance(tunes, str):
@@ -881,10 +979,11 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
     platform = context.user_data.get("platform")
 
     # Start download process
-    await update.message.reply_text(
+    progress_message = await update.message.reply_text(
         f"🎵 Starting download from {platform}...\n"
         f"Quality: {quality_text}\n\n"
-        "This may take a few minutes. Please wait...",
+        "This may take a few minutes. Please wait...\n"
+        "💡 Use /cancel to stop the download.",
         reply_markup=ReplyKeyboardRemove()
     )
 
@@ -897,20 +996,126 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
         download_request_entry = f"{timestamp} - {user.full_name} (@{user.username}, ID: {user.id}, ChatID: {chat_id}) requested download:\nPlatform: {platform} | Quality: {quality} | URL: {url}\n\n"
 
         if yfile_id:
-            append_download_to_google_doc(yfile_id, download_request_entry)
+            try:
+                append_download_to_google_doc(yfile_id, download_request_entry)
+            except Exception as log_error:
+                bot_logger.error(f"Error logging download request: {log_error}")
 
         # Initialize downloader
         downloader = AudioDownloader()
 
-        # Download the audio
-        result = await downloader.download_audio(url, quality, chat_id=chat_id)
+        # Create a cancellation event
+        cancel_event = asyncio.Event()
+
+        # Store the cancel event in context for potential cancellation
+        context.user_data["cancel_event"] = cancel_event
+        context.user_data["download_in_progress"] = True
+
+        # Download the audio with timeout and cancellation support
+        try:
+            # Create a task for the download
+            download_task = asyncio.create_task(
+                downloader.download_audio(url, quality, chat_id=str(chat_id), cancel_event=cancel_event)
+            )
+
+            # Create a task for progress updates
+            async def send_progress_updates():
+                await asyncio.sleep(30)  # Wait 30 seconds
+                if not download_task.done() and not cancel_event.is_set():
+                    try:
+                        await progress_message.edit_text(
+                            f"🎵 Download in progress from {platform}...\n"
+                            f"Quality: {quality_text}\n\n"
+                            "⏳ Still downloading... This may take a while for longer videos.\n"
+                            "💡 Use /cancel to stop the download."
+                        )
+                    except Exception:
+                        pass  # Ignore edit errors
+
+                await asyncio.sleep(60)  # Wait another minute
+                if not download_task.done() and not cancel_event.is_set():
+                    try:
+                        await progress_message.edit_text(
+                            f"🎵 Download in progress from {platform}...\n"
+                            f"Quality: {quality_text}\n\n"
+                            "⏳ Download is taking longer than expected...\n"
+                            "💡 Use /cancel to stop the download."
+                        )
+                    except Exception:
+                        pass  # Ignore edit errors
+
+            # Start progress updates
+            progress_task = asyncio.create_task(send_progress_updates())
+
+            # Wait for download with timeout
+            result = await asyncio.wait_for(download_task, timeout=600)  # 10 minutes timeout
+
+            # Cancel progress updates
+            progress_task.cancel()
+        except asyncio.TimeoutError:
+            # Cancel progress updates
+            if 'progress_task' in locals():
+                progress_task.cancel()
+
+            await update.message.reply_text(
+                "⏰ Download timed out after 10 minutes.\n\n"
+                "This usually happens with very long videos or slow internet.\n"
+                "Please try again with a shorter video or check your connection.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            context.user_data.pop("cancel_event", None)
+            context.user_data.pop("download_in_progress", None)
+            return ConversationHandler.END
+        except asyncio.CancelledError:
+            # Cancel progress updates
+            if 'progress_task' in locals():
+                progress_task.cancel()
+
+            await update.message.reply_text(
+                "❌ Download was cancelled by user.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            context.user_data.pop("cancel_event", None)
+            context.user_data.pop("download_in_progress", None)
+            return ConversationHandler.END
+        except Exception as e:
+            # Cancel progress updates
+            if 'progress_task' in locals():
+                progress_task.cancel()
+
+            bot_logger.error(f"Download error for user {user.id}: {str(e)}")
+
+            # Log failed download to Google Doc
+            error_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            download_error_entry = f"{error_timestamp} - DOWNLOAD ERROR for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | URL: {url}\nError: {str(e)}\n\n"
+
+            if yfile_id:
+                try:
+                    append_download_to_google_doc(yfile_id, download_error_entry)
+                except Exception as log_error:
+                    bot_logger.error(f"Error logging download error: {log_error}")
+
+            await update.message.reply_text(
+                "❌ An error occurred during download. Please try again later.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            context.user_data.pop("cancel_event", None)
+            context.user_data.pop("download_in_progress", None)
+            return ConversationHandler.END
+        finally:
+            # Clean up context
+            context.user_data.pop("cancel_event", None)
+            context.user_data.pop("download_in_progress", None)
 
         if result is None:
             # Log failed download to Google Doc
             download_failed_entry = f"{timestamp} - DOWNLOAD FAILED for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | URL: {url}\n\n"
 
             if yfile_id:
-                append_download_to_google_doc(yfile_id, download_failed_entry)
+                try:
+                    append_download_to_google_doc(yfile_id, download_failed_entry)
+                except Exception as log_error:
+                    bot_logger.error(f"Error logging download failure: {log_error}")
 
             await update.message.reply_text(
                 "❌ Download failed. Please try again or contact the administrator."
@@ -919,25 +1124,50 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
 
         file_path, file_info = result
 
-        # Send the audio file
-        await update.message.reply_text(
-            f"✅ Download completed!\n\n"
-            f"🎵 *{file_info['title']}*\n"
-            f"👤 *Artist:* {file_info['artist']}\n"
-            f"📱 *Platform:* {file_info['platform']}\n"
-            f"📊 *Size:* {file_info['size_mb']:.1f} MB\n\n"
-            "Sending file...",
-            parse_mode="Markdown"
-        )
+        # Cancel progress updates
+        if 'progress_task' in locals():
+            progress_task.cancel()
+
+        # Show download completion
+        try:
+            await progress_message.edit_text(
+                f"✅ *Download completed!*\n\n"
+                f"🎵 *{file_info['title']}*\n"
+                f"👤 *Artist:* {file_info['artist']}\n"
+                f"📱 *Platform:* {file_info['platform']}\n"
+                f"📊 *Size:* {file_info['size_mb']:.1f} MB\n\n"
+                "Sending file...",
+                parse_mode="Markdown"
+            )
+        except Exception:
+            # If edit fails, send a new message
+            await update.message.reply_text(
+                f"✅ *Download completed!*\n\n"
+                f"🎵 *{file_info['title']}*\n"
+                f"👤 *Artist:* {file_info['artist']}\n"
+                f"📱 *Platform:* {file_info['platform']}\n"
+                f"📊 *Size:* {file_info['size_mb']:.1f} MB\n\n"
+                "Sending file...",
+                parse_mode="Markdown"
+            )
 
         # Send the audio file
-        with open(file_path, 'rb') as audio_file:
-            await update.message.reply_audio(
-                audio=audio_file,
-                title=file_info['title'],
-                performer=file_info['artist'],
-                duration=file_info.get('duration', 0)
+        try:
+            with open(file_path, 'rb') as audio_file:
+                await update.message.reply_audio(
+                    audio=audio_file,
+                    title=file_info['title'],
+                    performer=file_info['artist'],
+                    duration=file_info.get('duration', 0)
+                )
+        except Exception as send_error:
+            bot_logger.error(f"Error sending audio file: {send_error}")
+            await update.message.reply_text(
+                "❌ Download completed but failed to send the audio file. Please try again."
             )
+            # Clean up the file since we couldn't send it
+            downloader.cleanup_file(file_path)
+            return ConversationHandler.END
 
         # Log successful download
         user_logger.info(f"Download completed for {user.full_name} ({user.id}): {file_info['title']}")
@@ -946,7 +1176,10 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
         download_success_entry = f"{timestamp} - DOWNLOAD SUCCESS for {user.full_name} (@{user.username}, ID: {user.id}):\nTitle: {file_info['title']} | Artist: {file_info['artist']} | Platform: {file_info['platform']} | Size: {file_info['size_mb']:.1f}MB | Quality: {quality}\nURL: {url}\n\n"
 
         if yfile_id:
-            append_download_to_google_doc(yfile_id, download_success_entry)
+            try:
+                append_download_to_google_doc(yfile_id, download_success_entry)
+            except Exception as log_error:
+                bot_logger.error(f"Error logging download success: {log_error}")
 
         # Clean up the file
         downloader.cleanup_file(file_path)
@@ -962,15 +1195,66 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
         bot_logger.error(f"Download error for user {user.id}: {e}")
 
         # Log error to Google Doc
-        download_error_entry = f"{timestamp} - DOWNLOAD ERROR for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | Error: {str(e)}\nURL: {url}\n\n"
+        error_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        download_error_entry = f"{error_timestamp} - DOWNLOAD ERROR for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | Error: {str(e)}\nURL: {url}\n\n"
 
         if yfile_id:
-            append_download_to_google_doc(yfile_id, download_error_entry)
+            try:
+                append_download_to_google_doc(yfile_id, download_error_entry)
+            except Exception as log_error:
+                bot_logger.error(f"Error logging download error: {log_error}")
 
         await update.message.reply_text(
             "❌ An error occurred during download. Please try again later."
         )
         return ConversationHandler.END
+
+# Custom cancel handler for downloads
+async def cancel_download(update: Update, context: CallbackContext) -> int:
+    """Cancel handler that can interrupt downloads"""
+    user = update.effective_user
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /cancel")
+
+    # Check if download is in progress
+    if context.user_data.get("download_in_progress", False):
+        # Signal cancellation
+        cancel_event = context.user_data.get("cancel_event")
+        if cancel_event:
+            cancel_event.set()
+
+        # Clean up context
+        context.user_data.pop("cancel_event", None)
+        context.user_data.pop("download_in_progress", None)
+        context.user_data.pop("download_url", None)
+        context.user_data.pop("platform", None)
+
+        try:
+            await update.message.reply_text(
+                "❌ Download cancelled successfully.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        except Exception as e:
+            bot_logger.error(f"Error sending cancel message: {e}")
+            # Try to send a simpler message without keyboard removal
+            try:
+                await update.message.reply_text("❌ Download cancelled.")
+            except Exception as e2:
+                bot_logger.error(f"Error sending simple cancel message: {e2}")
+    else:
+        # Regular cancel
+        try:
+            await update.message.reply_text(
+                "Operation canceled.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        except Exception as e:
+            bot_logger.error(f"Error sending cancel message: {e}")
+            try:
+                await update.message.reply_text("Operation canceled.")
+            except Exception as e2:
+                bot_logger.error(f"Error sending simple cancel message: {e2}")
+
+    return ConversationHandler.END
 
 
 # Telegram command handler for /tune command
@@ -1710,182 +1994,114 @@ YEAR_FILTER = 2
 # Add a new state for typo confirmation
 TYPO_CONFIRM = 99
 
-# Step 0: Ask user to choose Hymns or Lyrics
+# Simplified theme function - similar to oldbot.py.bak
 async def theme_type_choice(update: Update, context: CallbackContext) -> int:
-    reply_keyboard = [["Hymns", "Lyrics"]]
-    await update.message.reply_text(
-        "What would you like to filter by theme?",
-        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
-    )
-    return THEME_TYPE
-
-# Step 1: Handle Hymns/Lyrics choice and show available themes
-async def handle_theme_type(update: Update, context: CallbackContext) -> int:
-    choice = update.message.text.strip().lower()
-    if choice not in ["hymns", "lyrics"]:
-        await update.message.reply_text("Please choose either 'Hymns' or 'Lyrics'.")
-        return THEME_TYPE
-    context.user_data["theme_type"] = choice
+    """
+    Start theme filtering - simplified version like oldbot.py.bak
+    Lists available unique themes and prompts user to choose.
+    """
     user = update.effective_user
-    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) chose {choice} for /theme")
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /theme")
 
-    # Get unique themes from the correct DataFrame
+    # Get unique themes from the DataFrame, splitting by comma if necessary (like oldbot)
     data = get_all_data()
-    df = data["dfH"] if choice == "hymns" else data["dfL"]
-    all_themes = df["Themes"].dropna().str.split(",").explode().str.strip().unique()
+    dfH = data["dfH"]
+    all_themes = dfH["Themes"].dropna().str.split(",").explode().str.strip().unique()
     themes = sorted(all_themes)
+
+    # Build keyboard layout (2 themes per row) - exactly like oldbot
     keyboard = [themes[i:i+2] for i in range(0, len(themes), 2)]
+
     await update.message.reply_text(
-        f"🎯 *Available Themes for {choice.capitalize()}:*\nPlease select or type one of the themes below:",
+        "🎯 *Available Themes:*\nPlease select or type one of the themes below:",
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     )
-    return THEME_SELECTION
 
-# Load the embedding model once
-_theme_model = None
-_theme_embeddings = {}
-_theme_texts = {}
-def get_theme_model():
-    global _theme_model
-    if _theme_model is None:
-        _theme_model = SentenceTransformer('all-MiniLM-L6-v2')
-    return _theme_model
+    return THEME_SELECTION  # Skip THEME_TYPE, go directly to selection
 
-def get_theme_embeddings(theme_type, all_themes):
-    global _theme_embeddings, _theme_texts
-    all_themes_list = list(all_themes)
-    if theme_type not in _theme_embeddings or _theme_texts.get(theme_type) != all_themes_list:
-        model = get_theme_model()
-        _theme_embeddings[theme_type] = model.encode(all_themes_list)
-        _theme_texts[theme_type] = all_themes_list
-    return _theme_embeddings[theme_type], _theme_texts[theme_type]
 
-def find_similar_themes(user_input, all_themes, theme_embeddings, threshold=0.7):
-    model = get_theme_model()
-    user_emb = model.encode([user_input])
-    sims = cosine_similarity(user_emb, theme_embeddings)[0]
-    matched = [theme for theme, sim in zip(all_themes, sims) if sim > threshold]
-    return matched
 
-def fuzzy_find_theme(user_input, all_themes, threshold=50):
-    best_theme = None
-    best_score = 0
-    for theme in all_themes:
-        for word in theme.split():
-            score = fuzz.ratio(user_input.lower(), word.lower())
-            if score > best_score:
-                best_score = score
-                best_theme = theme
-    if best_score >= threshold:
-        # Optionally, print for debugging
-        # print(f"Fuzzy match: {best_theme} (score: {best_score})")
-        return best_theme
-    return None
 
-# Helper to process theme selection logic for both direct and typo-confirmed input
-async def process_theme_selection(theme_input, update, context):
+
+
+
+
+
+# Simplified theme selection - like oldbot.py.bak
+async def handle_theme_selection(update: Update, context: CallbackContext) -> int:
+    """
+    Handles the user's theme selection by filtering the hymns,
+    displays them grouped as known/unknown, and then asks
+    if the user wants to filter by year.
+    """
+    theme_input = update.message.text.strip()
+    # Save theme in user_data for later
     context.user_data["theme_input"] = theme_input
+
+    # Use simple filtering like oldbot.py.bak
     data = get_all_data()
-    theme_type = context.user_data.get("theme_type", "hymns")
     dfH = data["dfH"]
-    dfL = data["dfL"]
     df = data["df"]
+    dfL = data["dfL"]
     dfC = data["dfC"]
-    # Compute vocabularies
+
+    # Get vocabularies
     _, Hymn_Vocabulary, Lyric_Vocabulary, _ = ChoirVocabulary(df, dfH, dfL, dfC)
-    if theme_type == "hymns":
-        all_themes = dfH["Themes"].dropna().str.split(",").explode().str.strip().unique()
-        theme_embeddings, theme_texts = get_theme_embeddings("hymns", all_themes)
-        matched_themes = find_similar_themes(theme_input, theme_texts, theme_embeddings, threshold=0.7)
-        filtered_df = dfH[dfH["Themes"].apply(lambda x: any(t in str(x) for t in matched_themes))]
-        known = Hymn_Vocabulary.values
-        prefix = "H-"
-        index_col = "Hymn Index"
-        no_col = "Hymn no"
-        tune_col = "Tunes"
-    else:
-        all_themes = dfL["Themes"].dropna().str.split(",").explode().str.strip().unique()
-        theme_embeddings, theme_texts = get_theme_embeddings("lyrics", all_themes)
-        matched_themes = find_similar_themes(theme_input, theme_texts, theme_embeddings, threshold=0.7)
-        filtered_df = dfL[dfL["Themes"].apply(lambda x: any(t in str(x) for t in matched_themes))]
-        known = Lyric_Vocabulary.values
-        prefix = "L-"
-        index_col = "Lyric Index"
-        no_col = "Lyric no"
-        tune_col = None
-    # If no semantic match, try fuzzy matching and ask user for confirmation
-    if filtered_df.empty or not matched_themes:
-        suggestion = fuzzy_find_theme(theme_input, all_themes, threshold=50)
-        if suggestion:
-            context.user_data["theme_typo_suggestion"] = suggestion
-            keyboard = [["Yes", "No"]]
-            await update.message.reply_text(
-                f"Did you mean: *{suggestion}*?",
-                parse_mode="Markdown",
-                reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-            )
-            return TYPO_CONFIRM
-        else:
-            await update.message.reply_text(
-                f"😕 No {theme_type} found for theme: *{theme_input}* (semantic & fuzzy match)",
-                parse_mode="Markdown",
-                reply_markup=ReplyKeyboardRemove()
-            )
-            return ConversationHandler.END
-    known_items = []
-    unknown_items = []
+
+    filtered_df = filter_hymns_by_theme(dfH, theme_input)
+
+    if filtered_df.empty:
+        await update.message.reply_text(
+            f"😕 No hymns found for theme: *{theme_input}*",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
+    # Instead of storing formatted strings, store raw hymn numbers (like oldbot)
+    known_hymns = []
+    unknown_hymns = []
+
     for _, row in filtered_df.iterrows():
-        item_no = row[no_col]
-        if item_no in known:
-            known_items.append(item_no)
+        hymn_no = row["Hymn no"]
+        if hymn_no in Hymn_Vocabulary.values:
+            known_hymns.append(hymn_no)
         else:
-            unknown_items.append(item_no)
-    if theme_type == "hymns":
-        display_known = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]} - {dfH[dfH['Hymn no'] == h]['Tunes'].values[0]}" for h in known_items]
-        display_unknown = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]}" for h in unknown_items]
-        message_parts = [f"🎼 *Hymns related to theme(s):* {', '.join(matched_themes)}"]
-    else:
-        display_known = [f"L-{l} - {dfL[dfL['Lyric no'] == l]['Lyric Index'].values[0]}" for l in known_items]
-        display_unknown = [f"L-{l} - {dfL[dfL['Lyric no'] == l]['Lyric Index'].values[0]}" for l in unknown_items]
-        message_parts = [f"🎼 *Lyrics related to theme(s):* {', '.join(matched_themes)}"]
+            unknown_hymns.append(hymn_no)
+
+    # Build display lines for known and unknown hymns (show ALL, no limits) - like oldbot
+    display_known = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]} - {dfH[dfH['Hymn no'] == h]['Tunes'].values[0]}" for h in known_hymns]
+    display_unknown = [f"H-{h} - {dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]}" for h in unknown_hymns]
+
+    message_parts = [f"🎼 *Hymns related to theme:* `{theme_input}`"]
+
     if display_known:
-        message_parts.append(f"✅ *Choir Knows ({len(known_items)} total):*\n" + "\n".join(display_known))
+        message_parts.append(f"✅ *Choir Knows ({len(known_hymns)} total):*\n" + "\n".join(display_known))
     else:
-        message_parts.append(f"❌ *No known {theme_type} found in this theme.*")
+        message_parts.append("❌ *No known hymns found in this theme.*")
+
     if display_unknown:
-        message_parts.append(f"❌ *Choir Doesn't Know ({len(unknown_items)} total):*\n" + "\n".join(display_unknown) + "\n\n*Note:* A known song may appear here if not sung in the past 3 years.")
+        message_parts.append(f"❌ *Choir Doesn't Know ({len(unknown_hymns)} total):*\n" + "\n".join(display_unknown) +
+                             "\n\n*Note:* A known song may appear here if not sung in the past 3 years.")
     else:
-        message_parts.append(f"🎉 *Choir knows all {theme_type} in this theme!*")
+        message_parts.append("🎉 *Choir knows all hymns in this theme!*")
+
+    # Use the helper function to send the message (will split automatically if too long)
     await send_long_message(update, message_parts)
-    context.user_data["known_items"] = known_items
-    context.user_data["unknown_items"] = unknown_items
+
+    # Store the raw hymn numbers for later processing in year filtering
+    context.user_data["known_items"] = known_hymns
+    context.user_data["unknown_items"] = unknown_hymns
+
+    # Ask the user if they want to filter by year (like oldbot)
     await update.message.reply_text(
-        "📅 Do you want to filter these to see Songs Sung this year?",
+        "📅 Do you want to filter these hymns to see Songs Sung this year?",
         reply_markup=ReplyKeyboardMarkup([["Yes", "No"]], one_time_keyboard=True, resize_keyboard=True)
     )
     return YEAR_FILTER
 
-# Step 2: Process the theme selection (with typo correction logic)
-async def handle_theme_selection(update: Update, context: CallbackContext) -> int:
-    theme_input = update.message.text.strip()
-    return await process_theme_selection(theme_input, update, context)
 
-# Handler for typo confirmation (Yes/No)
-async def handle_theme_typo_confirm(update: Update, context: CallbackContext) -> int:
-    reply = update.message.text.strip().lower()
-    suggestion = context.user_data.get("theme_typo_suggestion")
-    if reply == "yes" and suggestion:
-        context.user_data["theme_input"] = suggestion
-        context.user_data.pop("theme_typo_suggestion", None)
-        return await process_theme_selection(suggestion, update, context)
-    else:
-        await update.message.reply_text(
-            "Sorry, nothing was found.",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        context.user_data.pop("theme_typo_suggestion", None)
-        return ConversationHandler.END
 
 # Step 3: Ask the user if they want year filtering (now supports both Hymns and Lyrics)
 async def handle_year_filter(update: Update, context: CallbackContext) -> int:
@@ -1896,23 +2112,13 @@ async def handle_year_filter(update: Update, context: CallbackContext) -> int:
 
     s_year = datetime.now().year  # Automatically get current year
     data = get_all_data()
-    theme_type = context.user_data.get("theme_type", "hymns")
+    theme_type = "hymns"  # Simplified to hymns only like oldbot.py.bak
     theme = context.user_data.get("theme_input", "")
     known = context.user_data.get("known_items", [])
     unknown = context.user_data.get("unknown_items", [])
 
-    if theme_type == "hymns":
-        df = data["dfH"]
-        no_col = "Hymn no"
-        index_col = "Hymn Index"
-        tune_col = "Tunes"
-        prefix = "H-"
-    else:
-        df = data["dfL"]
-        no_col = "Lyric no"
-        index_col = "Lyric Index"
-        tune_col = None
-        prefix = "L-"
+    # Simplified to hymns only like oldbot.py.bak
+    dfH = data["dfH"]
 
     def get_last_sung_date(song_code):
         result = Datefinder(songs=song_code, first=True)
@@ -1923,27 +2129,19 @@ async def handle_year_filter(update: Update, context: CallbackContext) -> int:
                 return None
         return None
 
-    def group_by_year(item_list):
+    # Group by year: Expect hymn_list to contain raw hymn numbers (like oldbot.py.bak)
+    def group_by_year(hymn_list):
         sung, not_sung = [], []
-        for item in item_list:
-            song_code = f"{prefix}{item}"
-            date_obj = get_last_sung_date(song_code)
-            # Retrieve index (and tune if hymns) from DataFrame
-            index = df[df[no_col] == item][index_col].values[0]
-            if theme_type == "hymns":
-                tune = df[df[no_col] == item][tune_col].values[0]
-            else:
-                tune = None
+        for h in hymn_list:
+            hymn_code = f"H-{h}"
+            date_obj = get_last_sung_date(hymn_code)
+            # Retrieve hymn index and tune from DataFrame
+            index = dfH[dfH['Hymn no'] == h]['Hymn Index'].values[0]
+            tune = dfH[dfH['Hymn no'] == h]['Tunes'].values[0]
             if date_obj and date_obj.year == s_year:
-                if theme_type == "hymns":
-                    sung.append(f"{song_code} - {index}  -{tune}")
-                else:
-                    sung.append(f"{song_code} - {index}")
+                sung.append(f"{hymn_code} - {index}  -{tune}")
             else:
-                if theme_type == "hymns":
-                    not_sung.append(f"{song_code} - {index} -{tune}")
-                else:
-                    not_sung.append(f"{song_code} - {index}")
+                not_sung.append(f"{hymn_code} - {index} -{tune}")
         return sung, not_sung
 
     sung_known, not_sung_known = group_by_year(known)
@@ -1951,133 +2149,61 @@ async def handle_year_filter(update: Update, context: CallbackContext) -> int:
 
     message_parts = [f"📅 *Theme:* `{theme}` – *Year:* {s_year}"]
 
+    # Add the three categories like oldbot.py.bak
     if sung_known:
         message_parts.append(f"✅ *Songs that were Sung ({len(sung_known)} total):*\n" + "\n".join(sung_known))
+
     if not_sung_known:
         message_parts.append(f"❌ *Songs that were Not Sung ({len(not_sung_known)} total):*\n" + "\n".join(not_sung_known))
+
     if not_sung_unknown:
         message_parts.append(f"🚫 *Songs Choir Doesn't Know ({len(not_sung_unknown)} total):*\n" + "\n".join(not_sung_unknown))
 
-    # Use the helper function to send the message (will split automatically if too long)
+    # Add the total count
+    total_known = len(known)
+    total_unknown = len(unknown)
+    message_parts.append(f"📊 *Total {theme_type.capitalize()} in this theme:*\n"
+                         f"✅ Known: {total_known}\n"
+                         f"❌ Unknown: {total_unknown}")
+
     await send_long_message(update, message_parts)
     return ConversationHandler.END
 
-# Add this function to periodically upload logs
-async def periodic_log_upload():
-    """Periodically upload logs to Google Drive."""
-    # Get interval from environment variable or use default (1 hour)
-    try:
-        interval_seconds = int(os.environ.get("LOG_UPLOAD_INTERVAL", 3600))
-    except ValueError:
-        interval_seconds = 3600  # Default to 1 hour if not a valid integer
+# --- Conversation States ---
+# Example: CHECK_SONG, ENTER_SONG, etc.
+# TODO: Define all necessary states for conversations
 
-    minutes = interval_seconds // 60
-    bot_logger.info(f"Periodic log upload scheduled every {minutes} minutes")
+# --- Conversation Flows ---
+# TODO: Implement conversation entry points and state handlers for each major conversation 
 
-    while True:
-        try:
-            # Wait for the specified interval
-            await asyncio.sleep(interval_seconds)
-
-            # Check if we should still be running
-            if not bot_should_run or check_stop_signal():
-                break
-
-            # Log the upload attempt
-            bot_logger.info(f"Performing scheduled log upload (every {minutes} minutes)")
-
-            # Upload logs to Google Drive
-            try:
-                upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
-                upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
-
-                # Also upload downloader log if it exists
-                if os.path.exists("downloader_log.txt"):
-                    upload_log_to_google_doc(st.secrets["BFILE_ID"], "downloader_log.txt")
-                    bot_logger.info("Downloader log uploaded to BFILE_ID")
-
-                # Note: Download logs are directly appended to YFILE_ID Google Doc, no file upload needed
-                bot_logger.info("Scheduled log upload completed successfully")
-            except Exception as e:
-                bot_logger.error(f"Scheduled log upload failed: {e}")
-
-        except asyncio.CancelledError:
-            # Task was cancelled
-            break
-        except Exception as e:
-            bot_logger.error(f"Error in periodic log upload task: {e}")
-            # Wait a bit before retrying
-            await asyncio.sleep(60)
-
-async def cancel(update: Update, context: CallbackContext) -> int:
-    user = update.effective_user
-    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /cancel")
-    await update.message.reply_text("Operation canceled.", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
-
+print("Reached Telegram Bot code")
  
+
+#Telegram bot
+ 
+ 
+ 
+#/check
+
  
 
 
- #Song Info Function
-async def handle_song_code(update: Update, context: CallbackContext) -> None:
-    data = get_all_data()
-    df = data["df"]
-    dfH = data["dfH"]
-    dfL = data["dfL"]
-    dfC = data["dfC"]
-    dfTH = data["dfTH"]
-    user_input_raw = update.message.text
-    user_input = standardize_hlc_value(user_input_raw)
-    song_type, _, song_number = user_input.partition('-')
 
-    # Validate basic format again if needed
-    if song_type not in ['H', 'L', 'C'] or not song_number.isdigit():
-        return  # Ignore bad formats silently
 
-    response_parts = []
 
-    # Get Name/Index info
-    Vocabulary = ChoirVocabulary(df, dfH, dfL, dfC)[0]
-    song_info = isVocabulary(user_input, Vocabulary, dfH, dfTH, Tune_finder_of_known_songs)
-    if 'was not found' not in song_info:
-        response_parts.append(f"🎵 <b>Song Info:</b> {song_info}")
-        last_sung = Datefinder(user_input, song_type, first=True)
-        response_parts.append(f"🗓️ <b>Last Sung:</b> {last_sung}")
-    else:
-        from data.datasets import IndexFinder
-        response_parts.append(f"Choir doesn't know {f'{user_input}: {IndexFinder(user_input)}'}")
 
-    # Send the reply
-    await update.message.reply_text(
-        "\n".join(response_parts),
-        parse_mode="HTML", disable_web_page_preview=True
-    )
 
-# Add a new function to run the bot asynchronously
-async def run_bot_async():
-    """Runs the bot asynchronously."""
-    try:
-        await main()
-    except Exception as e:
-        bot_logger.error(f"Error in bot: {e}")
-        global bot_should_run
-        bot_should_run = False
+ 
 
-# Add a function to stop the bot
-def stop_bot():
-    """Stops the bot gracefully."""
-    global bot_should_run
-    bot_should_run = False
-    bot_logger.info("Bot stop requested")
-    return True
+
+
     
 
 
 
  #/comment
 
-COMMENT, REPLY = range(2)
+COMMENT, REPLY, ADMIN_REPLY_MESSAGE = range(3)
 
 # Step 1: Command to start commenting
 async def start_comment(update: Update, context: CallbackContext) -> int:
@@ -2225,10 +2351,125 @@ async def admin_reply(update: Update, context: CallbackContext) -> None:
             parse_mode=ParseMode.HTML
         )
 
-        await update.message.reply_text(f"✅ Reply sent to user {target_user_id}.")
+        await update.message.reply_text(f"✅ Reply sent to user.")
     except Exception as e:
         logging.error(f"❌ Failed to send reply: {e}")
         await update.message.reply_text(f"❌ Failed to send reply: {e}")
+
+# New Admin Reply System Handlers
+
+async def handle_admin_reply_selection(update: Update, context: CallbackContext) -> int:
+    """Handle when admin selects a user or 'all users' to reply to"""
+    query = update.callback_query
+    await query.answer()
+
+    # Check if user is admin
+    config = get_config()
+    admin_id = config.ADMIN_ID
+    if query.from_user.id != admin_id:
+        await query.message.reply_text("❌ You are not authorized to use this command.")
+        return ConversationHandler.END
+
+    data = query.data
+
+    if data == "reply_all":
+        # Admin wants to send to all users
+        context.user_data["reply_target"] = "all"
+        await query.message.reply_text(
+            "📢 <b>Send message to ALL users</b>\n\n"
+            "Type your message below. This will be sent to all users in the database:",
+            parse_mode="HTML"
+        )
+        return ADMIN_REPLY_MESSAGE
+
+    elif data.startswith("reply_user_"):
+        # Admin wants to send to specific user
+        user_id = data.split("_")[2]
+        context.user_data["reply_target"] = user_id
+
+        # Get user info for confirmation
+        users = get_all_users()
+        target_user = next((u for u in users if str(u['user_id']) == user_id), None)
+
+        if target_user:
+            await query.message.reply_text(
+                f"👤 <b>Send message to: {target_user['display_name']}</b>\n\n"
+                "Type your message below:",
+                parse_mode="HTML"
+            )
+        else:
+            await query.message.reply_text(
+                f"👤 <b>Send message to User ID: {user_id}</b>\n\n"
+                "Type your message below:",
+                parse_mode="HTML"
+            )
+        return ADMIN_REPLY_MESSAGE
+
+    elif data == "reply_more":
+        await query.message.reply_text(
+            "ℹ️ To see more users or send to a specific user ID, use the old format:\n"
+            "<code>/reply &lt;user_id&gt; &lt;message&gt;</code>",
+            parse_mode="HTML"
+        )
+        return ConversationHandler.END
+
+    return ConversationHandler.END
+
+async def handle_admin_reply_message(update: Update, context: CallbackContext) -> int:
+    """Handle the admin's reply message"""
+    # Check if user is admin
+    config = get_config()
+    admin_id = config.ADMIN_ID
+    if update.effective_user.id != admin_id:
+        await update.message.reply_text("❌ You are not authorized to use this command.")
+        return ConversationHandler.END
+
+    message = update.message.text
+    reply_target = context.user_data.get("reply_target")
+
+    if not reply_target:
+        await update.message.reply_text("❌ No target selected. Please start over with /reply")
+        return ConversationHandler.END
+
+    try:
+        if reply_target == "all":
+            # Send to all users
+            users = get_all_users()
+            sent_count = 0
+            failed_count = 0
+
+            for user_info in users:
+                try:
+                    await context.bot.send_message(
+                        chat_id=user_info['user_id'],
+                        text=f"📢 <b>Message from Admin:</b>\n\n{message}",
+                        parse_mode="HTML"
+                    )
+                    sent_count += 1
+                except Exception as e:
+                    failed_count += 1
+                    logging.error(f"Failed to send message to user {user_info['user_id']}: {e}")
+
+            await update.message.reply_text(
+                f"✅ <b>Broadcast completed!</b>\n\n"
+                f"📤 Sent to: {sent_count} users\n"
+                f"❌ Failed: {failed_count} users",
+                parse_mode="HTML"
+            )
+        else:
+            # Send to specific user
+            await context.bot.send_message(
+                chat_id=int(reply_target),
+                text=f"💬 <b>Admin's reply:</b>\n\n{message}",
+                parse_mode="HTML"
+            )
+            await update.message.reply_text(f"✅ Reply sent to user {reply_target}.")
+
+    except Exception as e:
+        logging.error(f"❌ Failed to send reply: {e}")
+        await update.message.reply_text(f"❌ Failed to send reply: {e}")
+
+    return ConversationHandler.END
 
 
 

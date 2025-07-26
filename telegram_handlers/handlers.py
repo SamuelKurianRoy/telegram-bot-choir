@@ -7,7 +7,7 @@ from telegram.ext import CallbackContext, ConversationHandler, ContextTypes, Cal
 from config import get_config
 from logging_utils import setup_loggers
 from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
-from data.drive import upload_log_to_google_doc
+from data.drive import upload_log_to_google_doc, save_user_to_database, get_all_users
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import pandas as pd
@@ -57,14 +57,24 @@ async def start(update: Update, context: CallbackContext) -> None:
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /start")
 
+    # Add user to database
+    try:
+        save_user_to_database(
+            user_id=user.id,
+            username=user.username,
+            name=user.full_name
+        )
+    except Exception as e:
+        bot_logger.error(f"Error saving user to database: {e}")
+
     # Check authorization
-    authorized_users_str = st.secrets["AUTHORIZED_USERS"]
-    authorized_users = list(map(int, authorized_users_str.split(','))) if authorized_users_str else []
+    config = get_config()
+    authorized_users = config.AUTHORIZED_USERS
 
     if user.id not in authorized_users:
         # Notify admin but do NOT block user
         await context.bot.send_message(
-            chat_id=ADMIN_ID,
+            chat_id=config.ADMIN_ID,
             text=(
                 f"⚠️ <b>Unauthorized user accessed /start</b>\n\n"
                 f"<b>Name:</b> {user.full_name}\n"
@@ -197,25 +207,74 @@ async def admin_reply(update: Update, context: CallbackContext) -> None:
     if user.id != admin_id:
         await update.message.reply_text("❌ You are not authorized to use this command.")
         return
+
+    # Check if old format is being used (with arguments)
     args = context.args
-    if len(args) < 2:
-        await update.message.reply_text("Usage: /reply <user_id> <your message>")
-        return
-    target_user_id = int(args[0])
-    reply_message = " ".join(args[1:])
-    await context.bot.send_message(
-        chat_id=target_user_id,
-        text=f"💬 Admin's reply:\n\n{reply_message}",
-        parse_mode="HTML"
-    )
-    await update.message.reply_text(f"✅ Reply sent to user {target_user_id}.")
+    if len(args) >= 2:
+        # Old format: /reply <user_id> <message>
+        try:
+            target_user_id = int(args[0])
+            reply_message = " ".join(args[1:])
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text=f"💬 Admin's reply:\n\n{reply_message}",
+                parse_mode="HTML"
+            )
+            await update.message.reply_text(f"✅ Reply sent to user {target_user_id}.")
+            return
+        except ValueError:
+            await update.message.reply_text("❌ Invalid user ID format.")
+            return
+
+    # New format: Show user list
+    try:
+        users = get_all_users()
+        if not users:
+            await update.message.reply_text("❌ No users found in the database.")
+            return
+
+        # Create inline keyboard with user options
+        keyboard = []
+
+        # Add "All Users" option
+        keyboard.append([InlineKeyboardButton("📢 Send to All Users", callback_data="reply_all")])
+
+        # Add individual users (limit to 20 to avoid message size limits)
+        for i, user_info in enumerate(users[:20]):
+            display_name = user_info['display_name']
+            user_id = user_info['user_id']
+            keyboard.append([InlineKeyboardButton(f"👤 {display_name}", callback_data=f"reply_user_{user_id}")])
+
+        if len(users) > 20:
+            keyboard.append([InlineKeyboardButton("⚠️ More users available (showing first 20)", callback_data="reply_more")])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.message.reply_text(
+            "👥 <b>Select a user to reply to:</b>\n\n"
+            f"Total users in database: {len(users)}",
+            parse_mode="HTML",
+            reply_markup=reply_markup
+        )
+
+    except Exception as e:
+        bot_logger.error(f"Error in admin_reply: {e}")
+        await update.message.reply_text(f"❌ Error loading users: {e}")
 
 #Cancel
 
 async def cancel(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /cancel")
-    await update.message.reply_text("Operation canceled.", reply_markup=ReplyKeyboardRemove())
+    try:
+        await update.message.reply_text("Operation canceled.", reply_markup=ReplyKeyboardRemove())
+    except Exception as e:
+        bot_logger.error(f"Error sending cancel message: {e}")
+        # Try to send a simpler message without keyboard removal
+        try:
+            await update.message.reply_text("Operation canceled.")
+        except Exception as e2:
+            bot_logger.error(f"Error sending simple cancel message: {e2}")
     return ConversationHandler.END
 
 # Fix state definition for date conversation

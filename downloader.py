@@ -5,9 +5,9 @@ Supports YouTube and Spotify audio downloads
 
 import os
 import re
+import sys
 import time
 import asyncio
-import logging
 import subprocess as sp
 import platform
 from pathlib import Path
@@ -16,6 +16,11 @@ import hashlib
 import json
 from datetime import datetime, timedelta
 import shutil
+from logging_utils import setup_loggers
+
+# Setup loggers
+logger, _ = setup_loggers()  # Use bot_logger as the main logger
+downloader_logger = logger  # Use the same logger for downloader
 
 try:
     import yt_dlp
@@ -34,22 +39,28 @@ except ImportError:
     tempfile = None
     tarfile = None
 
-# Setup logging
-logger = logging.getLogger(__name__)
-
-# Setup file logging for downloader (will be uploaded to BFILE_ID)
-downloader_logger = logging.getLogger("downloader_debug")
-if not downloader_logger.handlers:
-    downloader_logger.setLevel(logging.INFO)
-    downloader_logger.propagate = False
-
-    # File handler for downloader logs
-    downloader_handler = logging.FileHandler("downloader_log.txt", mode='w', encoding='utf-8')
-    downloader_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-    downloader_logger.addHandler(downloader_handler)
+# Note: loggers are imported from logging_utils
 
 class AudioDownloader:
     """Audio downloader class for YouTube and Spotify"""
+    
+    # Class variable to track proxy rotation
+    proxy_rotation = 1  # Starts from 1, can go up to 7
+    
+    # Proxy configuration - can be updated with reliable proxy services
+    # NOTE: These are placeholder proxies. For production use, replace with:
+    # 1. Paid proxy services (ProxyMesh, Bright Data, etc.)
+    # 2. Your own proxy servers
+    # 3. VPN endpoints you control
+    PROXY_LIST = [
+        None,  # Direct connection - always try first
+        'http://219.78.255.83:80',       # Fresh working proxy (7.96s response)
+        'http://47.122.64.36:8888',      # Fresh working proxy (2.89s response)
+        # ScrapeOps proxy (requires authentication - replace with your credentials):
+        # 'http://username:api_key@proxy.scrapeops.io:5353',
+        # Note: Free proxies may stop working over time
+        # Run find_working_proxies.py to get fresh ones
+    ]
 
     def __init__(self, temp_dir: str = "temp"):
         # Detect if running on Streamlit Cloud
@@ -59,20 +70,50 @@ class AudioDownloader:
 
         self.temp_dir = Path(temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
+        
+        # Log current proxy rotation
+        logger.info(f"Current proxy rotation: {self.proxy_rotation}")
+        downloader_logger.info(f"Current proxy rotation: {self.proxy_rotation}")
 
         # Set FFmpeg path - use the complete setup from audio_downloader_bot.py
-        self.ffmpeg_path = asyncio.run(self._setup_ffmpeg())
-        downloader_logger.info(f"FFmpeg setup result: {self.ffmpeg_path}")
+        # Check if we're already in an event loop
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an event loop, create a task instead
+            self.ffmpeg_path = None  # Will be set later
+            self._ffmpeg_setup_task = asyncio.create_task(self._setup_ffmpeg_async())
+        except RuntimeError:
+            # No event loop running, safe to use asyncio.run()
+            self.ffmpeg_path = asyncio.run(self._setup_ffmpeg())
+            downloader_logger.info(f"FFmpeg setup result: {self.ffmpeg_path}")
+            self._ffmpeg_setup_task = None
 
-        # Configure FFmpeg in PATH if local installation found
+        # Configure FFmpeg in PATH if local installation found (only if not using async setup)
+        if self._ffmpeg_setup_task is None:
+            self._configure_ffmpeg_path()
+            self._configure_spotdl_ffmpeg()
+
+    async def _setup_ffmpeg_async(self):
+        """Async version of FFmpeg setup for when we're already in an event loop"""
+        self.ffmpeg_path = await self._setup_ffmpeg()
+        downloader_logger.info(f"FFmpeg setup result: {self.ffmpeg_path}")
+        self._configure_ffmpeg_path()
+        self._configure_spotdl_ffmpeg()
+        return self.ffmpeg_path
+
+    def _configure_ffmpeg_path(self):
+        """Configure FFmpeg in PATH if local installation found"""
         if self.ffmpeg_path and self.ffmpeg_path != "system":
-            # Add FFmpeg directory to PATH (same as audio_downloader_bot.py)
+            # Add FFmpeg directory to PATH
             current_path = os.environ.get("PATH", "")
             if self.ffmpeg_path not in current_path:
                 os.environ["PATH"] = self.ffmpeg_path + os.pathsep + current_path
                 logger.info(f"Added FFmpeg to PATH: {self.ffmpeg_path}")
                 downloader_logger.info(f"Added FFmpeg to PATH: {self.ffmpeg_path}")
 
+    def _configure_spotdl_ffmpeg(self):
+        """Configure spotdl to use the correct FFmpeg"""
+        if self.ffmpeg_path and self.ffmpeg_path != "system":
             # Configure spotdl to use local FFmpeg
             system = platform.system().lower()
             if system == "windows":
@@ -90,6 +131,42 @@ class AudioDownloader:
             os.environ["FFMPEG_BINARY"] = "ffmpeg"
             logger.info("Configured spotdl to use system FFmpeg on Streamlit Cloud")
             downloader_logger.info("Configured spotdl to use system FFmpeg on Streamlit Cloud")
+
+    async def _ensure_ffmpeg_ready(self):
+        """Ensure FFmpeg is ready before downloads"""
+        if self._ffmpeg_setup_task:
+            await self._ffmpeg_setup_task
+            self._ffmpeg_setup_task = None
+
+
+
+    async def _test_proxy(self, proxy_url, timeout=5):
+        """Test if a proxy is working"""
+        if not proxy_url:
+            return True  # Direct connection
+
+        try:
+            import requests
+
+            test_response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: requests.get(
+                    'http://httpbin.org/ip',
+                    proxies={'http': proxy_url, 'https': proxy_url},
+                    timeout=timeout
+                )
+            )
+
+            if test_response.status_code == 200:
+                logger.debug(f"Proxy {proxy_url} is working")
+                return True
+            else:
+                logger.debug(f"Proxy {proxy_url} returned status {test_response.status_code}")
+                return False
+
+        except Exception as e:
+            logger.debug(f"Proxy {proxy_url} failed test: {e}")
+            return False
 
     def _detect_streamlit_cloud(self) -> bool:
         """Detect if running on Streamlit Cloud"""
@@ -868,6 +945,37 @@ class AudioDownloader:
         ]
         url_lower = url.lower()
         return any(domain in url_lower for domain in supported_domains)
+
+    async def cleanup_temp_files(self) -> int:
+        """Clean up temp files older than 24 hours. This should only be called by admin command."""
+        from datetime import datetime, timedelta
+        import time
+
+        now = datetime.now()
+        cleaned_count = 0
+        for f in Path(self.temp_dir).glob("*"):
+            if f.is_file() and f.suffix in {'.mp3', '.json'}:
+                try:
+                    mtime = datetime.fromtimestamp(f.stat().st_mtime)
+                    if now - mtime > timedelta(hours=24):
+                        try:
+                            initial_size = f.stat().st_size
+                            time.sleep(0.1)  # Brief pause to ensure file is not being written
+                            if f.exists() and f.stat().st_size == initial_size:
+                                f.unlink()
+                                cleaned_count += 1
+                                logger.info(f"Cleaned up old temp file: {f}")
+                        except PermissionError:
+                            logger.warning(f"File {f} is in use, skipping cleanup")
+                        except Exception as e:
+                            logger.warning(f"Failed to delete old temp file {f}: {e}")
+                except FileNotFoundError:
+                    pass  # File was already deleted
+                except Exception as e:
+                    logger.warning(f"Error checking temp file {f}: {e}")
+        
+        logger.info(f"Cleanup completed. Removed {cleaned_count} old temp files.")
+        return cleaned_count
     
     async def extract_info(self, url: str) -> Optional[Dict]:
         """Extract basic info from URL"""
@@ -927,16 +1035,19 @@ class AudioDownloader:
             logger.error(f"Error extracting Spotify info: {e}")
             return None
 
-    async def download_audio(self, url: str, quality: str = "medium", chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
-        """Download audio from URL, passing chat_id for checkpoint/resume."""
+    async def download_audio(self, url: str, quality: str = "medium", chat_id: str = None, cancel_event: asyncio.Event = None) -> Optional[Tuple[Path, Dict]]:
+        """Download audio from URL, passing chat_id for checkpoint/resume and cancel_event for cancellation."""
+        # Ensure FFmpeg is ready before starting download
+        await self._ensure_ffmpeg_ready()
+
         platform = self.detect_platform(url)
         if platform == 'Spotify':
-            return await self.download_spotify_audio(url, quality, chat_id=chat_id)
+            return await self.download_spotify_audio(url, quality, chat_id=chat_id, cancel_event=cancel_event)
         else:
-            return await self.download_youtube_audio(url, quality, chat_id=chat_id)
+            return await self.download_youtube_audio(url, quality, chat_id=chat_id, cancel_event=cancel_event)
     
-    async def download_youtube_audio(self, url: str, quality: str, chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
-        """Download audio from YouTube using yt-dlp, with checkpoint/resume support."""
+    async def download_youtube_audio(self, url: str, quality: str, chat_id: str = None, cancel_event: asyncio.Event = None) -> Optional[Tuple[Path, Dict]]:
+        """Download audio from YouTube using yt-dlp, with checkpoint/resume support and cancellation."""
         import hashlib
         import json
         from datetime import datetime, timedelta
@@ -960,9 +1071,6 @@ class AudioDownloader:
                             f.unlink()
                         except Exception as e:
                             logger.warning(f"Failed to delete old temp file {f}: {e}")
-
-        # Clean up old temp files
-        cleanup_old_temp_files()
 
         track_id = get_track_id(url)
         if not chat_id:
@@ -1038,27 +1146,44 @@ class AudioDownloader:
             # Quality mapping
             quality_map = {
                 "high": "320",
-                "medium": "192", 
+                "medium": "192",
                 "low": "128"
             }
-            
+
             bitrate = quality_map.get(quality, "192")
             
             # Generate unique filename
             temp_filename = f"audio_youtube_{int(time.time())}"
             temp_filepath = self.temp_dir / temp_filename
             
+            # Get current proxy from rotation
+            proxy_index = (self.proxy_rotation - 1) % len(self.PROXY_LIST)
+            current_proxy = self.PROXY_LIST[proxy_index]
+
+            if current_proxy:
+                logger.info(f"Using proxy {proxy_index + 1}/{len(self.PROXY_LIST)}: {current_proxy}")
+                downloader_logger.info(f"Using proxy {proxy_index + 1}/{len(self.PROXY_LIST)}: {current_proxy}")
+            else:
+                logger.info("Attempting download without proxy (direct connection)")
+                downloader_logger.info("Attempting download without proxy (direct connection)")
+            
             ydl_opts = {
-                'format': 'bestaudio/best',
+                'format': 'bestaudio/best',  # Always get the best audio quality available
                 'outtmpl': str(temp_filepath) + '.%(ext)s',
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': 'mp3',
-                    'preferredquality': bitrate,
+                    'preferredquality': bitrate,  # Maintain requested quality
                 }],
                 'quiet': True,
                 'no_warnings': True,
+                'extract_flat': False,
+                'ignoreerrors': False,
             }
+
+            # Only add proxy if one is specified
+            if current_proxy:
+                ydl_opts['proxy'] = current_proxy
 
             # Add FFmpeg location if found (using same logic as audio_downloader_bot.py)
             if self.ffmpeg_path == "system":
@@ -1075,14 +1200,126 @@ class AudioDownloader:
                 # Remove post-processors that require FFmpeg
                 ydl_opts['postprocessors'] = []
             
-            # Download with timeout
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
-                        None, lambda: ydl.extract_info(url, download=True)
-                    ),
-                    timeout=300  # 5 minute timeout
-                )
+            # Download with timeout and error handling
+            # Download with retries - try all available proxies
+            max_retries = len(self.PROXY_LIST)  # Try all proxies including direct connection
+            retry_count = 0
+            last_error = None
+
+            logger.info(f"Starting YouTube download with {max_retries} proxy attempts (maintaining {quality} quality)")
+            
+            def is_network_error(e):
+                error_str = str(e).lower()
+                network_indicators = [
+                    'network',
+                    'socket',
+                    'timeout',
+                    'connection',
+                    'unreachable',
+                    'no route',
+                    'proxy',
+                    'ssl',
+                    'dns',
+                    'http',
+                    '407',  # Proxy authentication
+                    '429',  # Too many requests
+                    '503',  # Service unavailable
+                    '504',  # Gateway timeout
+                ]
+
+                # Check for specific yt-dlp errors that indicate network issues
+                yt_dlp_network_errors = [
+                    'unable to download video data',
+                    'unable to download webpage',
+                    'unable to extract video data',
+                    'http error',
+                    'unable to download api webpage',
+                    'video unavailable',
+                    'this video is unavailable',
+                    'private video',
+                    'video is private',
+                    'sign in to confirm your age'
+                ]
+                
+                return any(indicator in error_str for indicator in network_indicators + yt_dlp_network_errors)
+            
+            async def download_with_cancellation():
+                future = asyncio.get_event_loop().run_in_executor(None, lambda: ydl.extract_info(url, download=True))
+                if cancel_event:
+                    while not future.done():
+                        if cancel_event.is_set():
+                            # Attempt to cancel the running download
+                            future.cancel()
+                            raise asyncio.CancelledError("Download cancelled by user")
+                        await asyncio.sleep(0.5)  # Check cancel_event every 0.5 seconds
+                return await future
+
+            while retry_count < max_retries:
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        try:
+                            if cancel_event and cancel_event.is_set():
+                                raise asyncio.CancelledError("Download cancelled by user")
+                                
+                            info = await asyncio.wait_for(
+                                download_with_cancellation(),
+                                timeout=120  # 2 minute timeout per attempt
+                            )
+                            logger.info(f"Successfully extracted video info: {info.get('title', 'Unknown')}")
+                            proxy_desc = f"proxy {self.proxy_rotation}" if current_proxy else "direct connection"
+                            downloader_logger.info(f"Download successful with {proxy_desc}")
+                            break  # Success, exit the retry loop
+                        except asyncio.TimeoutError:
+                            raise Exception("Download timed out after 5 minutes")
+                except (Exception, asyncio.CancelledError) as e:
+                    if isinstance(e, asyncio.CancelledError):
+                        logger.info("Download cancelled by user")
+                        downloader_logger.info("Download cancelled by user")
+                        return None
+                        
+                    last_error = e
+                    retry_count += 1
+                    proxy_desc = f"proxy {self.proxy_rotation}" if current_proxy else "direct connection"
+                    error_type = "network error" if is_network_error(e) else "error"
+                    
+                    # Enhanced error logging
+                    error_details = str(e)
+                    if hasattr(e, '__cause__') and e.__cause__:
+                        error_details += f"\nCaused by: {str(e.__cause__)}"
+                    if hasattr(e, 'exc_info'):
+                        error_details += f"\nException info: {str(e.exc_info)}"
+                        
+                    logger.error(f"YouTube download attempt {retry_count} failed with {error_type} using {proxy_desc}:")
+                    logger.error(f"Error details: {error_details}")
+                    downloader_logger.error(f"YouTube download attempt {retry_count} failed with {error_type} using {proxy_desc}:")
+                    downloader_logger.error(f"Error details: {error_details}")
+                    
+                    if retry_count < max_retries:
+                        wait_time = min(retry_count * 2, 10)  # Progressive backoff: 2s, 4s, 6s, 8s, 10s max
+
+                        # Always try next proxy on any failure (YouTube blocks aggressively)
+                        self.proxy_rotation = (self.proxy_rotation % len(self.PROXY_LIST)) + 1
+                        proxy_index = (self.proxy_rotation - 1) % len(self.PROXY_LIST)
+                        current_proxy = self.PROXY_LIST[proxy_index]
+
+                        if current_proxy:
+                            ydl_opts['proxy'] = current_proxy
+                            logger.info(f"Retrying with proxy {proxy_index + 1}/{len(self.PROXY_LIST)}: {current_proxy}")
+                            downloader_logger.info(f"Retrying with proxy {proxy_index + 1}/{len(self.PROXY_LIST)}: {current_proxy}")
+                        else:
+                            if 'proxy' in ydl_opts:
+                                del ydl_opts['proxy']
+                            logger.info("Retrying without proxy (direct connection)")
+                            downloader_logger.info("Retrying without proxy (direct connection)")
+
+                        await asyncio.sleep(wait_time)  # Progressive delay before retry
+                        continue
+                        
+                    # All retries failed
+                    logger.error("All download attempts failed")
+                    error_type = "network error" if is_network_error(last_error) else "error"
+                    logger.error(f"Final {error_type}: {str(last_error)}")
+                    raise last_error
             
             # Find downloaded file
             downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
@@ -1182,8 +1419,8 @@ class AudioDownloader:
             logger.error(f"YouTube download failed: {e}")
             # Proxy fallback for 403 Forbidden
             if ("403" in str(e) or "Forbidden" in str(e)):
-                logger.warning("403 Forbidden detected. Retrying with proxy...")
-                proxy_url = 'http://proxy.scrapeops.io:5353'  # Example reliable public proxy
+                logger.warning(f"403 Forbidden detected. Retrying with proxy {self.proxy_rotation}...")
+                proxy_url = self.PROXY_LIST[self.proxy_rotation - 1]  # Get current proxy from rotation
                 ydl_opts['proxy'] = proxy_url
                 try:
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -1195,14 +1432,17 @@ class AudioDownloader:
                         )
                     downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
                     if not downloaded_files:
-                        raise FileNotFoundError("Download failed - no file found (proxy)")
+                        raise FileNotFoundError(f"Download failed with proxy {self.proxy_rotation} - no file found")
+                        
+                    logger.info(f"Download successful using proxy {self.proxy_rotation}")
+                    downloader_logger.info(f"Download successful using proxy {self.proxy_rotation} ({proxy_url})")
                     downloaded_file = downloaded_files[0]
                     file_info = {
                         'title': info.get('title', 'Unknown'),
                         'artist': info.get('uploader', 'Unknown'),
                         'duration': info.get('duration', 0),
                         'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                        'platform': 'YouTube (proxy)'
+                        'platform': f'YouTube (proxy {self.proxy_rotation})'
                     }
                     # (Optional: repeat renaming and metadata logic here if needed)
                     return downloaded_file, file_info
@@ -1211,7 +1451,7 @@ class AudioDownloader:
                     return None
             return None
     
-    async def download_spotify_audio(self, url: str, quality: str, chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
+    async def download_spotify_audio(self, url: str, quality: str, chat_id: str = None, cancel_event: asyncio.Event = None) -> Optional[Tuple[Path, Dict]]:
         """Download Spotify audio using spotdl with Streamlit Cloud optimizations and checkpoint/resume support."""
         import hashlib
         import json
@@ -1312,6 +1552,10 @@ class AudioDownloader:
 
         # Otherwise, proceed with fresh download
         try:
+            # Check for cancellation before starting
+            if cancel_event and cancel_event.is_set():
+                raise asyncio.CancelledError("Download cancelled by user")
+
             # Quality mapping
             quality_map = {
                 "high": "320",
@@ -1325,11 +1569,13 @@ class AudioDownloader:
             output_dir = self.temp_dir / f"spotify_{int(time.time())}"
             output_dir.mkdir(exist_ok=True)
             
-            # Prepare spotdl command with better output handling for Streamlit Cloud
+            # Prepare spotdl command - use Python module to avoid PATH issues
+            python_exe = sys.executable
+
             if self.is_streamlit_cloud:
                 # Use a simpler output pattern for Streamlit Cloud
                 spotdl_cmd = [
-                    "spotdl",
+                    python_exe, "-m", "spotdl",
                     "download",
                     url,
                     "--bitrate", f"{bitrate}k",
@@ -1339,7 +1585,7 @@ class AudioDownloader:
                 ]
             else:
                 spotdl_cmd = [
-                    "spotdl",
+                    python_exe, "-m", "spotdl",
                     "download",
                     url,
                     "--bitrate", f"{bitrate}k",
@@ -1387,8 +1633,9 @@ class AudioDownloader:
                 process_timeout = 300  # 5 minutes for local
                 async_timeout = 320    # 5.3 minutes
 
-            result = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(
+            # Create download task with cancellation support
+            async def download_with_cancellation():
+                future = asyncio.get_event_loop().run_in_executor(
                     None,
                     lambda: sp.run(
                         spotdl_cmd,
@@ -1397,9 +1644,25 @@ class AudioDownloader:
                         timeout=process_timeout,
                         cwd=str(output_dir)
                     )
-                ),
+                )
+
+                if cancel_event:
+                    while not future.done():
+                        if cancel_event.is_set():
+                            # Attempt to cancel the running download
+                            future.cancel()
+                            raise asyncio.CancelledError("Download cancelled by user")
+                        await asyncio.sleep(0.5)  # Check cancel_event every 0.5 seconds
+                return await future
+
+            result = await asyncio.wait_for(
+                download_with_cancellation(),
                 timeout=async_timeout
             )
+
+            # Check for cancellation after download
+            if cancel_event and cancel_event.is_set():
+                raise asyncio.CancelledError("Download cancelled by user")
 
             # Log detailed output for debugging
             logger.info(f"spotdl exit code: {result.returncode}")
