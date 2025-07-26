@@ -15,7 +15,11 @@ import hashlib
 import json
 from datetime import datetime, timedelta
 import shutil
-from logging_utils import logger, downloader_logger
+from logging_utils import setup_loggers
+
+# Setup loggers
+logger, _ = setup_loggers()  # Use bot_logger as the main logger
+downloader_logger = logger  # Use the same logger for downloader
 
 try:
     import yt_dlp
