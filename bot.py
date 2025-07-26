@@ -17,7 +17,8 @@ try:
         check_song_start, last_sung_start, check_song_input, ENTER_SONG, 
         last_sung_input, ENTER_LAST_SONG, 
         date_start, date_input, ASK_DATE, last_show_all_dates_callback,
-        bible_start, bible_input_handler, bible_confirm_handler, BIBLE_INPUT, BIBLE_CONFIRM
+        bible_start, bible_input_handler, bible_confirm_handler, BIBLE_INPUT, BIBLE_CONFIRM,
+        handle_song_code
     )
     from telegram_handlers.conversations import (
         SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT,
@@ -27,7 +28,7 @@ try:
         theme_type_choice, handle_theme_type, handle_theme_selection, handle_year_filter, handle_theme_typo_confirm, THEME_TYPE, THEME_SELECTION, YEAR_FILTER, TYPO_CONFIRM,
         start_vocabulary, category_selection, CATEGORY_SELECTION,
         download_start, download_url_input, download_quality_selection, ENTER_URL, SELECT_QUALITY,
-        start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback, handle_song_code,
+        start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback,
         handle_admin_reply_selection, handle_admin_reply_message, ADMIN_REPLY_MESSAGE, cancel_download,
         bible_game_start, bible_game_language_handler, bible_game_difficulty_handler, bible_game_question_handler, BIBLE_GAME_LANGUAGE, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION
     )
