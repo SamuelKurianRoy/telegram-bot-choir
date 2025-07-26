@@ -7,7 +7,6 @@ import os
 import re
 import time
 import asyncio
-import logging
 import subprocess as sp
 import platform
 from pathlib import Path
@@ -16,6 +15,7 @@ import hashlib
 import json
 from datetime import datetime, timedelta
 import shutil
+from logging_utils import logger, downloader_logger
 
 try:
     import yt_dlp
@@ -34,22 +34,24 @@ except ImportError:
     tempfile = None
     tarfile = None
 
-# Setup logging
-logger = logging.getLogger(__name__)
-
-# Setup file logging for downloader (will be uploaded to BFILE_ID)
-downloader_logger = logging.getLogger("downloader_debug")
-if not downloader_logger.handlers:
-    downloader_logger.setLevel(logging.INFO)
-    downloader_logger.propagate = False
-
-    # File handler for downloader logs
-    downloader_handler = logging.FileHandler("downloader_log.txt", mode='w', encoding='utf-8')
-    downloader_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-    downloader_logger.addHandler(downloader_handler)
+# Note: loggers are imported from logging_utils
 
 class AudioDownloader:
     """Audio downloader class for YouTube and Spotify"""
+    
+    # Class variable to track proxy rotation
+    proxy_rotation = 1  # Starts from 1, can go up to 7
+    
+    # List of reliable proxies
+    PROXY_LIST = [
+        None,  # No proxy (direct connection)
+        'socks5://178.128.86.106:8112',  # Public SOCKS5 proxy
+        'socks5://170.187.195.76:9150',  # Public SOCKS5 proxy
+        'socks5://43.231.59.147:9051',   # Public SOCKS5 proxy
+        'socks5://103.121.89.75:8443',   # Public SOCKS5 proxy
+        'socks5://51.68.189.108:8443',   # Public SOCKS5 proxy
+        'socks5://45.55.32.201:9050'     # Public SOCKS5 proxy
+    ]
 
     def __init__(self, temp_dir: str = "temp"):
         # Detect if running on Streamlit Cloud
@@ -59,6 +61,10 @@ class AudioDownloader:
 
         self.temp_dir = Path(temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
+        
+        # Log current proxy rotation
+        logger.info(f"Current proxy rotation: {self.proxy_rotation}")
+        downloader_logger.info(f"Current proxy rotation: {self.proxy_rotation}")
 
         # Set FFmpeg path - use the complete setup from audio_downloader_bot.py
         self.ffmpeg_path = asyncio.run(self._setup_ffmpeg())
@@ -868,6 +874,37 @@ class AudioDownloader:
         ]
         url_lower = url.lower()
         return any(domain in url_lower for domain in supported_domains)
+
+    async def cleanup_temp_files(self) -> int:
+        """Clean up temp files older than 24 hours. This should only be called by admin command."""
+        from datetime import datetime, timedelta
+        import time
+
+        now = datetime.now()
+        cleaned_count = 0
+        for f in Path(self.temp_dir).glob("*"):
+            if f.is_file() and f.suffix in {'.mp3', '.json'}:
+                try:
+                    mtime = datetime.fromtimestamp(f.stat().st_mtime)
+                    if now - mtime > timedelta(hours=24):
+                        try:
+                            initial_size = f.stat().st_size
+                            time.sleep(0.1)  # Brief pause to ensure file is not being written
+                            if f.exists() and f.stat().st_size == initial_size:
+                                f.unlink()
+                                cleaned_count += 1
+                                logger.info(f"Cleaned up old temp file: {f}")
+                        except PermissionError:
+                            logger.warning(f"File {f} is in use, skipping cleanup")
+                        except Exception as e:
+                            logger.warning(f"Failed to delete old temp file {f}: {e}")
+                except FileNotFoundError:
+                    pass  # File was already deleted
+                except Exception as e:
+                    logger.warning(f"Error checking temp file {f}: {e}")
+        
+        logger.info(f"Cleanup completed. Removed {cleaned_count} old temp files.")
+        return cleaned_count
     
     async def extract_info(self, url: str) -> Optional[Dict]:
         """Extract basic info from URL"""
@@ -927,16 +964,16 @@ class AudioDownloader:
             logger.error(f"Error extracting Spotify info: {e}")
             return None
 
-    async def download_audio(self, url: str, quality: str = "medium", chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
-        """Download audio from URL, passing chat_id for checkpoint/resume."""
+    async def download_audio(self, url: str, quality: str = "medium", chat_id: str = None, cancel_event: asyncio.Event = None) -> Optional[Tuple[Path, Dict]]:
+        """Download audio from URL, passing chat_id for checkpoint/resume and cancel_event for cancellation."""
         platform = self.detect_platform(url)
         if platform == 'Spotify':
-            return await self.download_spotify_audio(url, quality, chat_id=chat_id)
+            return await self.download_spotify_audio(url, quality, chat_id=chat_id, cancel_event=cancel_event)
         else:
-            return await self.download_youtube_audio(url, quality, chat_id=chat_id)
+            return await self.download_youtube_audio(url, quality, chat_id=chat_id, cancel_event=cancel_event)
     
-    async def download_youtube_audio(self, url: str, quality: str, chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
-        """Download audio from YouTube using yt-dlp, with checkpoint/resume support."""
+    async def download_youtube_audio(self, url: str, quality: str, chat_id: str = None, cancel_event: asyncio.Event = None) -> Optional[Tuple[Path, Dict]]:
+        """Download audio from YouTube using yt-dlp, with checkpoint/resume support and cancellation."""
         import hashlib
         import json
         from datetime import datetime, timedelta
@@ -960,9 +997,6 @@ class AudioDownloader:
                             f.unlink()
                         except Exception as e:
                             logger.warning(f"Failed to delete old temp file {f}: {e}")
-
-        # Clean up old temp files
-        cleanup_old_temp_files()
 
         track_id = get_track_id(url)
         if not chat_id:
@@ -1048,6 +1082,13 @@ class AudioDownloader:
             temp_filename = f"audio_youtube_{int(time.time())}"
             temp_filepath = self.temp_dir / temp_filename
             
+            # Get current proxy from rotation
+            current_proxy = self.PROXY_LIST[self.proxy_rotation - 1]
+            if current_proxy:
+                logger.info(f"Using proxy {self.proxy_rotation}/7: {current_proxy}")
+            else:
+                logger.info("Attempting download without proxy (direct connection)")
+            
             ydl_opts = {
                 'format': 'bestaudio/best',
                 'outtmpl': str(temp_filepath) + '.%(ext)s',
@@ -1059,6 +1100,10 @@ class AudioDownloader:
                 'quiet': True,
                 'no_warnings': True,
             }
+
+            # Only add proxy if one is specified
+            if current_proxy:
+                ydl_opts['proxy'] = current_proxy
 
             # Add FFmpeg location if found (using same logic as audio_downloader_bot.py)
             if self.ffmpeg_path == "system":
@@ -1075,14 +1120,123 @@ class AudioDownloader:
                 # Remove post-processors that require FFmpeg
                 ydl_opts['postprocessors'] = []
             
-            # Download with timeout
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
-                        None, lambda: ydl.extract_info(url, download=True)
-                    ),
-                    timeout=300  # 5 minute timeout
-                )
+            # Download with timeout and error handling
+            # Download with retries
+            max_retries = 3
+            retry_count = 0
+            last_error = None
+            
+            def is_network_error(e):
+                error_str = str(e).lower()
+                network_indicators = [
+                    'network',
+                    'socket',
+                    'timeout',
+                    'connection',
+                    'unreachable',
+                    'no route',
+                    'proxy',
+                    'ssl',
+                    'dns',
+                    'http',
+                    '407',  # Proxy authentication
+                    '429',  # Too many requests
+                    '503',  # Service unavailable
+                    '504',  # Gateway timeout
+                ]
+
+                # Check for specific yt-dlp errors that indicate network issues
+                yt_dlp_network_errors = [
+                    'unable to download video data',
+                    'unable to download webpage',
+                    'unable to extract video data',
+                    'http error',
+                    'unable to download api webpage',
+                    'video unavailable',
+                    'this video is unavailable',
+                    'private video',
+                    'video is private',
+                    'sign in to confirm your age'
+                ]
+                
+                return any(indicator in error_str for indicator in network_indicators + yt_dlp_network_errors)
+            
+            async def download_with_cancellation():
+                future = asyncio.get_event_loop().run_in_executor(None, lambda: ydl.extract_info(url, download=True))
+                if cancel_event:
+                    while not future.done():
+                        if cancel_event.is_set():
+                            # Attempt to cancel the running download
+                            future.cancel()
+                            raise asyncio.CancelledError("Download cancelled by user")
+                        await asyncio.sleep(0.5)  # Check cancel_event every 0.5 seconds
+                return await future
+
+            while retry_count < max_retries:
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        try:
+                            if cancel_event and cancel_event.is_set():
+                                raise asyncio.CancelledError("Download cancelled by user")
+                                
+                            info = await asyncio.wait_for(
+                                download_with_cancellation(),
+                                timeout=300  # 5 minute timeout
+                            )
+                            logger.info(f"Successfully extracted video info: {info.get('title', 'Unknown')}")
+                            proxy_desc = f"proxy {self.proxy_rotation}" if current_proxy else "direct connection"
+                            downloader_logger.info(f"Download successful with {proxy_desc}")
+                            break  # Success, exit the retry loop
+                        except asyncio.TimeoutError:
+                            raise Exception("Download timed out after 5 minutes")
+                except (Exception, asyncio.CancelledError) as e:
+                    if isinstance(e, asyncio.CancelledError):
+                        logger.info("Download cancelled by user")
+                        downloader_logger.info("Download cancelled by user")
+                        return None
+                        
+                    last_error = e
+                    retry_count += 1
+                    proxy_desc = f"proxy {self.proxy_rotation}" if current_proxy else "direct connection"
+                    error_type = "network error" if is_network_error(e) else "error"
+                    
+                    # Enhanced error logging
+                    error_details = str(e)
+                    if hasattr(e, '__cause__') and e.__cause__:
+                        error_details += f"\nCaused by: {str(e.__cause__)}"
+                    if hasattr(e, 'exc_info'):
+                        error_details += f"\nException info: {str(e.exc_info)}"
+                        
+                    logger.error(f"YouTube download attempt {retry_count} failed with {error_type} using {proxy_desc}:")
+                    logger.error(f"Error details: {error_details}")
+                    downloader_logger.error(f"YouTube download attempt {retry_count} failed with {error_type} using {proxy_desc}:")
+                    downloader_logger.error(f"Error details: {error_details}")
+                    
+                    if retry_count < max_retries:
+                        wait_time = retry_count * 2  # Progressive backoff: 2s, 4s, 6s
+                        
+                        # Network errors trigger proxy rotation
+                        if is_network_error(e):
+                            self.proxy_rotation = (self.proxy_rotation % 7) + 1
+                            current_proxy = self.PROXY_LIST[self.proxy_rotation - 1]
+                            if current_proxy:
+                                ydl_opts['proxy'] = current_proxy
+                                logger.info(f"Network error detected. Retrying with proxy {self.proxy_rotation}/7: {current_proxy}")
+                            else:
+                                if 'proxy' in ydl_opts:
+                                    del ydl_opts['proxy']
+                                logger.info("Network error detected. Retrying without proxy (direct connection)")
+                        else:
+                            logger.info(f"Non-network error detected. Retrying with same connection after {wait_time}s delay")
+                            
+                        await asyncio.sleep(wait_time)  # Progressive delay before retry
+                        continue
+                        
+                    # All retries failed
+                    logger.error("All download attempts failed")
+                    error_type = "network error" if is_network_error(last_error) else "error"
+                    logger.error(f"Final {error_type}: {str(last_error)}")
+                    raise last_error
             
             # Find downloaded file
             downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
@@ -1182,8 +1336,8 @@ class AudioDownloader:
             logger.error(f"YouTube download failed: {e}")
             # Proxy fallback for 403 Forbidden
             if ("403" in str(e) or "Forbidden" in str(e)):
-                logger.warning("403 Forbidden detected. Retrying with proxy...")
-                proxy_url = 'http://proxy.scrapeops.io:5353'  # Example reliable public proxy
+                logger.warning(f"403 Forbidden detected. Retrying with proxy {self.proxy_rotation}...")
+                proxy_url = self.PROXY_LIST[self.proxy_rotation - 1]  # Get current proxy from rotation
                 ydl_opts['proxy'] = proxy_url
                 try:
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -1195,14 +1349,17 @@ class AudioDownloader:
                         )
                     downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
                     if not downloaded_files:
-                        raise FileNotFoundError("Download failed - no file found (proxy)")
+                        raise FileNotFoundError(f"Download failed with proxy {self.proxy_rotation} - no file found")
+                        
+                    logger.info(f"Download successful using proxy {self.proxy_rotation}")
+                    downloader_logger.info(f"Download successful using proxy {self.proxy_rotation} ({proxy_url})")
                     downloaded_file = downloaded_files[0]
                     file_info = {
                         'title': info.get('title', 'Unknown'),
                         'artist': info.get('uploader', 'Unknown'),
                         'duration': info.get('duration', 0),
                         'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                        'platform': 'YouTube (proxy)'
+                        'platform': f'YouTube (proxy {self.proxy_rotation})'
                     }
                     # (Optional: repeat renaming and metadata logic here if needed)
                     return downloaded_file, file_info

@@ -1952,6 +1952,147 @@ async def handle_year_filter(update: Update, context: CallbackContext) -> int:
 
     message_parts = [f"📅 *Theme:* `{theme}` – *Year:* {s_year}"]
 
+    # Add the known items
+    if sung_known:
+        message_parts.append(f"✅ *Known {theme_type.capitalize()}s sung this year:*\n" + "\n".join(sung_known))
+    else:
+        message_parts.append(f"❌ *No known {theme_type} sung this year.*")
+
+    # Add the unknown items
+    if not_sung_unknown:
+        message_parts.append(f"❌ *Unknown {theme_type.capitalize()}s not sung this year:*\n" + "\n".join(not_sung_unknown))
+    else:
+        message_parts.append(f"🎉 *All known {theme_type} have been sung this year!*\n")
+
+    # Add the total count
+    total_known = len(known)
+    total_unknown = len(unknown)
+    message_parts.append(f"📊 *Total {theme_type.capitalize()}s in this theme:*\n"
+                         f"✅ Known: {total_known}\n"
+                         f"❌ Unknown: {total_unknown}")
+
+    await send_long_message(update, message_parts)
+    return ConversationHandler.END
+
+# --- Conversation States ---
+# Example: CHECK_SONG, ENTER_SONG, etc.
+# TODO: Define all necessary states for conversations
+
+# --- Conversation Flows ---
+# TODO: Implement conversation entry points and state handlers for each major conversation 
+
+print("Reached Telegram Bot code")
+ 
+
+#Telegram bot
+ 
+ 
+ 
+#/check
+
+ 
+
+
+
+ #/notation
+
+ASK_HYMN_NO = range(1)
+
+
+# Function to send notation images
+def normalize_tune(tune):
+     return re.sub(r'[^a-z0-9]', '', tune.lower())
+
+
+# === EXTRACT FOLDER ID ===
+def extract_folder_id(folder_url):
+     match = re.search(r'/folders/([a-zA-Z0-9_-]+)', folder_url)
+     if match:
+         return match.group(1)
+     raise ValueError("Invalid folder URL")
+ 
+ # === FETCH ALL IMAGE FILES ===
+def get_image_files_from_folder(folder_url):
+     try:
+         folder_id = extract_folder_id(folder_url)
+         drive_service = get_drive_service()
+         file_map = {}
+         page_token = None
+         max_retries = 3
+         retry_count = 0
+
+         while True:
+             try:
+                 response = drive_service.files().list(
+                     q=f"'{folder_id}' in parents and mimeType='application/pdf' and trashed = false",
+                     fields="nextPageToken, files(id, name)",
+                     pageToken=page_token,
+                     pageSize=100  # Limit page size to avoid large responses
+                 ).execute()
+
+                 # Reset retry count on successful request
+                 retry_count = 0
+
+                 for file in response.get('files', []):
+                     try:
+                         page_num = int(file['name'].split('.')[0])
+                         file_map[page_num] = file['id']
+                     except ValueError:
+                         continue  # Skip files that don't start with a number
+
+                 page_token = response.get('nextPageToken', None)
+                 if page_token is None:
+                     break
+
+             except Exception as e:
+                 retry_count += 1
+                 if retry_count >= max_retries:
+                     print(f"❌ Failed to load images after {max_retries} retries: {e}")
+                     break
+                 print(f"⚠️ Retry {retry_count}/{max_retries} for loading images: {e}")
+                 import time
+                 time.sleep(2 ** retry_count)  # Exponential backoff
+
+         return file_map
+
+     except Exception as e:
+         print(f"❌ Error initializing image file loading: {e}")
+         return {}
+ 
+ # === DOWNLOAD IMAGE ===
+def download_image(file_id, filename):
+    try:
+        url = f"https://drive.google.com/uc?id={file_id}&export=download"
+        response = requests.get(url, allow_redirects=True)
+        if response.status_code == 200:
+            save_path = os.path.join(DOWNLOAD_DIR, filename)
+            with open(save_path, 'wb') as f:
+                f.write(response.content)
+            return save_path
+        else:
+            print(f"Failed to download PDF: Status code {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"Error downloading PDF: {str(e)}")
+        return None
+ 
+ # === GET IMAGE FOR PAGE ===
+def get_image_by_page(page_number, file_map):
+     page_number = int(page_number)
+     if page_number in file_map:
+         file_id = file_map[page_number]
+         filename = f"{page_number}.pdf"
+         downloaded_path = download_image(file_id, filename)
+         if downloaded_path and os.path.exists(downloaded_path) and os.path.getsize(downloaded_path) > 0:
+             return downloaded_path
+         else:
+             print(f"Failed to download or verify PDF for page {page_number}")
+             return None
+     else:
+         print(f"Page {page_number} not found in file map")
+         return None
+ 
+ #
     if sung_known:
         message_parts.append(f"✅ *Songs that were Sung ({len(sung_known)} total):*\n" + "\n".join(sung_known))
     if not_sung_known:
