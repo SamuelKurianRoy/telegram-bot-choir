@@ -26,6 +26,7 @@ from telegram_handlers.handlers import is_authorized
 from config import get_config
 from downloader import AudioDownloader
 import logging
+import asyncio
 from telegram.constants import ParseMode
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -882,10 +883,11 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
     platform = context.user_data.get("platform")
 
     # Start download process
-    await update.message.reply_text(
+    progress_message = await update.message.reply_text(
         f"🎵 Starting download from {platform}...\n"
         f"Quality: {quality_text}\n\n"
-        "This may take a few minutes. Please wait...",
+        "This may take a few minutes. Please wait...\n"
+        "💡 Use /cancel to stop the download.",
         reply_markup=ReplyKeyboardRemove()
     )
 
@@ -898,20 +900,102 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
         download_request_entry = f"{timestamp} - {user.full_name} (@{user.username}, ID: {user.id}, ChatID: {chat_id}) requested download:\nPlatform: {platform} | Quality: {quality} | URL: {url}\n\n"
 
         if yfile_id:
-            append_download_to_google_doc(yfile_id, download_request_entry)
+            try:
+                append_download_to_google_doc(yfile_id, download_request_entry)
+            except Exception as log_error:
+                bot_logger.error(f"Error logging download request: {log_error}")
 
         # Initialize downloader
         downloader = AudioDownloader()
 
-        # Download the audio
-        result = await downloader.download_audio(url, quality, chat_id=chat_id)
+        # Create a cancellation event
+        cancel_event = asyncio.Event()
+
+        # Store the cancel event in context for potential cancellation
+        context.user_data["cancel_event"] = cancel_event
+        context.user_data["download_in_progress"] = True
+
+        # Download the audio with timeout and cancellation support
+        try:
+            # Create a task for the download
+            download_task = asyncio.create_task(
+                downloader.download_audio(url, quality, chat_id=str(chat_id), cancel_event=cancel_event)
+            )
+
+            # Create a task for progress updates
+            async def send_progress_updates():
+                await asyncio.sleep(30)  # Wait 30 seconds
+                if not download_task.done() and not cancel_event.is_set():
+                    try:
+                        await progress_message.edit_text(
+                            f"🎵 Download in progress from {platform}...\n"
+                            f"Quality: {quality_text}\n\n"
+                            "⏳ Still downloading... This may take a while for longer videos.\n"
+                            "💡 Use /cancel to stop the download."
+                        )
+                    except Exception:
+                        pass  # Ignore edit errors
+
+                await asyncio.sleep(60)  # Wait another minute
+                if not download_task.done() and not cancel_event.is_set():
+                    try:
+                        await progress_message.edit_text(
+                            f"🎵 Download in progress from {platform}...\n"
+                            f"Quality: {quality_text}\n\n"
+                            "⏳ Download is taking longer than expected...\n"
+                            "💡 Use /cancel to stop the download."
+                        )
+                    except Exception:
+                        pass  # Ignore edit errors
+
+            # Start progress updates
+            progress_task = asyncio.create_task(send_progress_updates())
+
+            # Wait for download with timeout
+            result = await asyncio.wait_for(download_task, timeout=600)  # 10 minutes timeout
+
+            # Cancel progress updates
+            progress_task.cancel()
+        except asyncio.TimeoutError:
+            # Cancel progress updates
+            if 'progress_task' in locals():
+                progress_task.cancel()
+
+            await update.message.reply_text(
+                "⏰ Download timed out after 10 minutes.\n\n"
+                "This usually happens with very long videos or slow internet.\n"
+                "Please try again with a shorter video or check your connection.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            context.user_data.pop("cancel_event", None)
+            context.user_data.pop("download_in_progress", None)
+            return ConversationHandler.END
+        except asyncio.CancelledError:
+            # Cancel progress updates
+            if 'progress_task' in locals():
+                progress_task.cancel()
+
+            await update.message.reply_text(
+                "❌ Download was cancelled by user.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            context.user_data.pop("cancel_event", None)
+            context.user_data.pop("download_in_progress", None)
+            return ConversationHandler.END
+        finally:
+            # Clean up context
+            context.user_data.pop("cancel_event", None)
+            context.user_data.pop("download_in_progress", None)
 
         if result is None:
             # Log failed download to Google Doc
             download_failed_entry = f"{timestamp} - DOWNLOAD FAILED for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | URL: {url}\n\n"
 
             if yfile_id:
-                append_download_to_google_doc(yfile_id, download_failed_entry)
+                try:
+                    append_download_to_google_doc(yfile_id, download_failed_entry)
+                except Exception as log_error:
+                    bot_logger.error(f"Error logging download failure: {log_error}")
 
             await update.message.reply_text(
                 "❌ Download failed. Please try again or contact the administrator."
@@ -920,25 +1004,50 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
 
         file_path, file_info = result
 
-        # Send the audio file
-        await update.message.reply_text(
-            f"✅ Download completed!\n\n"
-            f"🎵 *{file_info['title']}*\n"
-            f"👤 *Artist:* {file_info['artist']}\n"
-            f"📱 *Platform:* {file_info['platform']}\n"
-            f"📊 *Size:* {file_info['size_mb']:.1f} MB\n\n"
-            "Sending file...",
-            parse_mode="Markdown"
-        )
+        # Cancel progress updates
+        if 'progress_task' in locals():
+            progress_task.cancel()
+
+        # Show download completion
+        try:
+            await progress_message.edit_text(
+                f"✅ *Download completed!*\n\n"
+                f"🎵 *{file_info['title']}*\n"
+                f"👤 *Artist:* {file_info['artist']}\n"
+                f"📱 *Platform:* {file_info['platform']}\n"
+                f"📊 *Size:* {file_info['size_mb']:.1f} MB\n\n"
+                "Sending file...",
+                parse_mode="Markdown"
+            )
+        except Exception:
+            # If edit fails, send a new message
+            await update.message.reply_text(
+                f"✅ *Download completed!*\n\n"
+                f"🎵 *{file_info['title']}*\n"
+                f"👤 *Artist:* {file_info['artist']}\n"
+                f"📱 *Platform:* {file_info['platform']}\n"
+                f"📊 *Size:* {file_info['size_mb']:.1f} MB\n\n"
+                "Sending file...",
+                parse_mode="Markdown"
+            )
 
         # Send the audio file
-        with open(file_path, 'rb') as audio_file:
-            await update.message.reply_audio(
-                audio=audio_file,
-                title=file_info['title'],
-                performer=file_info['artist'],
-                duration=file_info.get('duration', 0)
+        try:
+            with open(file_path, 'rb') as audio_file:
+                await update.message.reply_audio(
+                    audio=audio_file,
+                    title=file_info['title'],
+                    performer=file_info['artist'],
+                    duration=file_info.get('duration', 0)
+                )
+        except Exception as send_error:
+            bot_logger.error(f"Error sending audio file: {send_error}")
+            await update.message.reply_text(
+                "❌ Download completed but failed to send the audio file. Please try again."
             )
+            # Clean up the file since we couldn't send it
+            downloader.cleanup_file(file_path)
+            return ConversationHandler.END
 
         # Log successful download
         user_logger.info(f"Download completed for {user.full_name} ({user.id}): {file_info['title']}")
@@ -947,7 +1056,10 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
         download_success_entry = f"{timestamp} - DOWNLOAD SUCCESS for {user.full_name} (@{user.username}, ID: {user.id}):\nTitle: {file_info['title']} | Artist: {file_info['artist']} | Platform: {file_info['platform']} | Size: {file_info['size_mb']:.1f}MB | Quality: {quality}\nURL: {url}\n\n"
 
         if yfile_id:
-            append_download_to_google_doc(yfile_id, download_success_entry)
+            try:
+                append_download_to_google_doc(yfile_id, download_success_entry)
+            except Exception as log_error:
+                bot_logger.error(f"Error logging download success: {log_error}")
 
         # Clean up the file
         downloader.cleanup_file(file_path)
@@ -963,15 +1075,66 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
         bot_logger.error(f"Download error for user {user.id}: {e}")
 
         # Log error to Google Doc
-        download_error_entry = f"{timestamp} - DOWNLOAD ERROR for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | Error: {str(e)}\nURL: {url}\n\n"
+        error_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        download_error_entry = f"{error_timestamp} - DOWNLOAD ERROR for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | Error: {str(e)}\nURL: {url}\n\n"
 
         if yfile_id:
-            append_download_to_google_doc(yfile_id, download_error_entry)
+            try:
+                append_download_to_google_doc(yfile_id, download_error_entry)
+            except Exception as log_error:
+                bot_logger.error(f"Error logging download error: {log_error}")
 
         await update.message.reply_text(
             "❌ An error occurred during download. Please try again later."
         )
         return ConversationHandler.END
+
+# Custom cancel handler for downloads
+async def cancel_download(update: Update, context: CallbackContext) -> int:
+    """Cancel handler that can interrupt downloads"""
+    user = update.effective_user
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /cancel")
+
+    # Check if download is in progress
+    if context.user_data.get("download_in_progress", False):
+        # Signal cancellation
+        cancel_event = context.user_data.get("cancel_event")
+        if cancel_event:
+            cancel_event.set()
+
+        # Clean up context
+        context.user_data.pop("cancel_event", None)
+        context.user_data.pop("download_in_progress", None)
+        context.user_data.pop("download_url", None)
+        context.user_data.pop("platform", None)
+
+        try:
+            await update.message.reply_text(
+                "❌ Download cancelled successfully.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        except Exception as e:
+            bot_logger.error(f"Error sending cancel message: {e}")
+            # Try to send a simpler message without keyboard removal
+            try:
+                await update.message.reply_text("❌ Download cancelled.")
+            except Exception as e2:
+                bot_logger.error(f"Error sending simple cancel message: {e2}")
+    else:
+        # Regular cancel
+        try:
+            await update.message.reply_text(
+                "Operation canceled.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        except Exception as e:
+            bot_logger.error(f"Error sending cancel message: {e}")
+            try:
+                await update.message.reply_text("Operation canceled.")
+            except Exception as e2:
+                bot_logger.error(f"Error sending simple cancel message: {e2}")
+
+    return ConversationHandler.END
 
 
 # Telegram command handler for /tune command
@@ -1954,20 +2117,20 @@ async def handle_year_filter(update: Update, context: CallbackContext) -> int:
 
     # Add the known items
     if sung_known:
-        message_parts.append(f"✅ *Known {theme_type.capitalize()}s sung this year:*\n" + "\n".join(sung_known))
+        message_parts.append(f"✅ *Known {theme_type.capitalize()} sung this year:*\n" + "\n".join(sung_known))
     else:
         message_parts.append(f"❌ *No known {theme_type} sung this year.*")
 
     # Add the unknown items
     if not_sung_unknown:
-        message_parts.append(f"❌ *Unknown {theme_type.capitalize()}s not sung this year:*\n" + "\n".join(not_sung_unknown))
+        message_parts.append(f"❌ *Unknown {theme_type.capitalize()} not sung this year:*\n" + "\n".join(not_sung_unknown))
     else:
         message_parts.append(f"🎉 *All known {theme_type} have been sung this year!*\n")
 
     # Add the total count
     total_known = len(known)
     total_unknown = len(unknown)
-    message_parts.append(f"📊 *Total {theme_type.capitalize()}s in this theme:*\n"
+    message_parts.append(f"📊 *Total {theme_type.capitalize()} in this theme:*\n"
                          f"✅ Known: {total_known}\n"
                          f"❌ Unknown: {total_unknown}")
 

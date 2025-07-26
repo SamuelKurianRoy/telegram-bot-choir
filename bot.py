@@ -28,7 +28,7 @@ try:
         start_vocabulary, category_selection, CATEGORY_SELECTION,
         download_start, download_url_input, download_quality_selection, ENTER_URL, SELECT_QUALITY,
         start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback, handle_song_code,
-        handle_admin_reply_selection, handle_admin_reply_message, ADMIN_REPLY_MESSAGE,
+        handle_admin_reply_selection, handle_admin_reply_message, ADMIN_REPLY_MESSAGE, cancel_download,
         bible_game_start, bible_game_language_handler, bible_game_difficulty_handler, bible_game_question_handler, BIBLE_GAME_LANGUAGE, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION
     )
 except ImportError as e:
@@ -157,7 +157,10 @@ download_conv_handler = ConversationHandler(
         ENTER_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, download_url_input)],
         SELECT_QUALITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, download_quality_selection)],
     },
-    fallbacks=[CommandHandler("cancel", cancel)],
+    fallbacks=[CommandHandler("cancel", cancel_download)],
+    per_message=False,
+    per_chat=True,
+    per_user=True
 )
 notation_conv_handler = ConversationHandler(
     entry_points=[CommandHandler("notation", notation)],
