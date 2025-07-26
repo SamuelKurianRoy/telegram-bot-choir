@@ -411,18 +411,46 @@ def get_image_files_from_folder(folder_url):
  # === DOWNLOAD IMAGE ===
 def download_image(file_id, filename):
     try:
-        url = f"https://drive.google.com/uc?id={file_id}&export=download"
-        response = requests.get(url, allow_redirects=True)
-        if response.status_code == 200:
-            save_path = os.path.join(DOWNLOAD_DIR, filename)
-            with open(save_path, 'wb') as f:
-                f.write(response.content)
+        # Use Google Drive API instead of direct download URL for better reliability
+        drive_service = get_drive_service()
+
+        # Get file metadata first to check if it exists
+        try:
+            file_metadata = drive_service.files().get(fileId=file_id).execute()
+        except Exception as e:
+            print(f"File {file_id} not found or not accessible: {e}")
+            return None
+
+        # Download the file content
+        request = drive_service.files().get_media(fileId=file_id)
+
+        # Create a BytesIO object to store the downloaded content
+        import io
+        file_content = io.BytesIO()
+
+        from googleapiclient.http import MediaIoBaseDownload
+        downloader = MediaIoBaseDownload(file_content, request)
+
+        done = False
+        while done is False:
+            status, done = downloader.next_chunk()
+
+        # Save the content to file
+        save_path = os.path.join(DOWNLOAD_DIR, filename)
+        file_content.seek(0)
+
+        with open(save_path, 'wb') as f:
+            f.write(file_content.read())
+
+        # Verify the file was downloaded correctly
+        if os.path.exists(save_path) and os.path.getsize(save_path) > 0:
             return save_path
         else:
-            print(f"Failed to download PDF: Status code {response.status_code}")
+            print(f"Downloaded file {filename} is empty or corrupted")
             return None
+
     except Exception as e:
-        print(f"Error downloading PDF: {str(e)}")
+        print(f"Error downloading PDF {filename}: {str(e)}")
         return None
  
  # === GET IMAGE FOR PAGE ===
@@ -460,6 +488,11 @@ def Music_notation_downloader(hymnno, file_map):
         hymnno = hymnno[2:]
     hymnno = int(hymnno)
     results = {}
+
+    # Get data
+    data = get_all_data()
+    dfH = data["dfH"]
+    dfTH = data["dfTH"]
 
     # Get tunes for the hymn
     tunes_str = dfH["Tunes"][hymnno - 1]
@@ -623,6 +656,20 @@ async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         # If there's only one page, send it directly
         if len(pdf_files) == 1:
+            # Verify the PDF file is valid before sending
+            try:
+                from PyPDF2 import PdfReader
+                with open(pdf_files[0], 'rb') as test_file:
+                    reader = PdfReader(test_file)
+                    if len(reader.pages) == 0:
+                        raise Exception("PDF file is empty or corrupted")
+            except Exception as pdf_error:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"❌ PDF file for {song_id} ({tune_name}) is corrupted. Please try again later."
+                )
+                return
+
             with open(pdf_files[0], 'rb') as pdf_file:
                 await context.bot.send_document(
                     chat_id=chat_id,
@@ -631,27 +678,71 @@ async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE
                     caption=f"Notation for {song_id} ({tune_name})"
                 )
         else:
-            # If there are multiple pages, merge them
+            # If there are multiple pages, merge them with better error handling
             merger = PdfMerger()
-            for pdf in pdf_files:
-                merger.append(pdf)
+            valid_pdfs = []
+
+            # Validate each PDF before merging
+            for pdf_path in pdf_files:
+                try:
+                    from PyPDF2 import PdfReader
+                    with open(pdf_path, 'rb') as test_file:
+                        reader = PdfReader(test_file)
+                        if len(reader.pages) > 0:
+                            valid_pdfs.append(pdf_path)
+                        else:
+                            print(f"Skipping empty PDF: {pdf_path}")
+                except Exception as pdf_error:
+                    print(f"Skipping corrupted PDF {pdf_path}: {pdf_error}")
+                    continue
+
+            if not valid_pdfs:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"❌ All PDF files for {song_id} ({tune_name}) are corrupted. Please try again later."
+                )
+                return
+
+            # Merge only valid PDFs
+            for pdf_path in valid_pdfs:
+                try:
+                    merger.append(pdf_path)
+                except Exception as merge_error:
+                    print(f"Error merging {pdf_path}: {merge_error}")
+                    continue
 
             # Create a temporary file for the merged PDF
             with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
-                merger.write(tmp_file.name)
-                merger.close()
+                try:
+                    merger.write(tmp_file.name)
+                    merger.close()
 
-                # Send the merged PDF
-                with open(tmp_file.name, 'rb') as merged_pdf:
-                    await context.bot.send_document(
+                    # Verify the merged PDF is valid
+                    from PyPDF2 import PdfReader
+                    with open(tmp_file.name, 'rb') as test_file:
+                        reader = PdfReader(test_file)
+                        if len(reader.pages) == 0:
+                            raise Exception("Merged PDF is empty")
+
+                    # Send the merged PDF
+                    with open(tmp_file.name, 'rb') as merged_pdf:
+                        await context.bot.send_document(
+                            chat_id=chat_id,
+                            document=merged_pdf,
+                            filename=f"{song_id}_{tune_name}_complete.pdf",
+                            caption=f"Complete notation for {song_id} ({tune_name}) - {len(valid_pdfs)} pages"
+                        )
+                except Exception as merge_error:
+                    await context.bot.send_message(
                         chat_id=chat_id,
-                        document=merged_pdf,
-                        filename=f"{song_id}_{tune_name}_complete.pdf",
-                        caption=f"Complete notation for {song_id} ({tune_name}) - {len(pdf_files)} pages"
+                        text=f"❌ Error creating merged PDF for {song_id} ({tune_name}): {str(merge_error)}"
                     )
-
-                # Clean up the temporary file
-                os.unlink(tmp_file.name)
+                finally:
+                    # Clean up the temporary file
+                    try:
+                        os.unlink(tmp_file.name)
+                    except:
+                        pass
 
     except Exception as e:
         await context.bot.send_message(chat_id=chat_id, text=f"❌ Error processing PDFs: {str(e)}")
@@ -660,7 +751,10 @@ async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def start_notation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📖 Please enter the hymn number (e.g. H-86):")
+    await update.message.reply_text(
+        "📖 Please enter the hymn or lyric number (e.g. H-86 or L-222):",
+        reply_markup=ReplyKeyboardRemove()
+    )
     return ASK_HYMN_NO
 
 async def receive_hymn_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -668,7 +762,12 @@ async def receive_hymn_number(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     tunes = Tune_finder_of_known_songs(song_id)
     if not tunes or tunes == "Invalid Number":
-        await update.message.reply_text(f"❌ No known tunes found for {song_id}. Try again or type /cancel to stop.")
+        await update.message.reply_text(
+            f"❌ No known tunes found for {song_id}.\n\n"
+            "Please check the number and try again, or type /cancel to stop.\n"
+            "Enter another hymn or lyric number:",
+            reply_markup=ReplyKeyboardRemove()
+        )
         return ASK_HYMN_NO
 
     if isinstance(tunes, str):
@@ -2157,215 +2256,14 @@ print("Reached Telegram Bot code")
 
 
 
- #/notation
-
-ASK_HYMN_NO = range(1)
 
 
-# Function to send notation images
-def normalize_tune(tune):
-     return re.sub(r'[^a-z0-9]', '', tune.lower())
 
 
-# === EXTRACT FOLDER ID ===
-def extract_folder_id(folder_url):
-     match = re.search(r'/folders/([a-zA-Z0-9_-]+)', folder_url)
-     if match:
-         return match.group(1)
-     raise ValueError("Invalid folder URL")
- 
- # === FETCH ALL IMAGE FILES ===
-def get_image_files_from_folder(folder_url):
-     try:
-         folder_id = extract_folder_id(folder_url)
-         drive_service = get_drive_service()
-         file_map = {}
-         page_token = None
-         max_retries = 3
-         retry_count = 0
-
-         while True:
-             try:
-                 response = drive_service.files().list(
-                     q=f"'{folder_id}' in parents and mimeType='application/pdf' and trashed = false",
-                     fields="nextPageToken, files(id, name)",
-                     pageToken=page_token,
-                     pageSize=100  # Limit page size to avoid large responses
-                 ).execute()
-
-                 # Reset retry count on successful request
-                 retry_count = 0
-
-                 for file in response.get('files', []):
-                     try:
-                         page_num = int(file['name'].split('.')[0])
-                         file_map[page_num] = file['id']
-                     except ValueError:
-                         continue  # Skip files that don't start with a number
-
-                 page_token = response.get('nextPageToken', None)
-                 if page_token is None:
-                     break
-
-             except Exception as e:
-                 retry_count += 1
-                 if retry_count >= max_retries:
-                     print(f"❌ Failed to load images after {max_retries} retries: {e}")
-                     break
-                 print(f"⚠️ Retry {retry_count}/{max_retries} for loading images: {e}")
-                 import time
-                 time.sleep(2 ** retry_count)  # Exponential backoff
-
-         return file_map
-
-     except Exception as e:
-         print(f"❌ Error initializing image file loading: {e}")
-         return {}
- 
- # === DOWNLOAD IMAGE ===
-def download_image(file_id, filename):
-    try:
-        url = f"https://drive.google.com/uc?id={file_id}&export=download"
-        response = requests.get(url, allow_redirects=True)
-        if response.status_code == 200:
-            save_path = os.path.join(DOWNLOAD_DIR, filename)
-            with open(save_path, 'wb') as f:
-                f.write(response.content)
-            return save_path
-        else:
-            print(f"Failed to download PDF: Status code {response.status_code}")
-            return None
-    except Exception as e:
-        print(f"Error downloading PDF: {str(e)}")
-        return None
- 
- # === GET IMAGE FOR PAGE ===
-def get_image_by_page(page_number, file_map):
-     page_number = int(page_number)
-     if page_number in file_map:
-         file_id = file_map[page_number]
-         filename = f"{page_number}.pdf"
-         downloaded_path = download_image(file_id, filename)
-         if downloaded_path and os.path.exists(downloaded_path) and os.path.getsize(downloaded_path) > 0:
-             return downloaded_path
-         else:
-             print(f"Failed to download or verify PDF for page {page_number}")
-             return None
-     else:
-         print(f"Page {page_number} not found in file map")
-         return None
  
 
 
-# Add this function to periodically upload logs
-async def periodic_log_upload():
-    """Periodically upload logs to Google Drive."""
-    # Get interval from environment variable or use default (1 hour)
-    try:
-        interval_seconds = int(os.environ.get("LOG_UPLOAD_INTERVAL", 3600))
-    except ValueError:
-        interval_seconds = 3600  # Default to 1 hour if not a valid integer
 
-    minutes = interval_seconds // 60
-    bot_logger.info(f"Periodic log upload scheduled every {minutes} minutes")
-
-    while True:
-        try:
-            # Wait for the specified interval
-            await asyncio.sleep(interval_seconds)
-
-            # Check if we should still be running
-            if not bot_should_run or check_stop_signal():
-                break
-
-            # Log the upload attempt
-            bot_logger.info(f"Performing scheduled log upload (every {minutes} minutes)")
-
-            # Upload logs to Google Drive
-            try:
-                upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
-                upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
-
-                # Also upload downloader log if it exists
-                if os.path.exists("downloader_log.txt"):
-                    upload_log_to_google_doc(st.secrets["BFILE_ID"], "downloader_log.txt")
-                    bot_logger.info("Downloader log uploaded to BFILE_ID")
-
-                # Note: Download logs are directly appended to YFILE_ID Google Doc, no file upload needed
-                bot_logger.info("Scheduled log upload completed successfully")
-            except Exception as e:
-                bot_logger.error(f"Scheduled log upload failed: {e}")
-
-        except asyncio.CancelledError:
-            # Task was cancelled
-            break
-        except Exception as e:
-            bot_logger.error(f"Error in periodic log upload task: {e}")
-            # Wait a bit before retrying
-            await asyncio.sleep(60)
-
-async def cancel(update: Update, context: CallbackContext) -> int:
-    user = update.effective_user
-    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /cancel")
-    await update.message.reply_text("Operation canceled.", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
-
- 
- 
-
-
- #Song Info Function
-async def handle_song_code(update: Update, context: CallbackContext) -> None:
-    data = get_all_data()
-    df = data["df"]
-    dfH = data["dfH"]
-    dfL = data["dfL"]
-    dfC = data["dfC"]
-    dfTH = data["dfTH"]
-    user_input_raw = update.message.text
-    user_input = standardize_hlc_value(user_input_raw)
-    song_type, _, song_number = user_input.partition('-')
-
-    # Validate basic format again if needed
-    if song_type not in ['H', 'L', 'C'] or not song_number.isdigit():
-        return  # Ignore bad formats silently
-
-    response_parts = []
-
-    # Get Name/Index info
-    Vocabulary = ChoirVocabulary(df, dfH, dfL, dfC)[0]
-    song_info = isVocabulary(user_input, Vocabulary, dfH, dfTH, Tune_finder_of_known_songs)
-    if 'was not found' not in song_info:
-        response_parts.append(f"🎵 <b>Song Info:</b> {song_info}")
-        last_sung = Datefinder(user_input, song_type, first=True)
-        response_parts.append(f"🗓️ <b>Last Sung:</b> {last_sung}")
-    else:
-        from data.datasets import IndexFinder
-        response_parts.append(f"Choir doesn't know {f'{user_input}: {IndexFinder(user_input)}'}")
-
-    # Send the reply
-    await update.message.reply_text(
-        "\n".join(response_parts),
-        parse_mode="HTML", disable_web_page_preview=True
-    )
-
-# Add a new function to run the bot asynchronously
-async def run_bot_async():
-    """Runs the bot asynchronously."""
-    try:
-        await main()
-    except Exception as e:
-        bot_logger.error(f"Error in bot: {e}")
-        global bot_should_run
-        bot_should_run = False
-
-# Add a function to stop the bot
-def stop_bot():
-    """Stops the bot gracefully."""
-    global bot_should_run
-    bot_should_run = False
-    bot_logger.info("Bot stop requested")
-    return True
     
 
 
