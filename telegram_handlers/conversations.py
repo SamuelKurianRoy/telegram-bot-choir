@@ -659,8 +659,8 @@ async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def start_notation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-   await update.message.reply_text("📖 Please enter the hymn number (e.g. H-86):")
-   return ASK_HYMN_NO
+    await update.message.reply_text("📖 Please enter the hymn number (e.g. H-86):")
+    return ASK_HYMN_NO
 
 async def receive_hymn_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     song_id = standardize_hlc_value(update.message.text.strip())
@@ -2092,17 +2092,7 @@ def get_image_by_page(page_number, file_map):
          print(f"Page {page_number} not found in file map")
          return None
  
- #
-    if sung_known:
-        message_parts.append(f"✅ *Songs that were Sung ({len(sung_known)} total):*\n" + "\n".join(sung_known))
-    if not_sung_known:
-        message_parts.append(f"❌ *Songs that were Not Sung ({len(not_sung_known)} total):*\n" + "\n".join(not_sung_known))
-    if not_sung_unknown:
-        message_parts.append(f"🚫 *Songs Choir Doesn't Know ({len(not_sung_unknown)} total):*\n" + "\n".join(not_sung_unknown))
 
-    # Use the helper function to send the message (will split automatically if too long)
-    await send_long_message(update, message_parts)
-    return ConversationHandler.END
 
 # Add this function to periodically upload logs
 async def periodic_log_upload():
