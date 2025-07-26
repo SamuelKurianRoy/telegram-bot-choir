@@ -1078,6 +1078,30 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
             context.user_data.pop("cancel_event", None)
             context.user_data.pop("download_in_progress", None)
             return ConversationHandler.END
+        except Exception as e:
+            # Cancel progress updates
+            if 'progress_task' in locals():
+                progress_task.cancel()
+
+            bot_logger.error(f"Download error for user {user.id}: {str(e)}")
+
+            # Log failed download to Google Doc
+            error_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            download_error_entry = f"{error_timestamp} - DOWNLOAD ERROR for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | URL: {url}\nError: {str(e)}\n\n"
+
+            if yfile_id:
+                try:
+                    append_download_to_google_doc(yfile_id, download_error_entry)
+                except Exception as log_error:
+                    bot_logger.error(f"Error logging download error: {log_error}")
+
+            await update.message.reply_text(
+                "❌ An error occurred during download. Please try again later.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            context.user_data.pop("cancel_event", None)
+            context.user_data.pop("download_in_progress", None)
+            return ConversationHandler.END
         finally:
             # Clean up context
             context.user_data.pop("cancel_event", None)

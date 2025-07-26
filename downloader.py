@@ -5,6 +5,7 @@ Supports YouTube and Spotify audio downloads
 
 import os
 import re
+import sys
 import time
 import asyncio
 import subprocess as sp
@@ -71,18 +72,44 @@ class AudioDownloader:
         downloader_logger.info(f"Current proxy rotation: {self.proxy_rotation}")
 
         # Set FFmpeg path - use the complete setup from audio_downloader_bot.py
-        self.ffmpeg_path = asyncio.run(self._setup_ffmpeg())
-        downloader_logger.info(f"FFmpeg setup result: {self.ffmpeg_path}")
+        # Check if we're already in an event loop
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an event loop, create a task instead
+            self.ffmpeg_path = None  # Will be set later
+            self._ffmpeg_setup_task = asyncio.create_task(self._setup_ffmpeg_async())
+        except RuntimeError:
+            # No event loop running, safe to use asyncio.run()
+            self.ffmpeg_path = asyncio.run(self._setup_ffmpeg())
+            downloader_logger.info(f"FFmpeg setup result: {self.ffmpeg_path}")
+            self._ffmpeg_setup_task = None
 
-        # Configure FFmpeg in PATH if local installation found
+        # Configure FFmpeg in PATH if local installation found (only if not using async setup)
+        if self._ffmpeg_setup_task is None:
+            self._configure_ffmpeg_path()
+            self._configure_spotdl_ffmpeg()
+
+    async def _setup_ffmpeg_async(self):
+        """Async version of FFmpeg setup for when we're already in an event loop"""
+        self.ffmpeg_path = await self._setup_ffmpeg()
+        downloader_logger.info(f"FFmpeg setup result: {self.ffmpeg_path}")
+        self._configure_ffmpeg_path()
+        self._configure_spotdl_ffmpeg()
+        return self.ffmpeg_path
+
+    def _configure_ffmpeg_path(self):
+        """Configure FFmpeg in PATH if local installation found"""
         if self.ffmpeg_path and self.ffmpeg_path != "system":
-            # Add FFmpeg directory to PATH (same as audio_downloader_bot.py)
+            # Add FFmpeg directory to PATH
             current_path = os.environ.get("PATH", "")
             if self.ffmpeg_path not in current_path:
                 os.environ["PATH"] = self.ffmpeg_path + os.pathsep + current_path
                 logger.info(f"Added FFmpeg to PATH: {self.ffmpeg_path}")
                 downloader_logger.info(f"Added FFmpeg to PATH: {self.ffmpeg_path}")
 
+    def _configure_spotdl_ffmpeg(self):
+        """Configure spotdl to use the correct FFmpeg"""
+        if self.ffmpeg_path and self.ffmpeg_path != "system":
             # Configure spotdl to use local FFmpeg
             system = platform.system().lower()
             if system == "windows":
@@ -100,6 +127,12 @@ class AudioDownloader:
             os.environ["FFMPEG_BINARY"] = "ffmpeg"
             logger.info("Configured spotdl to use system FFmpeg on Streamlit Cloud")
             downloader_logger.info("Configured spotdl to use system FFmpeg on Streamlit Cloud")
+
+    async def _ensure_ffmpeg_ready(self):
+        """Ensure FFmpeg is ready before downloads"""
+        if self._ffmpeg_setup_task:
+            await self._ffmpeg_setup_task
+            self._ffmpeg_setup_task = None
 
     def _detect_streamlit_cloud(self) -> bool:
         """Detect if running on Streamlit Cloud"""
@@ -970,6 +1003,9 @@ class AudioDownloader:
 
     async def download_audio(self, url: str, quality: str = "medium", chat_id: str = None, cancel_event: asyncio.Event = None) -> Optional[Tuple[Path, Dict]]:
         """Download audio from URL, passing chat_id for checkpoint/resume and cancel_event for cancellation."""
+        # Ensure FFmpeg is ready before starting download
+        await self._ensure_ffmpeg_ready()
+
         platform = self.detect_platform(url)
         if platform == 'Spotify':
             return await self.download_spotify_audio(url, quality, chat_id=chat_id, cancel_event=cancel_event)
@@ -1372,7 +1408,7 @@ class AudioDownloader:
                     return None
             return None
     
-    async def download_spotify_audio(self, url: str, quality: str, chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
+    async def download_spotify_audio(self, url: str, quality: str, chat_id: str = None, cancel_event: asyncio.Event = None) -> Optional[Tuple[Path, Dict]]:
         """Download Spotify audio using spotdl with Streamlit Cloud optimizations and checkpoint/resume support."""
         import hashlib
         import json
@@ -1473,6 +1509,10 @@ class AudioDownloader:
 
         # Otherwise, proceed with fresh download
         try:
+            # Check for cancellation before starting
+            if cancel_event and cancel_event.is_set():
+                raise asyncio.CancelledError("Download cancelled by user")
+
             # Quality mapping
             quality_map = {
                 "high": "320",
@@ -1486,11 +1526,13 @@ class AudioDownloader:
             output_dir = self.temp_dir / f"spotify_{int(time.time())}"
             output_dir.mkdir(exist_ok=True)
             
-            # Prepare spotdl command with better output handling for Streamlit Cloud
+            # Prepare spotdl command - use Python module to avoid PATH issues
+            python_exe = sys.executable
+
             if self.is_streamlit_cloud:
                 # Use a simpler output pattern for Streamlit Cloud
                 spotdl_cmd = [
-                    "spotdl",
+                    python_exe, "-m", "spotdl",
                     "download",
                     url,
                     "--bitrate", f"{bitrate}k",
@@ -1500,7 +1542,7 @@ class AudioDownloader:
                 ]
             else:
                 spotdl_cmd = [
-                    "spotdl",
+                    python_exe, "-m", "spotdl",
                     "download",
                     url,
                     "--bitrate", f"{bitrate}k",
@@ -1548,8 +1590,9 @@ class AudioDownloader:
                 process_timeout = 300  # 5 minutes for local
                 async_timeout = 320    # 5.3 minutes
 
-            result = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(
+            # Create download task with cancellation support
+            async def download_with_cancellation():
+                future = asyncio.get_event_loop().run_in_executor(
                     None,
                     lambda: sp.run(
                         spotdl_cmd,
@@ -1558,9 +1601,25 @@ class AudioDownloader:
                         timeout=process_timeout,
                         cwd=str(output_dir)
                     )
-                ),
+                )
+
+                if cancel_event:
+                    while not future.done():
+                        if cancel_event.is_set():
+                            # Attempt to cancel the running download
+                            future.cancel()
+                            raise asyncio.CancelledError("Download cancelled by user")
+                        await asyncio.sleep(0.5)  # Check cancel_event every 0.5 seconds
+                return await future
+
+            result = await asyncio.wait_for(
+                download_with_cancellation(),
                 timeout=async_timeout
             )
+
+            # Check for cancellation after download
+            if cancel_event and cancel_event.is_set():
+                raise asyncio.CancelledError("Download cancelled by user")
 
             # Log detailed output for debugging
             logger.info(f"spotdl exit code: {result.returncode}")
