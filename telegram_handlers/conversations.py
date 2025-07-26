@@ -2357,7 +2357,7 @@ async def admin_reply(update: Update, context: CallbackContext) -> None:
             parse_mode=ParseMode.HTML
         )
 
-        await update.message.reply_text(f"✅ Reply sent to user {target_user_id}.")
+        await update.message.reply_text(f"✅ Reply sent to user.")
     except Exception as e:
         logging.error(f"❌ Failed to send reply: {e}")
         await update.message.reply_text(f"❌ Failed to send reply: {e}")
