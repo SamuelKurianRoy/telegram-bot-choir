@@ -7,11 +7,7 @@ from telegram.ext import CallbackContext, ConversationHandler, ContextTypes, Cal
 from config import get_config
 from logging_utils import setup_loggers
 from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
-<<<<<<< HEAD
 from data.drive import upload_log_to_google_doc, save_user_to_database, get_all_users
-=======
-from data.drive import upload_log_to_google_doc, add_user_to_database
->>>>>>> 28e18549eb7842a66ea1676ce03fbd1d6015da1f
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import pandas as pd
@@ -61,7 +57,6 @@ async def start(update: Update, context: CallbackContext) -> None:
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /start")
 
-<<<<<<< HEAD
     # Add user to database
     try:
         save_user_to_database(
@@ -71,15 +66,6 @@ async def start(update: Update, context: CallbackContext) -> None:
         )
     except Exception as e:
         bot_logger.error(f"Error saving user to database: {e}")
-=======
-    # Add user to Google Drive database
-    username = user.username or "No username"
-    full_name = user.full_name or user.first_name or "Unknown"
-    is_new_user = add_user_to_database(user.id, username, full_name)
-    
-    if is_new_user:
-        user_logger.info(f"New user added to database: {full_name} (@{username}, ID: {user.id})")
->>>>>>> 28e18549eb7842a66ea1676ce03fbd1d6015da1f
 
     # Check authorization
     config = get_config()
@@ -90,7 +76,7 @@ async def start(update: Update, context: CallbackContext) -> None:
         await context.bot.send_message(
             chat_id=config.ADMIN_ID,
             text=(
-                f"⚠️ <b>{'New' if is_new_user else 'Existing'} user accessed /start</b>\n\n"
+                f"⚠️ <b>Unauthorized user accessed /start</b>\n\n"
                 f"<b>Name:</b> {user.full_name}\n"
                 f"<b>Username:</b> @{user.username}\n"
                 f"<b>User ID:</b> <code>{user.id}</code>"
