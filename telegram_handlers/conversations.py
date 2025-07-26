@@ -19,10 +19,11 @@ import re
 import os
 import random
 import requests
-from data.drive import get_drive_service, append_download_to_google_doc, get_docs_service
+from data.drive import get_drive_service, append_download_to_google_doc, get_docs_service, get_all_users
 from datetime import datetime
 import io
 from telegram_handlers.handlers import is_authorized
+from config import get_config
 from downloader import AudioDownloader
 import logging
 from telegram.constants import ParseMode
@@ -2077,7 +2078,7 @@ def stop_bot():
 
  #/comment
 
-COMMENT, REPLY = range(2)
+COMMENT, REPLY, ADMIN_REPLY_MESSAGE = range(3)
 
 # Step 1: Command to start commenting
 async def start_comment(update: Update, context: CallbackContext) -> int:
@@ -2229,6 +2230,121 @@ async def admin_reply(update: Update, context: CallbackContext) -> None:
     except Exception as e:
         logging.error(f"❌ Failed to send reply: {e}")
         await update.message.reply_text(f"❌ Failed to send reply: {e}")
+
+# New Admin Reply System Handlers
+
+async def handle_admin_reply_selection(update: Update, context: CallbackContext) -> int:
+    """Handle when admin selects a user or 'all users' to reply to"""
+    query = update.callback_query
+    await query.answer()
+
+    # Check if user is admin
+    config = get_config()
+    admin_id = config.ADMIN_ID
+    if query.from_user.id != admin_id:
+        await query.message.reply_text("❌ You are not authorized to use this command.")
+        return ConversationHandler.END
+
+    data = query.data
+
+    if data == "reply_all":
+        # Admin wants to send to all users
+        context.user_data["reply_target"] = "all"
+        await query.message.reply_text(
+            "📢 <b>Send message to ALL users</b>\n\n"
+            "Type your message below. This will be sent to all users in the database:",
+            parse_mode="HTML"
+        )
+        return ADMIN_REPLY_MESSAGE
+
+    elif data.startswith("reply_user_"):
+        # Admin wants to send to specific user
+        user_id = data.split("_")[2]
+        context.user_data["reply_target"] = user_id
+
+        # Get user info for confirmation
+        users = get_all_users()
+        target_user = next((u for u in users if str(u['user_id']) == user_id), None)
+
+        if target_user:
+            await query.message.reply_text(
+                f"👤 <b>Send message to: {target_user['display_name']}</b>\n\n"
+                "Type your message below:",
+                parse_mode="HTML"
+            )
+        else:
+            await query.message.reply_text(
+                f"👤 <b>Send message to User ID: {user_id}</b>\n\n"
+                "Type your message below:",
+                parse_mode="HTML"
+            )
+        return ADMIN_REPLY_MESSAGE
+
+    elif data == "reply_more":
+        await query.message.reply_text(
+            "ℹ️ To see more users or send to a specific user ID, use the old format:\n"
+            "<code>/reply &lt;user_id&gt; &lt;message&gt;</code>",
+            parse_mode="HTML"
+        )
+        return ConversationHandler.END
+
+    return ConversationHandler.END
+
+async def handle_admin_reply_message(update: Update, context: CallbackContext) -> int:
+    """Handle the admin's reply message"""
+    # Check if user is admin
+    config = get_config()
+    admin_id = config.ADMIN_ID
+    if update.effective_user.id != admin_id:
+        await update.message.reply_text("❌ You are not authorized to use this command.")
+        return ConversationHandler.END
+
+    message = update.message.text
+    reply_target = context.user_data.get("reply_target")
+
+    if not reply_target:
+        await update.message.reply_text("❌ No target selected. Please start over with /reply")
+        return ConversationHandler.END
+
+    try:
+        if reply_target == "all":
+            # Send to all users
+            users = get_all_users()
+            sent_count = 0
+            failed_count = 0
+
+            for user_info in users:
+                try:
+                    await context.bot.send_message(
+                        chat_id=user_info['user_id'],
+                        text=f"📢 <b>Message from Admin:</b>\n\n{message}",
+                        parse_mode="HTML"
+                    )
+                    sent_count += 1
+                except Exception as e:
+                    failed_count += 1
+                    logging.error(f"Failed to send message to user {user_info['user_id']}: {e}")
+
+            await update.message.reply_text(
+                f"✅ <b>Broadcast completed!</b>\n\n"
+                f"📤 Sent to: {sent_count} users\n"
+                f"❌ Failed: {failed_count} users",
+                parse_mode="HTML"
+            )
+        else:
+            # Send to specific user
+            await context.bot.send_message(
+                chat_id=int(reply_target),
+                text=f"💬 <b>Admin's reply:</b>\n\n{message}",
+                parse_mode="HTML"
+            )
+            await update.message.reply_text(f"✅ Reply sent to user {reply_target}.")
+
+    except Exception as e:
+        logging.error(f"❌ Failed to send reply: {e}")
+        await update.message.reply_text(f"❌ Failed to send reply: {e}")
+
+    return ConversationHandler.END
 
 
 

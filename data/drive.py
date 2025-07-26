@@ -202,6 +202,123 @@ def save_game_score(user_name, user_id, score, difficulty="Easy"):
         print(f"❌ Error saving game score: {e}")
         return False
 
+# User Database Functions
+def load_user_database():
+    """
+    Load the U_Database Excel sheet from Google Drive
+    Returns a pandas DataFrame with columns: user_id, username, name
+    """
+    try:
+        config = get_config()
+        drive_service = get_drive_service()
+
+        # Get the U_Database file ID from config
+        u_database_file_id = config.U_DATABASE
+        if not u_database_file_id:
+            print("❌ U_DATABASE file ID not found in secrets")
+            return pd.DataFrame(columns=['user_id', 'username', 'name'])
+
+        # Download the Excel file
+        request = drive_service.files().export_media(
+            fileId=u_database_file_id,
+            mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        file_data = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_data, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        file_data.seek(0)
+
+        # Read the Excel file
+        df = pd.read_excel(file_data)
+
+        # Ensure the required columns exist
+        required_columns = ['user_id', 'username', 'name']
+        for col in required_columns:
+            if col not in df.columns:
+                df[col] = None
+
+        return df
+
+    except Exception as e:
+        print(f"❌ Error loading user database: {e}")
+        return pd.DataFrame(columns=['user_id', 'username', 'name'])
+
+def save_user_to_database(user_id, username, name):
+    """
+    Save a new user to the U_Database Excel sheet
+    """
+    try:
+        # Load existing users
+        df = load_user_database()
+
+        # Check if user already exists
+        if user_id in df['user_id'].values:
+            print(f"User {user_id} already exists in database")
+            return True
+
+        # Create new entry
+        new_entry = {
+            'user_id': user_id,
+            'username': username,
+            'name': name
+        }
+
+        # Add new entry to DataFrame
+        df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
+
+        # Upload back to Google Drive
+        config = get_config()
+        drive_service = get_drive_service()
+        u_database_file_id = config.U_DATABASE
+
+        if not u_database_file_id:
+            print("❌ U_DATABASE file ID not found in secrets")
+            return False
+
+        # Convert DataFrame to Excel
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Sheet1')
+        output.seek(0)
+
+        # Upload the file
+        from googleapiclient.http import MediaIoBaseUpload
+        media = MediaIoBaseUpload(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+        drive_service.files().update(
+            fileId=u_database_file_id,
+            media_body=media
+        ).execute()
+
+        print(f"✅ User saved to database: {name} (@{username}, ID: {user_id})")
+        return True
+
+    except Exception as e:
+        print(f"❌ Error saving user to database: {e}")
+        return False
+
+def get_all_users():
+    """
+    Get all users from the database
+    Returns a list of dictionaries with user information
+    """
+    try:
+        df = load_user_database()
+        users = []
+        for _, row in df.iterrows():
+            users.append({
+                'user_id': row['user_id'],
+                'username': row['username'],
+                'name': row['name'],
+                'display_name': row['name'] if pd.notna(row['name']) and row['name'] else (row['username'] if pd.notna(row['username']) and row['username'] else f"User {row['user_id']}")
+            })
+        return users
+    except Exception as e:
+        print(f"❌ Error getting all users: {e}")
+        return []
+
 def get_user_best_score(user_id, difficulty=None):
     """
     Get the best score for a specific user, optionally filtered by difficulty
