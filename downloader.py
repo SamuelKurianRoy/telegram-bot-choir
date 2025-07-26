@@ -1126,11 +1126,13 @@ class AudioDownloader:
             current_proxy = self.PROXY_LIST[self.proxy_rotation - 1]
             if current_proxy:
                 logger.info(f"Using proxy {self.proxy_rotation}/7: {current_proxy}")
+                downloader_logger.info(f"Using proxy {self.proxy_rotation}/7: {current_proxy}")
             else:
                 logger.info("Attempting download without proxy (direct connection)")
+                downloader_logger.info("Attempting download without proxy (direct connection)")
             
             ydl_opts = {
-                'format': 'bestaudio/best',
+                'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[height<=720]',  # More flexible format selection
                 'outtmpl': str(temp_filepath) + '.%(ext)s',
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
@@ -1139,6 +1141,8 @@ class AudioDownloader:
                 }],
                 'quiet': True,
                 'no_warnings': True,
+                'extract_flat': False,
+                'ignoreerrors': False,
             }
 
             # Only add proxy if one is specified
@@ -1161,8 +1165,8 @@ class AudioDownloader:
                 ydl_opts['postprocessors'] = []
             
             # Download with timeout and error handling
-            # Download with retries
-            max_retries = 3
+            # Download with retries - increase retries for better proxy coverage
+            max_retries = 7  # Try all proxies if needed
             retry_count = 0
             last_error = None
             
@@ -1221,7 +1225,7 @@ class AudioDownloader:
                                 
                             info = await asyncio.wait_for(
                                 download_with_cancellation(),
-                                timeout=300  # 5 minute timeout
+                                timeout=120  # 2 minute timeout per attempt
                             )
                             logger.info(f"Successfully extracted video info: {info.get('title', 'Unknown')}")
                             proxy_desc = f"proxy {self.proxy_rotation}" if current_proxy else "direct connection"
@@ -1253,22 +1257,21 @@ class AudioDownloader:
                     downloader_logger.error(f"Error details: {error_details}")
                     
                     if retry_count < max_retries:
-                        wait_time = retry_count * 2  # Progressive backoff: 2s, 4s, 6s
-                        
-                        # Network errors trigger proxy rotation
-                        if is_network_error(e):
-                            self.proxy_rotation = (self.proxy_rotation % 7) + 1
-                            current_proxy = self.PROXY_LIST[self.proxy_rotation - 1]
-                            if current_proxy:
-                                ydl_opts['proxy'] = current_proxy
-                                logger.info(f"Network error detected. Retrying with proxy {self.proxy_rotation}/7: {current_proxy}")
-                            else:
-                                if 'proxy' in ydl_opts:
-                                    del ydl_opts['proxy']
-                                logger.info("Network error detected. Retrying without proxy (direct connection)")
+                        wait_time = min(retry_count * 2, 10)  # Progressive backoff: 2s, 4s, 6s, 8s, 10s max
+
+                        # Always try next proxy on any failure (YouTube blocks aggressively)
+                        self.proxy_rotation = (self.proxy_rotation % 7) + 1
+                        current_proxy = self.PROXY_LIST[self.proxy_rotation - 1]
+                        if current_proxy:
+                            ydl_opts['proxy'] = current_proxy
+                            logger.info(f"Retrying with proxy {self.proxy_rotation}/7: {current_proxy}")
+                            downloader_logger.info(f"Retrying with proxy {self.proxy_rotation}/7: {current_proxy}")
                         else:
-                            logger.info(f"Non-network error detected. Retrying with same connection after {wait_time}s delay")
-                            
+                            if 'proxy' in ydl_opts:
+                                del ydl_opts['proxy']
+                            logger.info("Retrying without proxy (direct connection)")
+                            downloader_logger.info("Retrying without proxy (direct connection)")
+
                         await asyncio.sleep(wait_time)  # Progressive delay before retry
                         continue
                         
