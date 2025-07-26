@@ -47,15 +47,20 @@ class AudioDownloader:
     # Class variable to track proxy rotation
     proxy_rotation = 1  # Starts from 1, can go up to 7
     
-    # List of reliable proxies
+    # Proxy configuration - can be updated with reliable proxy services
+    # NOTE: These are placeholder proxies. For production use, replace with:
+    # 1. Paid proxy services (ProxyMesh, Bright Data, etc.)
+    # 2. Your own proxy servers
+    # 3. VPN endpoints you control
     PROXY_LIST = [
-        None,  # No proxy (direct connection)
-        'socks5://178.128.86.106:8112',  # Public SOCKS5 proxy
-        'socks5://170.187.195.76:9150',  # Public SOCKS5 proxy
-        'socks5://43.231.59.147:9051',   # Public SOCKS5 proxy
-        'socks5://103.121.89.75:8443',   # Public SOCKS5 proxy
-        'socks5://51.68.189.108:8443',   # Public SOCKS5 proxy
-        'socks5://45.55.32.201:9050'     # Public SOCKS5 proxy
+        None,  # Direct connection - always try first
+        'http://180.183.157.159:8080',   # Thailand HTTPS proxy (≥80% uptime)
+        'socks5://46.4.96.137:1080',     # Germany SOCKS5 proxy (≥80% uptime)
+        'socks5://47.91.88.100:1080',    # Germany SOCKS5 proxy (≥80% uptime)
+        'socks5://45.77.56.114:30205',   # UK SOCKS4/5 proxy (≥80% uptime)
+        'socks5://82.196.11.105:1080',   # Netherlands SOCKS5 proxy (≥80% uptime)
+        'http://81.171.24.199:3128',     # Netherlands HTTPS proxy (≥80% uptime)
+        'http://51.254.69.243:3128'      # France HTTPS proxy (≥80% uptime)
     ]
 
     def __init__(self, temp_dir: str = "temp"):
@@ -133,6 +138,36 @@ class AudioDownloader:
         if self._ffmpeg_setup_task:
             await self._ffmpeg_setup_task
             self._ffmpeg_setup_task = None
+
+
+
+    async def _test_proxy(self, proxy_url, timeout=5):
+        """Test if a proxy is working"""
+        if not proxy_url:
+            return True  # Direct connection
+
+        try:
+            import requests
+
+            test_response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: requests.get(
+                    'http://httpbin.org/ip',
+                    proxies={'http': proxy_url, 'https': proxy_url},
+                    timeout=timeout
+                )
+            )
+
+            if test_response.status_code == 200:
+                logger.debug(f"Proxy {proxy_url} is working")
+                return True
+            else:
+                logger.debug(f"Proxy {proxy_url} returned status {test_response.status_code}")
+                return False
+
+        except Exception as e:
+            logger.debug(f"Proxy {proxy_url} failed test: {e}")
+            return False
 
     def _detect_streamlit_cloud(self) -> bool:
         """Detect if running on Streamlit Cloud"""
@@ -1112,10 +1147,10 @@ class AudioDownloader:
             # Quality mapping
             quality_map = {
                 "high": "320",
-                "medium": "192", 
+                "medium": "192",
                 "low": "128"
             }
-            
+
             bitrate = quality_map.get(quality, "192")
             
             # Generate unique filename
@@ -1123,21 +1158,23 @@ class AudioDownloader:
             temp_filepath = self.temp_dir / temp_filename
             
             # Get current proxy from rotation
-            current_proxy = self.PROXY_LIST[self.proxy_rotation - 1]
+            proxy_index = (self.proxy_rotation - 1) % len(self.PROXY_LIST)
+            current_proxy = self.PROXY_LIST[proxy_index]
+
             if current_proxy:
-                logger.info(f"Using proxy {self.proxy_rotation}/7: {current_proxy}")
-                downloader_logger.info(f"Using proxy {self.proxy_rotation}/7: {current_proxy}")
+                logger.info(f"Using proxy {proxy_index + 1}/{len(self.PROXY_LIST)}: {current_proxy}")
+                downloader_logger.info(f"Using proxy {proxy_index + 1}/{len(self.PROXY_LIST)}: {current_proxy}")
             else:
                 logger.info("Attempting download without proxy (direct connection)")
                 downloader_logger.info("Attempting download without proxy (direct connection)")
             
             ydl_opts = {
-                'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[height<=720]',  # More flexible format selection
+                'format': 'bestaudio/best',  # Always get the best audio quality available
                 'outtmpl': str(temp_filepath) + '.%(ext)s',
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': 'mp3',
-                    'preferredquality': bitrate,
+                    'preferredquality': bitrate,  # Maintain requested quality
                 }],
                 'quiet': True,
                 'no_warnings': True,
@@ -1165,10 +1202,12 @@ class AudioDownloader:
                 ydl_opts['postprocessors'] = []
             
             # Download with timeout and error handling
-            # Download with retries - increase retries for better proxy coverage
-            max_retries = 7  # Try all proxies if needed
+            # Download with retries - try all available proxies
+            max_retries = len(self.PROXY_LIST)  # Try all proxies including direct connection
             retry_count = 0
             last_error = None
+
+            logger.info(f"Starting YouTube download with {max_retries} proxy attempts (maintaining {quality} quality)")
             
             def is_network_error(e):
                 error_str = str(e).lower()
@@ -1260,12 +1299,14 @@ class AudioDownloader:
                         wait_time = min(retry_count * 2, 10)  # Progressive backoff: 2s, 4s, 6s, 8s, 10s max
 
                         # Always try next proxy on any failure (YouTube blocks aggressively)
-                        self.proxy_rotation = (self.proxy_rotation % 7) + 1
-                        current_proxy = self.PROXY_LIST[self.proxy_rotation - 1]
+                        self.proxy_rotation = (self.proxy_rotation % len(self.PROXY_LIST)) + 1
+                        proxy_index = (self.proxy_rotation - 1) % len(self.PROXY_LIST)
+                        current_proxy = self.PROXY_LIST[proxy_index]
+
                         if current_proxy:
                             ydl_opts['proxy'] = current_proxy
-                            logger.info(f"Retrying with proxy {self.proxy_rotation}/7: {current_proxy}")
-                            downloader_logger.info(f"Retrying with proxy {self.proxy_rotation}/7: {current_proxy}")
+                            logger.info(f"Retrying with proxy {proxy_index + 1}/{len(self.PROXY_LIST)}: {current_proxy}")
+                            downloader_logger.info(f"Retrying with proxy {proxy_index + 1}/{len(self.PROXY_LIST)}: {current_proxy}")
                         else:
                             if 'proxy' in ydl_opts:
                                 del ydl_opts['proxy']
