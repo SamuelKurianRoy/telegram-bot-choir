@@ -7,7 +7,7 @@ from telegram.ext import CallbackContext, ConversationHandler, ContextTypes, Cal
 from config import get_config
 from logging_utils import setup_loggers
 from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
-from data.drive import upload_log_to_google_doc
+from data.drive import upload_log_to_google_doc, add_user_to_database
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import pandas as pd
@@ -57,16 +57,24 @@ async def start(update: Update, context: CallbackContext) -> None:
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /start")
 
+    # Add user to Google Drive database
+    username = user.username or "No username"
+    full_name = user.full_name or user.first_name or "Unknown"
+    is_new_user = add_user_to_database(user.id, username, full_name)
+    
+    if is_new_user:
+        user_logger.info(f"New user added to database: {full_name} (@{username}, ID: {user.id})")
+
     # Check authorization
-    authorized_users_str = st.secrets["AUTHORIZED_USERS"]
-    authorized_users = list(map(int, authorized_users_str.split(','))) if authorized_users_str else []
+    config = get_config()
+    authorized_users = config.AUTHORIZED_USERS
 
     if user.id not in authorized_users:
         # Notify admin but do NOT block user
         await context.bot.send_message(
-            chat_id=ADMIN_ID,
+            chat_id=config.ADMIN_ID,
             text=(
-                f"⚠️ <b>Unauthorized user accessed /start</b>\n\n"
+                f"⚠️ <b>{'New' if is_new_user else 'Existing'} user accessed /start</b>\n\n"
                 f"<b>Name:</b> {user.full_name}\n"
                 f"<b>Username:</b> @{user.username}\n"
                 f"<b>User ID:</b> <code>{user.id}</code>"

@@ -288,4 +288,181 @@ def get_combined_leaderboard(top_n=10):
         print(f"❌ Error getting combined leaderboard: {e}")
         return {"Easy": [], "Medium": [], "Hard": []}
 
-# TODO: Add file download/upload helpers as needed for your bot
+# User Database Functions
+def load_user_database():
+    """
+    Load the U_Database Excel sheet from Google Drive
+    Returns a pandas DataFrame with columns: user_id, username, name
+    """
+    try:
+        config = get_config()
+        drive_service = get_drive_service()
+
+        # Get the U_Database file ID from config
+        u_database_file_id = config.U_DATABASE
+        if not u_database_file_id:
+            print("❌ U_DATABASE file ID not found in secrets")
+            return pd.DataFrame(columns=['user_id', 'username', 'name'])
+
+        # Download the Excel file
+        request = drive_service.files().export_media(
+            fileId=u_database_file_id,
+            mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        file_data = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_data, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        file_data.seek(0)
+
+        # Read the Excel file
+        df = pd.read_excel(file_data)
+
+        # Ensure the required columns exist
+        required_columns = ['user_id', 'username', 'name']
+        for col in required_columns:
+            if col not in df.columns:
+                df[col] = None
+
+        return df
+
+    except Exception as e:
+        print(f"❌ Error loading user database: {e}")
+        return pd.DataFrame(columns=['user_id', 'username', 'name'])
+
+def save_user_database(df):
+    """
+    Save the user database DataFrame back to Google Drive Excel sheet
+    """
+    try:
+        config = get_config()
+        drive_service = get_drive_service()
+        u_database_file_id = config.U_DATABASE
+
+        if not u_database_file_id:
+            print("❌ U_DATABASE file ID not found in secrets")
+            return False
+
+        # Convert DataFrame to Excel
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Sheet1')
+        output.seek(0)
+
+        # Upload the file
+        from googleapiclient.http import MediaIoBaseUpload
+        media = MediaIoBaseUpload(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+        drive_service.files().update(
+            fileId=u_database_file_id,
+            media_body=media
+        ).execute()
+
+        print("✅ User database saved successfully")
+        return True
+
+    except Exception as e:
+        print(f"❌ Error saving user database: {e}")
+        return False
+
+def add_user_to_database(user_id, username, name):
+    """
+    Add or update user in the U_Database Excel sheet
+    Returns True if new user was added, False if existing user was updated
+    """
+    try:
+        # Load existing database
+        df = load_user_database()
+
+        # Check if user already exists
+        existing_user = df[df['user_id'] == user_id]
+        
+        if existing_user.empty:
+            # Add new user
+            new_user = pd.DataFrame({
+                'user_id': [user_id],
+                'username': [username or 'No username'],
+                'name': [name or 'Unknown']
+            })
+            df = pd.concat([df, new_user], ignore_index=True)
+            
+            # Save back to Google Drive
+            if save_user_database(df):
+                print(f"✅ New user added: {name} (@{username}, ID: {user_id})")
+                return True
+            else:
+                print(f"❌ Failed to save new user: {user_id}")
+                return False
+        else:
+            # Update existing user info if changed
+            index = existing_user.index[0]
+            updated = False
+            
+            if df.loc[index, 'username'] != (username or 'No username'):
+                df.loc[index, 'username'] = username or 'No username'
+                updated = True
+            
+            if df.loc[index, 'name'] != (name or 'Unknown'):
+                df.loc[index, 'name'] = name or 'Unknown'
+                updated = True
+            
+            if updated:
+                if save_user_database(df):
+                    print(f"✅ User updated: {name} (@{username}, ID: {user_id})")
+                else:
+                    print(f"❌ Failed to update user: {user_id}")
+            
+            return False  # Existing user
+
+    except Exception as e:
+        print(f"❌ Error adding user to database: {e}")
+        return False
+
+def get_all_users_from_database():
+    """
+    Get all users from the U_Database
+    Returns list of dictionaries with user info
+    """
+    try:
+        df = load_user_database()
+        
+        if df.empty:
+            return []
+        
+        # Convert to list of dictionaries
+        users = []
+        for _, row in df.iterrows():
+            users.append({
+                'user_id': int(row['user_id']) if pd.notna(row['user_id']) else 0,
+                'username': row['username'] if pd.notna(row['username']) else 'No username',
+                'name': row['name'] if pd.notna(row['name']) else 'Unknown'
+            })
+        
+        return users
+
+    except Exception as e:
+        print(f"❌ Error getting users from database: {e}")
+        return []
+
+def get_user_by_id_from_database(user_id):
+    """
+    Get specific user by ID from the U_Database
+    """
+    try:
+        df = load_user_database()
+        user_row = df[df['user_id'] == user_id]
+        
+        if user_row.empty:
+            return None
+        
+        row = user_row.iloc[0]
+        return {
+            'user_id': int(row['user_id']) if pd.notna(row['user_id']) else 0,
+            'username': row['username'] if pd.notna(row['username']) else 'No username',
+            'name': row['name'] if pd.notna(row['name']) else 'Unknown'
+        }
+
+    except Exception as e:
+        print(f"❌ Error getting user by ID from database: {e}")
+        return None
