@@ -266,7 +266,15 @@ async def admin_reply(update: Update, context: CallbackContext) -> None:
 async def cancel(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /cancel")
-    await update.message.reply_text("Operation canceled.", reply_markup=ReplyKeyboardRemove())
+    try:
+        await update.message.reply_text("Operation canceled.", reply_markup=ReplyKeyboardRemove())
+    except Exception as e:
+        bot_logger.error(f"Error sending cancel message: {e}")
+        # Try to send a simpler message without keyboard removal
+        try:
+            await update.message.reply_text("Operation canceled.")
+        except Exception as e2:
+            bot_logger.error(f"Error sending simple cancel message: {e2}")
     return ConversationHandler.END
 
 # Fix state definition for date conversation

@@ -2,7 +2,7 @@
 try:
     import telegram
     print("python-telegram-bot version:", getattr(telegram, '__version__', 'unknown'))
-    from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackQueryHandler
+    from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 except ImportError as e:
     print(f"[DEBUG] ImportError: {e}")
     raise
@@ -53,7 +53,7 @@ Vocabulary, Hymn_Vocabulary, Lyric_Vocabulary, Convention_Vocabulary = ChoirVoca
 setup_search(dfH, dfL, dfC)
 
 # === Telegram Application Setup ===
-app = Application.builder().token(config.TOKEN).build()
+app = Application.builder().token(config.TOKEN).connect_timeout(30).read_timeout(30).write_timeout(30).build()
 
 # --- Register Modularized Handlers ---
 async def shutdown(app):
@@ -132,7 +132,10 @@ reply_conv_handler = ConversationHandler(
     states={
         REPLY: [MessageHandler(filters.TEXT & ~filters.COMMAND, send_reply_to_user)]
     },
-    fallbacks=[CommandHandler("cancel", cancel)]
+    fallbacks=[CommandHandler("cancel", cancel)],
+    per_message=False,
+    per_chat=True,
+    per_user=True
 )
 
 # Admin reply conversation handler
@@ -141,7 +144,10 @@ admin_reply_conv_handler = ConversationHandler(
     states={
         ADMIN_REPLY_MESSAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_reply_message)]
     },
-    fallbacks=[CommandHandler("cancel", cancel)]
+    fallbacks=[CommandHandler("cancel", cancel)],
+    per_message=False,
+    per_chat=True,
+    per_user=True
 )
 
      # Download conversation handler
@@ -181,6 +187,9 @@ bible_conv_handler = ConversationHandler(
         ],
     },
     fallbacks=[CommandHandler("cancel", cancel)],
+    per_message=False,
+    per_chat=True,
+    per_user=True
 )
 
 # Register the Bible game conversation handler
@@ -219,11 +228,39 @@ app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"
 # Register the callback handler for 'Show all dates' button in /last
 app.add_handler(CallbackQueryHandler(last_show_all_dates_callback, pattern="^showalldates:"))
 
+# Add error handler
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error and send a telegram message to notify the developer."""
+    bot_logger.error(f"Exception while handling an update: {context.error}")
+
+    # Try to send a user-friendly message if possible
+    if update and hasattr(update, 'effective_message') and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "⚠️ Sorry, something went wrong. Please try again later."
+            )
+        except Exception as e:
+            bot_logger.error(f"Failed to send error message to user: {e}")
+
+app.add_error_handler(error_handler)
+
 bot_should_run = True
 
 async def main():
     print("About to call app.run_polling() [async]")
-    await app.run_polling()
+    try:
+        await app.run_polling(
+            poll_interval=1.0,
+            timeout=10,
+            bootstrap_retries=5,
+            read_timeout=30,
+            write_timeout=30,
+            connect_timeout=30,
+            pool_timeout=30
+        )
+    except Exception as e:
+        bot_logger.error(f"Error in main polling loop: {e}")
+        raise
     print("Returned from app.run_polling() [async]")
 
 def run_bot():

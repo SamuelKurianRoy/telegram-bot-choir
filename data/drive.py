@@ -195,7 +195,7 @@ def save_game_score(user_name, user_id, score, difficulty="Easy"):
             media_body=media
         ).execute()
 
-        print(f"✅ Game score saved for {user_name} (ID: {user_id}): {score} ({difficulty})")
+        # print(f"✅ Game score saved for {user_name} (ID: {user_id}): {score} ({difficulty})")
         return True
 
     except Exception as e:
@@ -255,7 +255,7 @@ def save_user_to_database(user_id, username, name):
 
         # Check if user already exists
         if user_id in df['user_id'].values:
-            print(f"User {user_id} already exists in database")
+            # print(f"User {user_id} already exists in database")
             return True
 
         # Create new entry
@@ -292,7 +292,7 @@ def save_user_to_database(user_id, username, name):
             media_body=media
         ).execute()
 
-        print(f"✅ User saved to database: {name} (@{username}, ID: {user_id})")
+        # print(f"✅ User saved to database: {name} (@{username}, ID: {user_id})")
         return True
 
     except Exception as e:
