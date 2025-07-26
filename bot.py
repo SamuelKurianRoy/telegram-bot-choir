@@ -128,7 +128,7 @@ tune_conv_handler = ConversationHandler(
 )
      
 reply_conv_handler = ConversationHandler(
-    entry_points=[CallbackQueryHandler(reply_to_user, pattern="^reply_")],
+    entry_points=[CallbackQueryHandler(reply_to_user, pattern="^reply_[0-9]+$")],
     states={
         REPLY: [MessageHandler(filters.TEXT & ~filters.COMMAND, send_reply_to_user)]
     },
