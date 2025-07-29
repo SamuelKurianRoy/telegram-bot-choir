@@ -202,24 +202,57 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
     # Move imports here to avoid circular import
     import telegram_handlers.conversations as conversations
     from telegram_handlers.conversations import fetch_lyrics_file_map, LYRICS_FOLDER_URL
+    from data.udb import save_if_pending, load_user_database
 
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) used /refresh")
     config = get_config()
+
+    await update.message.reply_text("🔄 Starting refresh process...")
+
     try:
+        # Save any pending user database changes before refresh
+        await update.message.reply_text("💾 Saving pending user database changes...")
+        save_success = save_if_pending()
+        if save_success:
+            user_logger.info("User database changes saved during refresh")
+
         # Reload datasets
+        await update.message.reply_text("📊 Reloading datasets...")
         dfH, dfL, dfC, yr23, yr24, yr25, df, dfTH, dfTD = load_datasets()
         yrDataPreprocessing()
         dfcleaning()
         df = standardize_song_columns()
+
         # Refresh lyrics_file_map
+        await update.message.reply_text("🎵 Refreshing lyrics file map...")
         conversations.lyrics_file_map = fetch_lyrics_file_map(LYRICS_FOLDER_URL)
+
+        # Reload user database to get latest changes from Google Drive
+        await update.message.reply_text("👥 Reloading user database...")
+        global user_db
+        from data.udb import user_db
+        user_db = None  # Clear cache
+        load_user_database()  # Reload from Google Drive
+
+        # Clear theme caches to ensure fresh data
+        await update.message.reply_text("🎯 Refreshing theme components...")
+        conversations._vocabulary_cache = None  # Clear vocabulary cache
+        conversations._theme_embeddings.clear()  # Clear theme embeddings
+        conversations._theme_texts.clear()  # Clear theme texts
+        # Re-initialize theme components with fresh data
+        conversations.initialize_theme_components()
+
         # Upload logs
+        await update.message.reply_text("📝 Uploading logs...")
         upload_log_to_google_doc(config.BFILE_ID, "bot_log.txt")
         upload_log_to_google_doc(config.UFILE_ID, "user_log.txt")
-        await update.message.reply_text("Datasets and lyrics file map reloaded successfully!")
+
+        await update.message.reply_text("✅ All components refreshed successfully!\n\n📊 Datasets reloaded\n🎵 Lyrics file map updated\n👥 User database reloaded\n📝 Logs uploaded")
+
     except Exception as e:
-        await update.message.reply_text(f"Error reloading datasets: {e}")
+        await update.message.reply_text(f"❌ Error during refresh: {e}")
+        user_logger.error(f"Refresh command error: {e}")
 
 #Admin reply
 
