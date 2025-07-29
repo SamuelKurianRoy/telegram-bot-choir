@@ -1857,23 +1857,109 @@ async def handle_theme_type(update: Update, context: CallbackContext) -> int:
     )
     return THEME_SELECTION
 
-# Load the embedding model once
+# Load the embedding model once (with lazy loading)
 _theme_model = None
 _theme_embeddings = {}
 _theme_texts = {}
+_vocabulary_cache = None
+
 def get_theme_model():
     global _theme_model
     if _theme_model is None:
+        print("🔄 Loading theme model (first time only)...")
         _theme_model = SentenceTransformer('all-MiniLM-L6-v2')
+        print("✅ Theme model loaded")
     return _theme_model
+
+def get_vocabulary_cache():
+    """Cache vocabulary computation to avoid repeated expensive operations"""
+    global _vocabulary_cache
+    if _vocabulary_cache is None:
+        print("🔄 Computing vocabulary cache (first time only)...")
+        data = get_all_data()
+        df, dfH, dfL, dfC = data["df"], data["dfH"], data["dfL"], data["dfC"]
+        _vocabulary_cache = ChoirVocabulary(df, dfH, dfL, dfC)
+        print("✅ Vocabulary cache ready")
+    return _vocabulary_cache
+
+def initialize_theme_components():
+    """Initialize all heavy theme components during bot startup"""
+    try:
+        print("🚀 Initializing theme components at startup...")
+
+        # Pre-load the SentenceTransformer model
+        print("  📥 Loading theme model...")
+        get_theme_model()
+
+        # Pre-load vocabulary cache
+        print("  📚 Computing vocabulary cache...")
+        get_vocabulary_cache()
+
+        # Pre-compute theme embeddings for both hymns and lyrics
+        print("  🔍 Pre-computing theme embeddings...")
+        data = get_all_data()
+        dfH, dfL = data["dfH"], data["dfL"]
+
+        # Pre-compute hymn themes
+        hymn_themes = dfH["Themes"].dropna().str.split(",").explode().str.strip().unique()
+        if len(hymn_themes) > 0:
+            get_theme_embeddings("hymns", hymn_themes)
+            print(f"    ✅ Hymn themes ready ({len(hymn_themes)} themes)")
+
+        # Pre-compute lyric themes
+        lyric_themes = dfL["Themes"].dropna().str.split(",").explode().str.strip().unique()
+        if len(lyric_themes) > 0:
+            get_theme_embeddings("lyrics", lyric_themes)
+            print(f"    ✅ Lyric themes ready ({len(lyric_themes)} themes)")
+
+        print("✅ All theme components initialized successfully!")
+        return True
+
+    except Exception as e:
+        print(f"❌ Error initializing theme components: {e}")
+        print("⚠️ Theme command may be slower on first use")
+        return False
+
+def initialize_theme_components_background():
+    """Initialize heavy theme components in background for better first-use performance"""
+    try:
+        print("🚀 Pre-loading theme components...")
+
+        # Pre-load model
+        get_theme_model()
+
+        # Pre-load vocabulary
+        get_vocabulary_cache()
+
+        # Pre-compute theme embeddings for both hymns and lyrics
+        data = get_all_data()
+        dfH, dfL = data["dfH"], data["dfL"]
+
+        # Pre-compute hymn themes
+        hymn_themes = dfH["Themes"].dropna().str.split(",").explode().str.strip().unique()
+        get_theme_embeddings("hymns", hymn_themes)
+
+        # Pre-compute lyric themes
+        lyric_themes = dfL["Themes"].dropna().str.split(",").explode().str.strip().unique()
+        get_theme_embeddings("lyrics", lyric_themes)
+
+        print("✅ Theme components pre-loaded successfully!")
+
+    except Exception as e:
+        print(f"⚠️ Error pre-loading theme components: {e}")
+        # Don't fail the bot if pre-loading fails
 
 def get_theme_embeddings(theme_type, all_themes):
     global _theme_embeddings, _theme_texts
     all_themes_list = list(all_themes)
+    cache_key = f"{theme_type}_{len(all_themes_list)}"
+
     if theme_type not in _theme_embeddings or _theme_texts.get(theme_type) != all_themes_list:
+        print(f"🔄 Computing {theme_type} theme embeddings (first time only)...")
         model = get_theme_model()
         _theme_embeddings[theme_type] = model.encode(all_themes_list)
         _theme_texts[theme_type] = all_themes_list
+        print(f"✅ {theme_type.capitalize()} theme embeddings ready")
     return _theme_embeddings[theme_type], _theme_texts[theme_type]
 
 def find_similar_themes(user_input, all_themes, theme_embeddings, threshold=0.7):
@@ -1907,8 +1993,8 @@ async def process_theme_selection(theme_input, update, context):
     dfL = data["dfL"]
     df = data["df"]
     dfC = data["dfC"]
-    # Compute vocabularies
-    _, Hymn_Vocabulary, Lyric_Vocabulary, _ = ChoirVocabulary(df, dfH, dfL, dfC)
+    # Use cached vocabularies for better performance
+    _, Hymn_Vocabulary, Lyric_Vocabulary, _ = get_vocabulary_cache()
     if theme_type == "hymns":
         all_themes = dfH["Themes"].dropna().str.split(",").explode().str.strip().unique()
         theme_embeddings, theme_texts = get_theme_embeddings("hymns", all_themes)

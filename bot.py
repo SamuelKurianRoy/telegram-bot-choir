@@ -29,7 +29,8 @@ try:
         start_vocabulary, category_selection, CATEGORY_SELECTION,
         download_start, download_url_input, download_quality_selection, ENTER_URL, SELECT_QUALITY,
         start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback, handle_song_code,
-        bible_game_start, bible_game_language_handler, bible_game_difficulty_handler, bible_game_question_handler, BIBLE_GAME_LANGUAGE, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION
+        bible_game_start, bible_game_language_handler, bible_game_difficulty_handler, bible_game_question_handler, BIBLE_GAME_LANGUAGE, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION,
+        initialize_theme_components
     )
 except ImportError as e:
     print(f"[DEBUG] ImportError during project imports: {e}")
@@ -239,6 +240,11 @@ def run_bot():
         print("Another instance of the bot is already running. Aborting.")
         return False
     print(f"Bot starting with PID {os.getpid()}")
+
+    # Initialize heavy theme components during startup
+    print("🚀 Initializing theme components...")
+    initialize_theme_components()
+
     try:
         print("Starting main bot function...")
         try:
