@@ -6,6 +6,10 @@ from telegram import Update, ReplyKeyboardRemove, ReplyKeyboardMarkup, InlineKey
 from telegram.ext import CallbackContext, ConversationHandler, ContextTypes
 from config import get_config
 from logging_utils import setup_loggers
+import logging
+
+# Set up logger
+logger = logging.getLogger(__name__)
 from PyPDF2 import PdfMerger
 import tempfile
 # Import isVocabulary from the appropriate module
@@ -1088,52 +1092,126 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
         # Get playlist preference (default to single video for safety)
         download_playlist = context.user_data.get("download_playlist", False)
 
-        # Download the audio
-        result = await downloader.download_audio(url, quality, chat_id=chat_id, download_playlist=download_playlist)
-
-        if result is None:
-            # Log failed download to Google Doc
-            download_failed_entry = f"{timestamp} - DOWNLOAD FAILED for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | URL: {url}\n\n"
-
-            if yfile_id:
-                append_download_to_google_doc(yfile_id, download_failed_entry)
-
-            # Provide more specific error message based on platform
-            if platform == "YouTube":
-                error_msg = (
-                    "❌ YouTube download failed. This could be due to:\n"
-                    "• Video restrictions or age-gating\n"
-                    "• Regional blocking\n"
-                    "• Technical issues with the video\n\n"
-                    "Please try a different YouTube video or contact the administrator."
-                )
-            else:
-                error_msg = "❌ Download failed. Please try again or contact the administrator."
-
-            await update.message.reply_text(error_msg)
-            return ConversationHandler.END
-
-        file_path, file_info = result
-
-        # Send the audio file
-        await update.message.reply_text(
-            f"✅ Download completed!\n\n"
-            f"🎵 *{file_info['title']}*\n"
-            f"👤 *Artist:* {file_info['artist']}\n"
-            f"📱 *Platform:* {file_info['platform']}\n"
-            f"📊 *Size:* {file_info['size_mb']:.1f} MB\n\n"
-            "Sending file...",
-            parse_mode="Markdown"
-        )
-
-        # Send the audio file
-        with open(file_path, 'rb') as audio_file:
-            await update.message.reply_audio(
-                audio=audio_file,
-                title=file_info['title'],
-                performer=file_info['artist'],
-                duration=file_info.get('duration', 0)
+        # Check if this is a playlist download
+        if download_playlist and platform == "YouTube":
+            # For playlist downloads, use progressive delivery
+            await update.message.reply_text(
+                "📋 **Playlist download started!**\n\n"
+                "🎵 Audio files will be sent to you as they are downloaded. "
+                "This may take some time depending on the playlist size.\n\n"
+                "💡 You can continue using other bot features while downloading.",
+                parse_mode="Markdown"
             )
+
+            # Use progressive playlist download
+            success_count = 0
+            failed_count = 0
+
+            async for result in downloader.download_playlist_progressive(url, quality, chat_id=chat_id):
+                if result is None:
+                    failed_count += 1
+                    await update.message.reply_text(f"❌ Failed to download audio #{success_count + failed_count}")
+                    continue
+
+                file_path, file_info = result
+                success_count += 1
+
+                # Send each audio file as it's downloaded
+                try:
+                    await update.message.reply_text(
+                        f"✅ **Audio {file_info.get('playlist_position', success_count)} completed!**\n\n"
+                        f"🎵 *{file_info['title']}*\n"
+                        f"👤 *Artist:* {file_info['artist']}\n"
+                        f"📊 *Size:* {file_info['size_mb']:.1f} MB\n\n"
+                        "Sending file...",
+                        parse_mode="Markdown"
+                    )
+
+                    # Send the audio file
+                    with open(file_path, 'rb') as audio_file:
+                        await update.message.reply_document(
+                            document=audio_file,
+                            filename=file_info.get('filename', f"{file_info['title']}.mp3"),
+                            caption=f"🎵 {file_info['title']} - {file_info['artist']}"
+                        )
+
+                    await update.message.reply_text("🎉 Audio sent successfully!")
+
+                    # Clean up the file after sending
+                    try:
+                        file_path.unlink()
+                    except Exception as cleanup_e:
+                        logger.warning(f"Could not delete temporary file {file_path}: {cleanup_e}")
+
+                except Exception as send_e:
+                    await update.message.reply_text(f"❌ Failed to send audio #{success_count}: {str(send_e)}")
+                    logger.error(f"Error sending audio file: {send_e}")
+
+            # Final summary
+            total_processed = success_count + failed_count
+            await update.message.reply_text(
+                f"🎉 **Playlist download completed!**\n\n"
+                f"✅ Successfully downloaded: {success_count} audio files\n"
+                f"❌ Failed: {failed_count} audio files\n"
+                f"📊 Total processed: {total_processed} audio files\n\n"
+                f"Send another link to download more audio, or use /cancel to stop.",
+                parse_mode="Markdown"
+            )
+
+            # Log playlist completion
+            playlist_completion_entry = f"{timestamp} - PLAYLIST COMPLETED for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | Success: {success_count} | Failed: {failed_count} | Total: {total_processed}\nURL: {url}\n\n"
+            if yfile_id:
+                append_download_to_google_doc(yfile_id, playlist_completion_entry)
+
+            return ENTER_URL  # Allow user to download more
+
+        else:
+            # Single video download (existing behavior)
+            result = await downloader.download_audio(url, quality, chat_id=chat_id, download_playlist=download_playlist)
+
+            if result is None:
+                # Log failed download to Google Doc
+                download_failed_entry = f"{timestamp} - DOWNLOAD FAILED for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | URL: {url}\n\n"
+
+                if yfile_id:
+                    append_download_to_google_doc(yfile_id, download_failed_entry)
+
+                # Provide more specific error message based on platform
+                if platform == "YouTube":
+                    error_msg = (
+                        "❌ YouTube download failed. This could be due to:\n"
+                        "• Video restrictions or age-gating\n"
+                        "• Regional blocking\n"
+                        "• Technical issues with the video\n\n"
+                        "Please try a different YouTube video or contact the administrator."
+                    )
+                else:
+                    error_msg = "❌ Download failed. Please try again or contact the administrator."
+
+                await update.message.reply_text(error_msg)
+                return ConversationHandler.END
+
+            file_path, file_info = result
+
+            # Send the audio file
+            await update.message.reply_text(
+                f"✅ Download completed!\n\n"
+                f"🎵 *{file_info['title']}*\n"
+                f"👤 *Artist:* {file_info['artist']}\n"
+                f"📱 *Platform:* {file_info['platform']}\n"
+                f"📊 *Size:* {file_info['size_mb']:.1f} MB\n\n"
+                "Sending file...",
+                parse_mode="Markdown"
+            )
+
+            # Send the audio file
+            with open(file_path, 'rb') as audio_file:
+                await update.message.reply_audio(
+                    audio=audio_file,
+                    title=file_info['title'],
+                    performer=file_info['artist'],
+                    duration=file_info.get('duration', 0)
+                )
 
         # Log successful download
         user_logger.info(f"Download completed for {user.full_name} ({user.id}): {file_info['title']}")
