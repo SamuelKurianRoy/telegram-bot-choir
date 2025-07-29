@@ -9,7 +9,7 @@ from logging_utils import setup_loggers
 from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
 from data.drive import upload_log_to_google_doc
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
-from data.udb import track_user_interaction, user_exists, get_user_by_id, get_user_stats, get_user_summary
+from data.udb import track_user_interaction, user_exists, get_user_by_id, get_user_stats, get_user_summary, save_user_database
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import pandas as pd
 from datetime import date
@@ -948,3 +948,28 @@ async def admin_user_info(update: Update, context: CallbackContext) -> None:
     except Exception as e:
         await update.message.reply_text(f"❌ Error retrieving user information: {str(e)}")
         user_logger.error(f"Error in admin_user_info: {e}")
+
+async def admin_save_database(update: Update, context: CallbackContext) -> None:
+    """Admin command to manually save user database to Google Drive"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        await update.message.reply_text("💾 Saving user database to Google Drive...")
+
+        success = save_user_database()
+
+        if success:
+            await update.message.reply_text("✅ User database saved successfully to Google Drive!")
+            user_logger.info(f"Admin {user.id} manually saved user database")
+        else:
+            await update.message.reply_text("❌ Failed to save user database to Google Drive")
+            user_logger.error(f"Admin {user.id} failed to save user database")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error saving database: {str(e)}")
+        user_logger.error(f"Error in admin_save_database: {e}")

@@ -172,8 +172,15 @@ def add_or_update_user(user_data):
             db.at[idx, 'username'] = user_data.get('username', db.at[idx, 'username'])
             db.at[idx, 'name'] = user_data.get('name', db.at[idx, 'name'])
             db.at[idx, 'last_seen'] = current_time
-            
+
             print(f"✅ Updated user {user_id} in database")
+
+            # Save changes to Google Drive
+            save_success = save_user_database()
+            if save_success:
+                print(f"✅ User database saved to Google Drive")
+            else:
+                print(f"⚠️ User updated locally but failed to save to Google Drive")
             
         else:
             # Add new user
@@ -192,7 +199,14 @@ def add_or_update_user(user_data):
             # Add new row to database
             user_db = pd.concat([db, pd.DataFrame([new_user])], ignore_index=True)
             print(f"✅ Added new user {user_id} to database")
-        
+
+        # Save changes to Google Drive
+        save_success = save_user_database()
+        if save_success:
+            print(f"✅ User database saved to Google Drive")
+        else:
+            print(f"⚠️ User added locally but failed to save to Google Drive")
+
         return True
         
     except Exception as e:
@@ -349,10 +363,71 @@ def update_google_sheet_structure():
 
 def save_user_database():
     """
-    Saves the current user database back to Google Drive.
-    This function will be implemented based on your requirements.
+    Saves the current user database back to Google Drive/Sheets.
+    Updates the Google Sheet with the current database content.
     """
-    # TODO: Implement saving functionality
-    # This will require uploading the DataFrame back to Google Drive
-    print("💾 Save user database functionality - to be implemented")
-    pass
+    try:
+        from googleapiclient.discovery import build
+        from google.oauth2 import service_account
+        import tempfile
+        import json
+
+        global user_db
+        if user_db is None or user_db.empty:
+            print("❌ No user database to save")
+            return False
+
+        config = get_config()
+
+        # Setup Google Sheets API
+        tmp_dir = tempfile.gettempdir()
+        key_path = os.path.join(tmp_dir, "service_account.json")
+        with open(key_path, "w") as f:
+            json.dump(config.service_account_data, f)
+
+        creds = service_account.Credentials.from_service_account_file(
+            key_path, scopes=["https://www.googleapis.com/auth/spreadsheets"]
+        )
+        sheets_service = build("sheets", "v4", credentials=creds)
+
+        # Prepare data for Google Sheets
+        # Convert DataFrame to list of lists (including headers)
+        headers = list(user_db.columns)
+        data_rows = user_db.values.tolist()
+
+        # Convert any NaN values to empty strings and ensure proper data types
+        for i, row in enumerate(data_rows):
+            for j, cell in enumerate(row):
+                if pd.isna(cell):
+                    data_rows[i][j] = ''
+                elif isinstance(cell, bool):
+                    data_rows[i][j] = str(cell).upper()  # TRUE/FALSE for Google Sheets
+                else:
+                    data_rows[i][j] = str(cell)
+
+        # Combine headers and data
+        all_data = [headers] + data_rows
+
+        # Clear the sheet and write new data
+        sheet = sheets_service.spreadsheets()
+
+        # Clear existing content
+        sheet.values().clear(
+            spreadsheetId=config.U_DATABASE,
+            range="A:Z"
+        ).execute()
+
+        # Write new data
+        sheet.values().update(
+            spreadsheetId=config.U_DATABASE,
+            range="A1",
+            valueInputOption="RAW",
+            body={"values": all_data}
+        ).execute()
+
+        print(f"✅ Successfully saved {len(data_rows)} user records to Google Sheet")
+        return True
+
+    except Exception as e:
+        print(f"❌ Error saving user database: {e}")
+        return False
