@@ -1033,6 +1033,34 @@ class AudioDownloader:
                 logger.warning(f"Failed to resume from temp files: {e}")
                 # If resume fails, fall through to fresh download
 
+        # Clean URL if single video requested (remove playlist parameters)
+        if not download_playlist:
+            # Remove playlist parameters from URL to force single video download
+            import urllib.parse as urlparse
+            parsed_url = urlparse.urlparse(url)
+            query_params = urlparse.parse_qs(parsed_url.query)
+
+            # Remove playlist-related parameters
+            playlist_params = ['list', 'index', 'start_radio', 'playlist']
+            for param in playlist_params:
+                query_params.pop(param, None)
+
+            # Reconstruct URL without playlist parameters
+            new_query = urlparse.urlencode(query_params, doseq=True)
+            cleaned_url = urlparse.urlunparse((
+                parsed_url.scheme,
+                parsed_url.netloc,
+                parsed_url.path,
+                parsed_url.params,
+                new_query,
+                parsed_url.fragment
+            ))
+
+            if cleaned_url != url:
+                logger.info(f"Cleaned URL for single video: {url} -> {cleaned_url}")
+                downloader_logger.info(f"URL cleaned to remove playlist parameters: {cleaned_url}")
+                url = cleaned_url
+
         # Otherwise, proceed with fresh download
         try:
             # Quality mapping
@@ -1059,6 +1087,8 @@ class AudioDownloader:
                 'quiet': True,
                 'no_warnings': True,
                 'noplaylist': not download_playlist,  # Download playlist if requested, otherwise single video
+                'extract_flat': False,  # Ensure we get full video info, not just playlist entries
+                'ignoreerrors': False,  # Don't ignore errors, we want to know if something fails
                 # Enhanced anti-blocking measures for Streamlit Cloud
                 'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'referer': 'https://www.youtube.com/',
