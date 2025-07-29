@@ -72,10 +72,10 @@ async def start(update: Update, context: CallbackContext) -> None:
                 asyncio.create_task(context.bot.send_message(
                     chat_id=ADMIN_ID,
                     text=(
-                        f"👤 <b>New User Added to Database</b>\n\n"
-                        f"<b>Name:</b> {user.full_name}\n"
+                        f"👤 <b>New User</b>\n\n"
+                        # f"<b>Name:</b> {user.full_name}\n"
                         f"<b>Username:</b> @{user.username if user.username else 'Not set'}\n"
-                        f"<b>User ID:</b> <code>{user.id}</code>\n"
+                        # f"<b>User ID:</b> <code>{user.id}</code>\n"
                         f"<b>Status:</b> {'✅ Authorized' if str(user.id) in st.secrets.get('AUTHORIZED_USERS', '').split(',') else '❌ Not Authorized'}"
                     ),
                     parse_mode="HTML"
