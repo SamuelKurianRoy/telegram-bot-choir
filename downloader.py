@@ -1710,10 +1710,14 @@ class AudioDownloader:
             # Try to get basic track info from Spotify page title
             search_query = await self.get_spotify_search_query(url)
             if not search_query:
-                # Fallback to generic search
+                # Fallback to generic search using track ID
                 search_query = f"spotify track {track_id[:8]}"
+                logger.warning(f"Could not extract song info from Spotify page, using generic search: {search_query}")
+            else:
+                logger.info(f"Extracted search query from Spotify: {search_query}")
 
             logger.info(f"Searching YouTube for: {search_query}")
+            downloader_logger.info(f"YouTube search query for Spotify fallback: {search_query}")
 
             # Search YouTube for the track
             youtube_url = await self.search_youtube(search_query)
@@ -1764,30 +1768,48 @@ class AudioDownloader:
             if response.status_code == 200:
                 html = response.text
 
-                # Extract title from page
-                title_match = re.search(r'<title[^>]*>([^<]+)</title>', html)
-                if title_match:
-                    title_text = title_match.group(1)
-                    # Remove " | Spotify" from the end
-                    title_text = title_text.replace(' | Spotify', '').strip()
+                # Try multiple methods to extract song information
+                search_query = None
 
-                    downloader_logger.info(f"Raw title from Spotify page: {title_text}")
+                # Method 1: Extract from meta tags (more reliable)
+                meta_patterns = [
+                    r'<meta property="og:title" content="([^"]+)"',
+                    r'<meta name="twitter:title" content="([^"]+)"',
+                    r'<meta property="music:song" content="([^"]+)"',
+                ]
 
-                    if title_text and title_text != 'Spotify':
-                        # Clean up the title for better search results
-                        # Remove common unwanted patterns
-                        cleaned_title = title_text
+                for pattern in meta_patterns:
+                    meta_match = re.search(pattern, html, re.IGNORECASE)
+                    if meta_match:
+                        search_query = meta_match.group(1)
+                        downloader_logger.info(f"Found song info in meta tags: {search_query}")
+                        break
 
-                        # Remove things like "(Official Video)", "(Lyrics)", etc.
-                        cleaned_title = re.sub(r'\([^)]*(?:official|video|lyrics|audio|music|mv)\)', '', cleaned_title, flags=re.IGNORECASE)
-                        cleaned_title = re.sub(r'\[[^\]]*(?:official|video|lyrics|audio|music|mv)\]', '', cleaned_title, flags=re.IGNORECASE)
+                # Method 2: Extract from page title (fallback)
+                if not search_query:
+                    title_match = re.search(r'<title[^>]*>([^<]+)</title>', html)
+                    if title_match:
+                        search_query = title_match.group(1)
+                        downloader_logger.info(f"Found song info in page title: {search_query}")
 
-                        # Clean up extra spaces
-                        cleaned_title = ' '.join(cleaned_title.split())
+                if search_query:
+                    # Clean up the extracted text
+                    # Remove " | Spotify", " - Spotify", etc.
+                    search_query = re.sub(r'\s*[\|\-]\s*Spotify.*$', '', search_query, flags=re.IGNORECASE)
 
-                        downloader_logger.info(f"Cleaned search query: {cleaned_title}")
-                        logger.info(f"Extracted search query from page title: {cleaned_title}")
-                        return cleaned_title
+                    # Remove common unwanted patterns
+                    search_query = re.sub(r'\([^)]*(?:official|video|lyrics|audio|music|mv|explicit)\)', '', search_query, flags=re.IGNORECASE)
+                    search_query = re.sub(r'\[[^\]]*(?:official|video|lyrics|audio|music|mv|explicit)\]', '', search_query, flags=re.IGNORECASE)
+
+                    # Clean up extra spaces and special characters
+                    search_query = ' '.join(search_query.split())
+                    search_query = search_query.strip()
+
+                    downloader_logger.info(f"Cleaned search query: {search_query}")
+
+                    if search_query and search_query.lower() not in ['spotify', 'music', 'song']:
+                        logger.info(f"Successfully extracted search query: {search_query}")
+                        return search_query
 
             downloader_logger.warning("Could not extract title from Spotify page")
             return None
@@ -1806,10 +1828,11 @@ class AudioDownloader:
         try:
             downloader_logger.info(f"Searching YouTube for: '{query}'")
 
+            # Enhanced search for music content
             ydl_opts = {
                 'quiet': True,
                 'no_warnings': True,
-                'default_search': 'ytsearch3:',  # Get top 3 results for better matching
+                'default_search': 'ytsearch5:',  # Get top 5 results for better matching
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -1823,19 +1846,44 @@ class AudioDownloader:
                 if search_results and 'entries' in search_results and search_results['entries']:
                     # Log all found results for debugging
                     downloader_logger.info(f"Found {len(search_results['entries'])} YouTube results:")
-                    for i, entry in enumerate(search_results['entries'][:3]):
+                    for i, entry in enumerate(search_results['entries'][:5]):
                         title = entry.get('title', 'Unknown')
                         uploader = entry.get('uploader', 'Unknown')
                         duration = entry.get('duration', 0)
                         url = entry.get('webpage_url', 'No URL')
                         downloader_logger.info(f"  {i+1}. {title} by {uploader} ({duration}s) - {url}")
 
-                    # Use the first result
-                    selected_result = search_results['entries'][0]
+                    # Try to select the best music-related result
+                    selected_result = None
+
+                    # Look for music-related keywords in titles and uploaders
+                    music_keywords = ['official', 'music', 'audio', 'song', 'track', 'album', 'artist', 'band']
+                    non_music_keywords = ['tutorial', 'how to', 'fix', 'browser', 'chrome', 'guide', 'review', 'unboxing']
+
+                    for entry in search_results['entries'][:5]:
+                        title = entry.get('title', '').lower()
+                        uploader = entry.get('uploader', '').lower()
+
+                        # Skip clearly non-music content
+                        if any(keyword in title for keyword in non_music_keywords):
+                            downloader_logger.info(f"Skipping non-music result: {entry.get('title', 'Unknown')}")
+                            continue
+
+                        # Prefer music-related content
+                        if any(keyword in title or keyword in uploader for keyword in music_keywords):
+                            selected_result = entry
+                            downloader_logger.info(f"Selected music-related result: {entry.get('title', 'Unknown')}")
+                            break
+
+                    # If no music-specific result found, use the first one
+                    if not selected_result:
+                        selected_result = search_results['entries'][0]
+                        downloader_logger.info(f"No music-specific result found, using first result: {selected_result.get('title', 'Unknown')}")
+
                     selected_url = selected_result['webpage_url']
                     selected_title = selected_result.get('title', 'Unknown')
 
-                    downloader_logger.info(f"Selected YouTube result: {selected_title} - {selected_url}")
+                    downloader_logger.info(f"Final selected YouTube result: {selected_title} - {selected_url}")
                     logger.info(f"Found YouTube alternative: {selected_title}")
 
                     return selected_url
