@@ -438,7 +438,7 @@ async def admin_reply_send_message(update: Update, context: CallbackContext) -> 
                 try:
                     await context.bot.send_message(
                         chat_id=target_user_id,
-                        text=f"📢 **Admin Broadcast:**\n\n{message_text}",
+                        text=f"💬 **Admin:**\n\n{message_text}",
                         parse_mode="Markdown"
                     )
                     sent_count += 1
@@ -462,7 +462,7 @@ async def admin_reply_send_message(update: Update, context: CallbackContext) -> 
 
             await context.bot.send_message(
                 chat_id=target_user_id,
-                text=f"💬 **Admin's reply:**\n\n{message_text}",
+                text=f"💬 **Admin:**\n\n{message_text}",
                 parse_mode="Markdown"
             )
 
