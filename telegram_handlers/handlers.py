@@ -266,13 +266,21 @@ async def date_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     input_date = update.message.text.strip()
     result = get_songs_by_date(input_date)
     if isinstance(result, dict):
+        # Split into two messages as requested
+        # First message: Just the status message without the colon
+        first_message = result['message'].rstrip(':')
+        await update.message.reply_text(first_message, parse_mode='Markdown')
+
+        # Second message: Date and songs list
         songs_text = "\n".join(
             f"{i + 1}. {s} - {IndexFinder(s)}" for i, s in enumerate(result["songs"])
         )
-        response = f"{result['message']}:\n\n{songs_text}"
+        second_message = f"{result['date']}:\n\n{songs_text}"
+        await update.message.reply_text(second_message, parse_mode='Markdown')
     else:
-        response = result
-    await update.message.reply_text(response, parse_mode='Markdown')
+        # For error messages, send as single message
+        await update.message.reply_text(result, parse_mode='Markdown')
+
     await update.message.reply_text(
         "You can enter another date, or type /cancel to stop.",
         reply_markup=ReplyKeyboardRemove()
