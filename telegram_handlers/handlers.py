@@ -974,3 +974,55 @@ async def admin_save_database(update: Update, context: CallbackContext) -> None:
     except Exception as e:
         await update.message.reply_text(f"❌ Error saving database: {str(e)}")
         user_logger.error(f"Error in admin_save_database: {e}")
+
+async def admin_list_commands(update: Update, context: CallbackContext) -> None:
+    """Admin command to list all available admin commands"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        admin_commands = f"""
+🔧 **Admin Commands List**
+
+**User Management:**
+• `/admin_users` - View user database statistics
+• `/admin_user_info <user_id>` - View specific user details
+• `/admin_save_db` - Manually save user database
+
+**Bot Management:**
+• `/refresh` - Reload all datasets from Google Drive
+• `/reply <message>` - Reply to user comments/feedback
+• `/list` - Show this admin commands list
+
+**General Commands (also available to admin):**
+• `/start` - Welcome message and user tracking
+• `/help` - Show general bot help
+• `/notation` - Get sheet music notation
+• `/bible` - Bible verse lookup
+• `/games` - Bible quiz games
+• `/date` - Check songs sung on specific dates
+• `/vocabulary` - Access choir vocabulary
+• `/search` - Search songs by various criteria
+• `/tune` - Find tune information
+• `/last` - Check when songs were last sung
+• `/check` - Get song details
+• `/theme` - Search by themes
+• `/download` - Download audio from links
+• `/comment` - Send feedback to admin
+
+**Usage Examples:**
+• `/admin_user_info 757438955`
+• `/reply Thanks for your feedback!`
+• `/admin_users`
+"""
+
+        await update.message.reply_text(admin_commands, parse_mode="Markdown")
+        user_logger.info(f"Admin {user.id} viewed admin commands list")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error retrieving admin commands: {str(e)}")
+        user_logger.error(f"Error in admin_list_commands: {e}")

@@ -18,7 +18,7 @@ try:
         last_sung_input, ENTER_LAST_SONG,
         date_start, date_input, ASK_DATE, last_show_all_dates_callback,
         bible_start, bible_input_handler, bible_confirm_handler, BIBLE_INPUT, BIBLE_CONFIRM,
-        admin_users_stats, admin_user_info, admin_save_database
+        admin_users_stats, admin_user_info, admin_save_database, admin_list_commands
     )
     from telegram_handlers.conversations import (
         SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT,
@@ -195,6 +195,7 @@ app.add_handler(CommandHandler("reply", admin_reply))
 app.add_handler(CommandHandler("admin_users", admin_users_stats))
 app.add_handler(CommandHandler("admin_user_info", admin_user_info))
 app.add_handler(CommandHandler("admin_save_db", admin_save_database))
+app.add_handler(CommandHandler("list", admin_list_commands))
 app.add_handler(CallbackQueryHandler(handle_notation_callback, pattern="^notation:"))
 
 app.add_handler(tune_conv_handler)
