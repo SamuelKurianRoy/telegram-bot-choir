@@ -9,6 +9,7 @@ from logging_utils import setup_loggers
 from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
 from data.drive import upload_log_to_google_doc
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
+from data.udb import track_user_interaction, user_exists, get_user_by_id, get_user_stats, get_user_summary
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import pandas as pd
 from datetime import date
@@ -57,22 +58,54 @@ async def start(update: Update, context: CallbackContext) -> None:
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /start")
 
+    # === USER DATABASE TRACKING ===
+    try:
+        # Check if user exists in database
+        user_exists_in_db = user_exists(user.id)
+
+        if user_exists_in_db:
+            # Update existing user's last_seen
+            track_user_interaction(user)
+            user_logger.info(f"Updated existing user {user.id} in database")
+        else:
+            # Add new user to database
+            track_user_interaction(user)
+            user_logger.info(f"Added new user {user.id} to database")
+
+            # Notify admin about new user
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=(
+                    f"👤 <b>New User Added to Database</b>\n\n"
+                    f"<b>Name:</b> {user.full_name}\n"
+                    f"<b>Username:</b> @{user.username if user.username else 'Not set'}\n"
+                    f"<b>User ID:</b> <code>{user.id}</code>\n"
+                    f"<b>Status:</b> {'✅ Authorized' if user.id in st.secrets.get('AUTHORIZED_USERS', '').split(',') else '❌ Not Authorized'}"
+                ),
+                parse_mode="HTML"
+            )
+
+    except Exception as e:
+        user_logger.error(f"Error tracking user {user.id}: {e}")
+        # Continue with bot functionality even if database tracking fails
+
     # Check authorization
     authorized_users_str = st.secrets["AUTHORIZED_USERS"]
     authorized_users = list(map(int, authorized_users_str.split(','))) if authorized_users_str else []
 
     if user.id not in authorized_users:
-        # Notify admin but do NOT block user
-        await context.bot.send_message(
-            chat_id=ADMIN_ID,
-            text=(
-                f"⚠️ <b>Unauthorized user accessed /start</b>\n\n"
-                f"<b>Name:</b> {user.full_name}\n"
-                f"<b>Username:</b> @{user.username}\n"
-                f"<b>User ID:</b> <code>{user.id}</code>"
-            ),
-            parse_mode="HTML"
-        )
+        # Notify admin about unauthorized access (only if not already notified above)
+        if user_exists_in_db:  # Only notify if this is an existing user accessing
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=(
+                    f"⚠️ <b>Unauthorized user accessed /start</b>\n\n"
+                    f"<b>Name:</b> {user.full_name}\n"
+                    f"<b>Username:</b> @{user.username}\n"
+                    f"<b>User ID:</b> <code>{user.id}</code>"
+                ),
+                parse_mode="HTML"
+            )
 
     # Proceed with regular welcome message
     welcome_text = (f"Hello {user.full_name if user.full_name else user.username}\n\n"
@@ -855,4 +888,63 @@ def extract_verses_from_cleaned_text(cleaned_text, start_verse, end_verse):
                 verses.append(f"{vnum} {vtext.strip()}")
         except Exception:
             continue
-    return verses 
+    return verses
+
+# === USER DATABASE ADMIN COMMANDS ===
+
+async def admin_users_stats(update: Update, context: CallbackContext) -> None:
+    """Admin command to view user database statistics"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        stats = get_user_stats()
+
+        stats_text = f"""
+📊 **User Database Statistics**
+
+👥 **Total Users:** {stats['total_users']}
+✅ **Authorized Users:** {stats['authorized_users']}
+👑 **Admin Users:** {stats['admin_users']}
+🟢 **Active Users:** {stats['active_users']}
+
+Use /admin_user_info <user_id> to view specific user details.
+"""
+
+        await update.message.reply_text(stats_text, parse_mode="Markdown")
+        user_logger.info(f"Admin {user.id} viewed user database statistics")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error retrieving user statistics: {str(e)}")
+        user_logger.error(f"Error in admin_users_stats: {e}")
+
+async def admin_user_info(update: Update, context: CallbackContext) -> None:
+    """Admin command to view specific user information"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    # Check if user_id was provided
+    if not context.args:
+        await update.message.reply_text("❌ Please provide a user ID. Usage: /admin_user_info <user_id>")
+        return
+
+    try:
+        target_user_id = int(context.args[0])
+        user_summary = get_user_summary(target_user_id)
+
+        await update.message.reply_text(user_summary, parse_mode="Markdown")
+        user_logger.info(f"Admin {user.id} viewed info for user {target_user_id}")
+
+    except ValueError:
+        await update.message.reply_text("❌ Invalid user ID. Please provide a numeric user ID.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error retrieving user information: {str(e)}")
+        user_logger.error(f"Error in admin_user_info: {e}")

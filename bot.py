@@ -13,11 +13,12 @@ try:
     from data.vocabulary import ChoirVocabulary
     from utils.search import setup_search
     from telegram_handlers.handlers import (
-        start, help_command, refresh_command, admin_reply, cancel, 
-        check_song_start, last_sung_start, check_song_input, ENTER_SONG, 
-        last_sung_input, ENTER_LAST_SONG, 
+        start, help_command, refresh_command, admin_reply, cancel,
+        check_song_start, last_sung_start, check_song_input, ENTER_SONG,
+        last_sung_input, ENTER_LAST_SONG,
         date_start, date_input, ASK_DATE, last_show_all_dates_callback,
-        bible_start, bible_input_handler, bible_confirm_handler, BIBLE_INPUT, BIBLE_CONFIRM
+        bible_start, bible_input_handler, bible_confirm_handler, BIBLE_INPUT, BIBLE_CONFIRM,
+        admin_users_stats, admin_user_info
     )
     from telegram_handlers.conversations import (
         SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT,
@@ -191,6 +192,8 @@ app.add_handler(bible_game_conv_handler)
 app.add_handler(date_conv_handler)
 app.add_handler(CommandHandler("refresh", refresh_command))
 app.add_handler(CommandHandler("reply", admin_reply))
+app.add_handler(CommandHandler("admin_users", admin_users_stats))
+app.add_handler(CommandHandler("admin_user_info", admin_user_info))
 app.add_handler(CallbackQueryHandler(handle_notation_callback, pattern="^notation:"))
 
 app.add_handler(tune_conv_handler)
