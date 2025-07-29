@@ -1062,10 +1062,19 @@ class AudioDownloader:
                 # Enhanced anti-blocking measures for Streamlit Cloud
                 'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'referer': 'https://www.youtube.com/',
-                'sleep_interval': 1,
-                'max_sleep_interval': 5,
-                'extractor_retries': 3,
-                'fragment_retries': 3,
+                'sleep_interval': 2,
+                'max_sleep_interval': 10,
+                'extractor_retries': 5,
+                'fragment_retries': 5,
+                'socket_timeout': 30,
+                'http_headers': {
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'DNT': '1',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                },
             }
 
             # Add FFmpeg location if found (using same logic as audio_downloader_bot.py)
@@ -1225,6 +1234,47 @@ class AudioDownloader:
                 except Exception as fallback_e:
                     logger.error(f"Fallback download also failed: {fallback_e}")
                     downloader_logger.error(f"YouTube fallback failed: {fallback_e}")
+
+                    # Try one more time with minimal options (last resort)
+                    logger.warning("Trying minimal extraction as last resort...")
+                    try:
+                        minimal_opts = {
+                            'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
+                            'outtmpl': str(temp_filepath) + '.%(ext)s',
+                            'quiet': False,  # Show output for debugging
+                            'no_warnings': False,
+                            'user_agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+                            'sleep_interval': 5,
+                        }
+
+                        with yt_dlp.YoutubeDL(minimal_opts) as ydl:
+                            info = await asyncio.wait_for(
+                                asyncio.get_event_loop().run_in_executor(
+                                    None, lambda: ydl.extract_info(url, download=True)
+                                ),
+                                timeout=180
+                            )
+
+                        # Find downloaded file
+                        downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
+                        if downloaded_files:
+                            downloaded_file = downloaded_files[0]
+                            file_info = {
+                                'title': info.get('title', 'Unknown'),
+                                'artist': info.get('uploader', 'Unknown'),
+                                'duration': info.get('duration', 0),
+                                'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
+                                'platform': 'YouTube (minimal)',
+                                'filename': str(downloaded_file.name)
+                            }
+                            logger.info("Minimal extraction successful")
+                            return downloaded_file, file_info
+                        else:
+                            logger.error("Minimal extraction failed - no file found")
+
+                    except Exception as minimal_e:
+                        logger.error(f"Minimal extraction also failed: {minimal_e}")
+
                     return None
             return None
 
@@ -1386,6 +1436,31 @@ class AudioDownloader:
             except Exception as e:
                 logger.warning(f"Failed to resume from temp files: {e}")
                 # If resume fails, fall through to fresh download
+
+        # Check if spotdl is available before proceeding
+        try:
+            # Test if spotdl is available
+            test_cmd = ["python", "-m", "spotdl", "--version"] if self.is_streamlit_cloud else ["py", "-m", "spotdl", "--version"]
+            test_result = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None, lambda: sp.run(test_cmd, capture_output=True, text=True, timeout=10)
+                ),
+                timeout=15
+            )
+
+            if test_result.returncode != 0:
+                logger.error(f"spotdl not available: {test_result.stderr}")
+                downloader_logger.error(f"spotdl not available in environment: {test_result.stderr}")
+                # Skip to fallback immediately
+                return await self.download_spotify_fallback(url, quality)
+
+            logger.info(f"spotdl available: {test_result.stdout.strip()}")
+
+        except Exception as test_e:
+            logger.error(f"Failed to test spotdl availability: {test_e}")
+            downloader_logger.error(f"spotdl availability test failed: {test_e}")
+            # Skip to fallback immediately
+            return await self.download_spotify_fallback(url, quality)
 
         # Otherwise, proceed with fresh download
         try:
