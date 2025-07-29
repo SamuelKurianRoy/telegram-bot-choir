@@ -927,15 +927,15 @@ class AudioDownloader:
             logger.error(f"Error extracting Spotify info: {e}")
             return None
 
-    async def download_audio(self, url: str, quality: str = "medium", chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
+    async def download_audio(self, url: str, quality: str = "medium", chat_id: str = None, download_playlist: bool = False) -> Optional[Tuple[Path, Dict]]:
         """Download audio from URL, passing chat_id for checkpoint/resume."""
         platform = self.detect_platform(url)
         if platform == 'Spotify':
             return await self.download_spotify_audio(url, quality, chat_id=chat_id)
         else:
-            return await self.download_youtube_audio(url, quality, chat_id=chat_id)
+            return await self.download_youtube_audio(url, quality, chat_id=chat_id, download_playlist=download_playlist)
     
-    async def download_youtube_audio(self, url: str, quality: str, chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
+    async def download_youtube_audio(self, url: str, quality: str, chat_id: str = None, download_playlist: bool = False) -> Optional[Tuple[Path, Dict]]:
         """Download audio from YouTube using yt-dlp, with checkpoint/resume support."""
         import hashlib
         import json
@@ -1058,6 +1058,7 @@ class AudioDownloader:
                 }],
                 'quiet': True,
                 'no_warnings': True,
+                'noplaylist': not download_playlist,  # Download playlist if requested, otherwise single video
             }
 
             # Add FFmpeg location if found (using same logic as audio_downloader_bot.py)
@@ -1074,6 +1075,8 @@ class AudioDownloader:
                 ydl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio'
                 # Remove post-processors that require FFmpeg
                 ydl_opts['postprocessors'] = []
+                # Ensure noplaylist is still set
+                ydl_opts['noplaylist'] = not download_playlist
             
             # Download with timeout
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -1386,10 +1389,11 @@ class AudioDownloader:
             output_dir.mkdir(exist_ok=True)
             
             # Prepare spotdl command with better output handling for Streamlit Cloud
+            # Use py -m spotdl instead of direct spotdl command for better compatibility
             if self.is_streamlit_cloud:
                 # Use a simpler output pattern for Streamlit Cloud
                 spotdl_cmd = [
-                    "spotdl",
+                    "py", "-m", "spotdl",
                     "download",
                     url,
                     "--bitrate", f"{bitrate}k",
@@ -1399,7 +1403,7 @@ class AudioDownloader:
                 ]
             else:
                 spotdl_cmd = [
-                    "spotdl",
+                    "py", "-m", "spotdl",
                     "download",
                     url,
                     "--bitrate", f"{bitrate}k",
@@ -1587,8 +1591,19 @@ class AudioDownloader:
             return downloaded_file, file_info
         except Exception as e:
             logger.error(f"Spotify download failed: {e}")
+            downloader_logger.error(f"Spotify download failed for URL {url}: {e}")
+            downloader_logger.error(f"Error type: {type(e).__name__}")
+            downloader_logger.error(f"Error details: {str(e)}")
+
             # Try fallback
-            return await self.download_spotify_fallback(url, quality)
+            logger.info("Attempting Spotify fallback via YouTube search...")
+            fallback_result = await self.download_spotify_fallback(url, quality)
+
+            if fallback_result is None:
+                logger.error("Both Spotify direct download and YouTube fallback failed")
+                downloader_logger.error("Both Spotify direct download and YouTube fallback failed")
+
+            return fallback_result
     
     async def download_spotify_fallback(self, url: str, quality: str) -> Optional[Tuple[Path, Dict]]:
         """Fallback: search for Spotify track on YouTube using simplified approach"""
@@ -1615,7 +1630,7 @@ class AudioDownloader:
             youtube_url = await self.search_youtube(search_query)
             if youtube_url:
                 logger.info(f"Found YouTube alternative: {youtube_url}")
-                result = await self.download_youtube_audio(youtube_url, quality)
+                result = await self.download_youtube_audio(youtube_url, quality, download_playlist=False)
 
                 # If successful, update the platform info to indicate it's a Spotify fallback
                 if result:
@@ -1629,6 +1644,9 @@ class AudioDownloader:
 
         except Exception as e:
             logger.error(f"Spotify fallback failed: {e}")
+            downloader_logger.error(f"Spotify fallback failed for URL {url}: {e}")
+            downloader_logger.error(f"Fallback error type: {type(e).__name__}")
+            downloader_logger.error(f"Fallback error details: {str(e)}")
             return None
 
     async def get_spotify_search_query(self, url: str) -> Optional[str]:
