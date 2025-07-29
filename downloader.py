@@ -5,6 +5,7 @@ Supports YouTube and Spotify audio downloads
 
 import os
 import re
+import sys
 import time
 import asyncio
 import logging
@@ -1474,9 +1475,22 @@ class AudioDownloader:
                 import spotdl
                 logger.info(f"spotdl module import successful, version: {getattr(spotdl, '__version__', 'Unknown')}")
                 downloader_logger.info(f"spotdl module available: {getattr(spotdl, '__version__', 'Unknown')}")
+                downloader_logger.info(f"spotdl module location: {spotdl.__file__}")
             except ImportError as import_e:
                 logger.error(f"spotdl module import failed: {import_e}")
                 downloader_logger.error(f"spotdl module not available: {import_e}")
+                downloader_logger.error(f"Python path: {sys.path}")
+                downloader_logger.error(f"Environment: Streamlit Cloud = {self.is_streamlit_cloud}")
+
+                # Try to see what packages are actually installed
+                try:
+                    import pkg_resources
+                    installed = [d.project_name for d in pkg_resources.working_set]
+                    music_related = [pkg for pkg in installed if 'spot' in pkg.lower() or 'music' in pkg.lower()]
+                    downloader_logger.error(f"Music-related packages found: {music_related}")
+                except Exception as pkg_e:
+                    downloader_logger.error(f"Could not check installed packages: {pkg_e}")
+
                 # Skip to fallback immediately
                 return await self.download_spotify_fallback(url, quality)
 
