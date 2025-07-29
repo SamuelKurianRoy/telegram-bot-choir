@@ -400,7 +400,7 @@ async def admin_reply_select_user(update: Update, context: CallbackContext) -> i
 
         await update.message.reply_text(
             f"💬 **Replying to: {selected_option}**\n\n"
-            f"User ID: `{selected_user['user_id']}`\n\n"
+            # f"User ID: `{selected_user['user_id']}`\n\n"
             "Please enter your message:",
             reply_markup=ReplyKeyboardRemove(),
             parse_mode="Markdown"
