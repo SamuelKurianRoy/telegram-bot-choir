@@ -208,35 +208,45 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) used /refresh")
     config = get_config()
 
-    await update.message.reply_text("🔄 Starting refresh process...")
+    # Store message IDs to delete later
+    progress_messages = []
+
+    # Starting message
+    msg1 = await update.message.reply_text("🔄 Starting refresh process...")
+    progress_messages.append(msg1.message_id)
 
     try:
         # Save any pending user database changes before refresh
-        await update.message.reply_text("💾 Saving pending user database changes...")
+        msg2 = await update.message.reply_text("💾 Saving pending database changes...")
+        progress_messages.append(msg2.message_id)
         save_success = save_if_pending()
         if save_success:
             user_logger.info("User database changes saved during refresh")
 
         # Reload datasets
-        await update.message.reply_text("📊 Reloading datasets...")
+        msg3 = await update.message.reply_text("📊 Reloading datasets...")
+        progress_messages.append(msg3.message_id)
         dfH, dfL, dfC, yr23, yr24, yr25, df, dfTH, dfTD = load_datasets()
         yrDataPreprocessing()
         dfcleaning()
         df = standardize_song_columns()
 
         # Refresh lyrics_file_map
-        await update.message.reply_text("🎵 Refreshing lyrics file map...")
+        msg4 = await update.message.reply_text("🎵 Refreshing lyrics file map...")
+        progress_messages.append(msg4.message_id)
         conversations.lyrics_file_map = fetch_lyrics_file_map(LYRICS_FOLDER_URL)
 
         # Reload user database to get latest changes from Google Drive
-        await update.message.reply_text("👥 Reloading user database...")
+        msg5 = await update.message.reply_text("👥 Reloading database...")
+        progress_messages.append(msg5.message_id)
         global user_db
         from data.udb import user_db
         user_db = None  # Clear cache
         load_user_database()  # Reload from Google Drive
 
         # Clear theme caches to ensure fresh data
-        await update.message.reply_text("🎯 Refreshing theme components...")
+        msg6 = await update.message.reply_text("🎯 Refreshing theme components...")
+        progress_messages.append(msg6.message_id)
         conversations._vocabulary_cache = None  # Clear vocabulary cache
         conversations._theme_embeddings.clear()  # Clear theme embeddings
         conversations._theme_texts.clear()  # Clear theme texts
@@ -244,15 +254,33 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
         conversations.initialize_theme_components()
 
         # Upload logs
-        await update.message.reply_text("📝 Uploading logs...")
+        msg7 = await update.message.reply_text("📝 .......")
+        progress_messages.append(msg7.message_id)
         upload_log_to_google_doc(config.BFILE_ID, "bot_log.txt")
         upload_log_to_google_doc(config.UFILE_ID, "user_log.txt")
 
-        await update.message.reply_text("✅ All components refreshed successfully!\n\n📊 Datasets reloaded\n🎵 Lyrics file map updated\n👥 User database reloaded\n📝 Logs uploaded")
+        # Send final success message
+        await update.message.reply_text("✅ All components refreshed successfully!\n\n📊 Datasets reloaded\n🎵 Lyrics file map updated\n📝 Continue using the bot")
+
+        # Delete all progress messages
+        for msg_id in progress_messages:
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_id)
+            except Exception as delete_error:
+                # Ignore deletion errors (message might already be deleted or too old)
+                user_logger.warning(f"Could not delete progress message {msg_id}: {delete_error}")
 
     except Exception as e:
+        # Send error message
         await update.message.reply_text(f"❌ Error during refresh: {e}")
         user_logger.error(f"Refresh command error: {e}")
+
+        # Still try to clean up progress messages on error
+        for msg_id in progress_messages:
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_id)
+            except Exception as delete_error:
+                user_logger.warning(f"Could not delete progress message {msg_id}: {delete_error}")
 
 #Admin reply
 
