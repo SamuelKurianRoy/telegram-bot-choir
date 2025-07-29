@@ -13,6 +13,7 @@ import logging
 
 # Global user database variable
 user_db = None
+pending_saves = False  # Flag to track if there are unsaved changes
 
 def load_user_database():
     """
@@ -144,6 +145,13 @@ def user_exists(user_id):
     """
     return get_user_by_id(user_id) is not None
 
+def mark_pending_save():
+    """
+    Mark that there are pending changes to save.
+    """
+    global pending_saves
+    pending_saves = True
+
 def add_or_update_user(user_data):
     """
     Adds a new user or updates an existing user in the database.
@@ -175,12 +183,8 @@ def add_or_update_user(user_data):
 
             print(f"✅ Updated user {user_id} in database")
 
-            # Save changes to Google Drive
-            save_success = save_user_database()
-            if save_success:
-                print(f"✅ User database saved to Google Drive")
-            else:
-                print(f"⚠️ User updated locally but failed to save to Google Drive")
+            # Mark as needing save but don't save immediately for performance
+            mark_pending_save()
             
         else:
             # Add new user
@@ -200,12 +204,8 @@ def add_or_update_user(user_data):
             user_db = pd.concat([db, pd.DataFrame([new_user])], ignore_index=True)
             print(f"✅ Added new user {user_id} to database")
 
-        # Save changes to Google Drive
-        save_success = save_user_database()
-        if save_success:
-            print(f"✅ User database saved to Google Drive")
-        else:
-            print(f"⚠️ User added locally but failed to save to Google Drive")
+        # Mark as needing save but don't save immediately for performance
+        mark_pending_save()
 
         return True
         
@@ -237,10 +237,10 @@ def get_user_stats():
 def track_user_interaction(telegram_user):
     """
     Helper function to track user interactions from Telegram updates.
-    
+
     Args:
         telegram_user: Telegram User object from update.effective_user
-    
+
     Returns:
         bool: True if tracking was successful
     """
@@ -251,13 +251,68 @@ def track_user_interaction(telegram_user):
             'username': telegram_user.username or '',
             'name': telegram_user.full_name or f"{telegram_user.first_name or ''} {telegram_user.last_name or ''}".strip(),
         }
-        
+
         # Add or update user in database
         return add_or_update_user(user_data)
-        
+
     except Exception as e:
         print(f"❌ Error tracking user interaction: {e}")
         return False
+
+def track_user_fast(telegram_user):
+    """
+    Fast user tracking that doesn't load the full database.
+    Only checks if user exists and updates last_seen if needed.
+
+    Args:
+        telegram_user: Telegram User object from update.effective_user
+
+    Returns:
+        tuple: (is_new_user, tracking_success)
+    """
+    try:
+        user_id = telegram_user.id
+
+        # Quick check if user exists without loading full database
+        existing_user = get_user_by_id(user_id)
+        is_new_user = existing_user is None
+
+        if is_new_user:
+            # Only for new users, do the full tracking
+            success = track_user_interaction(telegram_user)
+            return (True, success)
+        else:
+            # For existing users, just update last_seen quickly
+            global user_db
+            db = get_user_database()
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Update last_seen for existing user
+            user_idx = db[db['user_id'] == user_id].index
+            if not user_idx.empty:
+                db.at[user_idx[0], 'last_seen'] = current_time
+                mark_pending_save()
+                print(f"✅ Updated last_seen for user {user_id}")
+
+            return (False, True)
+
+    except Exception as e:
+        print(f"❌ Error in fast user tracking: {e}")
+        return (False, False)
+
+def save_if_pending():
+    """
+    Save database only if there are pending changes.
+    This can be called periodically or manually.
+    """
+    global pending_saves
+    if pending_saves:
+        success = save_user_database()
+        if success:
+            pending_saves = False
+            print("✅ Pending database changes saved")
+        return success
+    return True  # No changes to save
 
 def get_user_summary(user_id):
     """

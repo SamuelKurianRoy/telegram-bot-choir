@@ -9,10 +9,11 @@ from logging_utils import setup_loggers
 from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
 from data.drive import upload_log_to_google_doc
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
-from data.udb import track_user_interaction, user_exists, get_user_by_id, get_user_stats, get_user_summary, save_user_database
+from data.udb import track_user_interaction, user_exists, get_user_by_id, get_user_stats, get_user_summary, save_user_database, track_user_fast, save_if_pending
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import pandas as pd
 from datetime import date
+import asyncio
 import re
 
 # Add this near the top of the file, with other state constants if present
@@ -58,32 +59,31 @@ async def start(update: Update, context: CallbackContext) -> None:
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) sent /start")
 
-    # === USER DATABASE TRACKING ===
+    # === FAST USER DATABASE TRACKING ===
     try:
-        # Check if user exists in database
-        user_exists_in_db = user_exists(user.id)
+        # Use fast tracking to avoid delays
+        is_new_user, tracking_success = track_user_fast(user)
 
-        if user_exists_in_db:
-            # Update existing user's last_seen
-            track_user_interaction(user)
-            user_logger.info(f"Updated existing user {user.id} in database")
+        if tracking_success:
+            if is_new_user:
+                user_logger.info(f"Added new user {user.id} to database")
+
+                # Notify admin about new user (async, don't wait)
+                asyncio.create_task(context.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=(
+                        f"👤 <b>New User Added to Database</b>\n\n"
+                        f"<b>Name:</b> {user.full_name}\n"
+                        f"<b>Username:</b> @{user.username if user.username else 'Not set'}\n"
+                        f"<b>User ID:</b> <code>{user.id}</code>\n"
+                        f"<b>Status:</b> {'✅ Authorized' if str(user.id) in st.secrets.get('AUTHORIZED_USERS', '').split(',') else '❌ Not Authorized'}"
+                    ),
+                    parse_mode="HTML"
+                ))
+            else:
+                user_logger.info(f"Updated existing user {user.id} in database")
         else:
-            # Add new user to database
-            track_user_interaction(user)
-            user_logger.info(f"Added new user {user.id} to database")
-
-            # Notify admin about new user
-            await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=(
-                    f"👤 <b>New User Added to Database</b>\n\n"
-                    f"<b>Name:</b> {user.full_name}\n"
-                    f"<b>Username:</b> @{user.username if user.username else 'Not set'}\n"
-                    f"<b>User ID:</b> <code>{user.id}</code>\n"
-                    f"<b>Status:</b> {'✅ Authorized' if user.id in st.secrets.get('AUTHORIZED_USERS', '').split(',') else '❌ Not Authorized'}"
-                ),
-                parse_mode="HTML"
-            )
+            user_logger.error(f"Failed to track user {user.id}")
 
     except Exception as e:
         user_logger.error(f"Error tracking user {user.id}: {e}")
@@ -95,7 +95,7 @@ async def start(update: Update, context: CallbackContext) -> None:
 
     if user.id not in authorized_users:
         # Notify admin about unauthorized access (only if not already notified above)
-        if user_exists_in_db:  # Only notify if this is an existing user accessing
+        if not is_new_user:  # Only notify if this is an existing user accessing
             await context.bot.send_message(
                 chat_id=ADMIN_ID,
                 text=(
@@ -961,7 +961,8 @@ async def admin_save_database(update: Update, context: CallbackContext) -> None:
     try:
         await update.message.reply_text("💾 Saving user database to Google Drive...")
 
-        success = save_user_database()
+        # Use save_if_pending for efficiency
+        success = save_if_pending()
 
         if success:
             await update.message.reply_text("✅ User database saved successfully to Google Drive!")
