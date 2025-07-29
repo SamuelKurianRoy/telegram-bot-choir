@@ -30,7 +30,7 @@ def load_user_database():
             print("❌ U_DATABASE file ID not found in secrets")
             return create_empty_user_database()
         
-        print(f"Loading user database from Google Drive (ID: {config.U_DATABASE})")
+        # print(f"Loading user database from Google Drive (ID: {config.U_DATABASE})")
         
         # Download the Excel file from Google Drive
         request = drive_service.files().export_media(
@@ -181,7 +181,7 @@ def add_or_update_user(user_data):
             db.at[idx, 'name'] = user_data.get('name', db.at[idx, 'name'])
             db.at[idx, 'last_seen'] = current_time
 
-            print(f"✅ Updated user {user_id} in database")
+            # print(f"✅ Updated {user_id} in database")
 
             # Mark as needing save but don't save immediately for performance
             mark_pending_save()
@@ -202,7 +202,7 @@ def add_or_update_user(user_data):
             
             # Add new row to database
             user_db = pd.concat([db, pd.DataFrame([new_user])], ignore_index=True)
-            print(f"✅ Added new user {user_id} to database")
+            # print(f"✅ Added {user_id} to database")
 
         # Mark as needing save but don't save immediately for performance
         mark_pending_save()
@@ -292,7 +292,7 @@ def track_user_fast(telegram_user):
             if not user_idx.empty:
                 db.at[user_idx[0], 'last_seen'] = current_time
                 mark_pending_save()
-                print(f"✅ Updated last_seen for user {user_id}")
+                # print(f"✅ Updated {user_id}")
 
             return (False, True)
 
@@ -379,7 +379,7 @@ def update_google_sheet_structure():
         ).execute()
         
         current_headers = result.get('values', [[]])[0] if result.get('values') else []
-        print(f"Current headers: {current_headers}")
+        # print(f"Current headers: {current_headers}")
         
         # Define required headers
         required_headers = [
@@ -407,8 +407,8 @@ def update_google_sheet_structure():
             body={"values": [new_headers]}
         ).execute()
         
-        print(f"✅ Successfully added columns: {missing_headers}")
-        print(f"✅ Sheet now has headers: {new_headers}")
+        # print(f"✅ Successfully added columns: {missing_headers}")
+        # print(f"✅ Sheet now has headers: {new_headers}")
         
         return True
         
@@ -429,7 +429,7 @@ def save_user_database():
 
         global user_db
         if user_db is None or user_db.empty:
-            print("❌ No user database to save")
+            print("❌ No u_database to save")
             return False
 
         config = get_config()
