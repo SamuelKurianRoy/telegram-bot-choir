@@ -282,9 +282,212 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
             except Exception as delete_error:
                 user_logger.warning(f"Could not delete progress message {msg_id}: {delete_error}")
 
-#Admin reply
+# Enhanced Admin Reply System
 
-async def admin_reply(update: Update, context: CallbackContext) -> None:
+# Conversation states for reply
+REPLY_SELECT_USER, REPLY_ENTER_MESSAGE = range(2000, 2002)
+
+async def admin_reply_start(update: Update, context: CallbackContext) -> int:
+    """Start the enhanced reply conversation"""
+    user = update.effective_user
+    config = get_config()
+    admin_id = config.ADMIN_ID
+
+    if user.id != admin_id:
+        await update.message.reply_text("❌ You are not authorized to use this command.")
+        return ConversationHandler.END
+
+    try:
+        # Get all users from database
+        from data.udb import get_user_database
+        user_db = get_user_database()
+
+        if user_db is None or user_db.empty:
+            await update.message.reply_text("❌ No users found in database.")
+            return ConversationHandler.END
+
+        # Create user list with names
+        user_options = []
+        user_data = {}
+
+        # Add "All Users" option first
+        user_options.append("📢 All Users")
+
+        # Add individual users
+        for _, row in user_db.iterrows():
+            user_id = row['user_id']
+            name = row.get('name', 'Unknown')
+            username = row.get('username', '')
+
+            # Create display name
+            if name and name.strip():
+                display_name = name.strip()
+            elif username and username.strip():
+                display_name = f"@{username.strip()}"
+            else:
+                display_name = f"User {user_id}"
+
+            user_options.append(display_name)
+            user_data[display_name] = {
+                'user_id': user_id,
+                'name': name,
+                'username': username
+            }
+
+        # Store user data in context
+        context.user_data['reply_user_data'] = user_data
+
+        # Create keyboard with user options (2 per row)
+        keyboard = []
+        for i in range(0, len(user_options), 2):
+            row = user_options[i:i+2]
+            keyboard.append(row)
+
+        # Add cancel button
+        keyboard.append(["❌ Cancel"])
+
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+
+        await update.message.reply_text(
+            "👥 **Select a user to reply to:**\n\n"
+            "• Choose '📢 All Users' to broadcast to everyone\n"
+            "• Choose a specific user to send a private reply\n"
+            "• Choose '❌ Cancel' to abort",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+
+        user_logger.info(f"Admin {user.id} started enhanced reply process")
+        return REPLY_SELECT_USER
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error loading users: {str(e)}")
+        user_logger.error(f"Error in admin_reply_start: {e}")
+        return ConversationHandler.END
+
+async def admin_reply_select_user(update: Update, context: CallbackContext) -> int:
+    """Handle user selection for reply"""
+    selected_option = update.message.text.strip()
+
+    if selected_option == "❌ Cancel":
+        await update.message.reply_text(
+            "❌ Reply cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
+    if selected_option == "📢 All Users":
+        context.user_data['reply_target'] = 'all'
+        await update.message.reply_text(
+            "📢 **Broadcasting to all users**\n\n"
+            "Please enter your message to send to all bot users:",
+            reply_markup=ReplyKeyboardRemove(),
+            parse_mode="Markdown"
+        )
+    else:
+        # Individual user selected
+        user_data = context.user_data.get('reply_user_data', {})
+
+        if selected_option not in user_data:
+            await update.message.reply_text(
+                "❌ Invalid selection. Please choose from the list.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return ConversationHandler.END
+
+        selected_user = user_data[selected_option]
+        context.user_data['reply_target'] = selected_user
+
+        await update.message.reply_text(
+            f"💬 **Replying to: {selected_option}**\n\n"
+            f"User ID: `{selected_user['user_id']}`\n\n"
+            "Please enter your message:",
+            reply_markup=ReplyKeyboardRemove(),
+            parse_mode="Markdown"
+        )
+
+    return REPLY_ENTER_MESSAGE
+
+async def admin_reply_send_message(update: Update, context: CallbackContext) -> int:
+    """Send the reply message"""
+    message_text = update.message.text.strip()
+
+    if not message_text:
+        await update.message.reply_text("❌ Message cannot be empty. Please enter your message:")
+        return REPLY_ENTER_MESSAGE
+
+    reply_target = context.user_data.get('reply_target')
+
+    if not reply_target:
+        await update.message.reply_text("❌ Error: No target selected.")
+        return ConversationHandler.END
+
+    try:
+        if reply_target == 'all':
+            # Broadcast to all users
+            from data.udb import get_user_database
+            user_db = get_user_database()
+
+            sent_count = 0
+            failed_count = 0
+
+            await update.message.reply_text("📢 Broadcasting message to all users...")
+
+            for _, row in user_db.iterrows():
+                target_user_id = row['user_id']
+                try:
+                    await context.bot.send_message(
+                        chat_id=target_user_id,
+                        text=f"📢 **Admin Broadcast:**\n\n{message_text}",
+                        parse_mode="Markdown"
+                    )
+                    sent_count += 1
+                except Exception as send_error:
+                    failed_count += 1
+                    user_logger.warning(f"Failed to send broadcast to user {target_user_id}: {send_error}")
+
+            await update.message.reply_text(
+                f"✅ **Broadcast completed!**\n\n"
+                f"📤 Sent to: {sent_count} users\n"
+                f"❌ Failed: {failed_count} users",
+                parse_mode="Markdown"
+            )
+
+            user_logger.info(f"Admin broadcast: {sent_count} sent, {failed_count} failed")
+
+        else:
+            # Send to individual user
+            target_user_id = reply_target['user_id']
+            target_name = reply_target.get('name', f"User {target_user_id}")
+
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text=f"💬 **Admin's reply:**\n\n{message_text}",
+                parse_mode="Markdown"
+            )
+
+            await update.message.reply_text(
+                f"✅ **Message sent successfully!**\n\n"
+                f"👤 To: {target_name}\n"
+                f"📤 Message: {message_text[:50]}{'...' if len(message_text) > 50 else ''}",
+                parse_mode="Markdown"
+            )
+
+            user_logger.info(f"Admin reply sent to user {target_user_id}")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error sending message: {str(e)}")
+        user_logger.error(f"Error in admin_reply_send_message: {e}")
+
+    # Clean up context data
+    context.user_data.pop('reply_target', None)
+    context.user_data.pop('reply_user_data', None)
+
+    return ConversationHandler.END
+
+# Legacy admin reply for backward compatibility
+async def admin_reply_legacy(update: Update, context: CallbackContext) -> None:
+    """Legacy admin reply command (kept for backward compatibility)"""
     user = update.effective_user
     config = get_config()
     admin_id = config.ADMIN_ID

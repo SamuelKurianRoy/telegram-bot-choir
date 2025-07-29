@@ -13,12 +13,13 @@ try:
     from data.vocabulary import ChoirVocabulary
     from utils.search import setup_search
     from telegram_handlers.handlers import (
-        start, help_command, refresh_command, admin_reply, cancel,
+        start, help_command, refresh_command, cancel,
         check_song_start, last_sung_start, check_song_input, ENTER_SONG,
         last_sung_input, ENTER_LAST_SONG,
         date_start, date_input, ASK_DATE, last_show_all_dates_callback,
         bible_start, bible_input_handler, bible_confirm_handler, BIBLE_INPUT, BIBLE_CONFIRM,
-        admin_users_stats, admin_user_info, admin_save_database, admin_list_commands
+        admin_users_stats, admin_user_info, admin_save_database, admin_list_commands,
+        admin_reply_start, admin_reply_select_user, admin_reply_send_message, REPLY_SELECT_USER, REPLY_ENTER_MESSAGE, admin_reply_legacy
     )
     from telegram_handlers.conversations import (
         SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT,
@@ -136,6 +137,16 @@ reply_conv_handler = ConversationHandler(
     fallbacks=[CommandHandler("cancel", cancel)]
 )
 
+# Enhanced admin reply conversation handler
+admin_reply_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("reply", admin_reply_start)],
+    states={
+        REPLY_SELECT_USER: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_reply_select_user)],
+        REPLY_ENTER_MESSAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_reply_send_message)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)]
+)
+
      # Download conversation handler
 download_conv_handler = ConversationHandler(
     entry_points=[CommandHandler("download", download_start)],
@@ -192,7 +203,8 @@ app.add_handler(bible_conv_handler)
 app.add_handler(bible_game_conv_handler)
 app.add_handler(date_conv_handler)
 app.add_handler(CommandHandler("refresh", refresh_command))
-app.add_handler(CommandHandler("reply", admin_reply))
+app.add_handler(admin_reply_conv_handler)
+app.add_handler(CommandHandler("reply_legacy", admin_reply_legacy))
 app.add_handler(CommandHandler("admin_users", admin_users_stats))
 app.add_handler(CommandHandler("admin_user_info", admin_user_info))
 app.add_handler(CommandHandler("admin_save_db", admin_save_database))
