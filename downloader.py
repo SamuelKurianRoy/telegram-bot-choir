@@ -927,15 +927,15 @@ class AudioDownloader:
             logger.error(f"Error extracting Spotify info: {e}")
             return None
 
-    async def download_audio(self, url: str, quality: str = "medium", chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
+    async def download_audio(self, url: str, quality: str = "medium", chat_id: str = None, download_playlist: bool = False) -> Optional[Tuple[Path, Dict]]:
         """Download audio from URL, passing chat_id for checkpoint/resume."""
         platform = self.detect_platform(url)
         if platform == 'Spotify':
             return await self.download_spotify_audio(url, quality, chat_id=chat_id)
         else:
-            return await self.download_youtube_audio(url, quality, chat_id=chat_id)
+            return await self.download_youtube_audio(url, quality, chat_id=chat_id, download_playlist=download_playlist)
     
-    async def download_youtube_audio(self, url: str, quality: str, chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
+    async def download_youtube_audio(self, url: str, quality: str, chat_id: str = None, download_playlist: bool = False) -> Optional[Tuple[Path, Dict]]:
         """Download audio from YouTube using yt-dlp, with checkpoint/resume support."""
         import hashlib
         import json
@@ -1058,6 +1058,7 @@ class AudioDownloader:
                 }],
                 'quiet': True,
                 'no_warnings': True,
+                'noplaylist': not download_playlist,  # Download playlist if requested, otherwise single video
                 # Anti-blocking measures
                 'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 'referer': 'https://www.youtube.com/',
@@ -1083,6 +1084,7 @@ class AudioDownloader:
                 # Add more fallback options
                 ydl_opts['ignoreerrors'] = False
                 ydl_opts['no_warnings'] = False  # Show warnings to help debug
+                ydl_opts['noplaylist'] = not download_playlist  # Download playlist if requested, otherwise single video
             
             # Download with timeout
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -1254,11 +1256,11 @@ class AudioDownloader:
             # Try a simpler fallback without FFmpeg
             logger.info("Attempting YouTube download fallback without FFmpeg...")
             downloader_logger.info("Attempting YouTube fallback without FFmpeg")
-            return await self.download_youtube_fallback(url, quality)
+            return await self.download_youtube_fallback(url, quality, download_playlist)
 
         return None
 
-    async def download_youtube_fallback(self, url: str, quality: str) -> Optional[Tuple[Path, Dict]]:
+    async def download_youtube_fallback(self, url: str, quality: str, download_playlist: bool = False) -> Optional[Tuple[Path, Dict]]:
         """Fallback YouTube download method without FFmpeg conversion"""
         if not yt_dlp:
             logger.error("yt-dlp not available for YouTube fallback")
@@ -1279,6 +1281,7 @@ class AudioDownloader:
                 'quiet': False,  # Show output for debugging
                 'no_warnings': False,
                 'extract_flat': False,
+                'noplaylist': not download_playlist,  # Download playlist if requested, otherwise single video
                 # Anti-blocking measures
                 'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 'referer': 'https://www.youtube.com/',

@@ -838,7 +838,7 @@ async def handle_notation_callback(update: Update, context: ContextTypes.DEFAULT
 ENTER_LAST_SONG, ASK_SHOW_ALL = range(2)
 
 # Download command states
-ENTER_URL, SELECT_QUALITY = range(2, 4)
+ENTER_URL, SELECT_QUALITY, PLAYLIST_CHOICE = range(2, 5)
 
 # /last entry point
 async def last_sung_start(update: Update, context: CallbackContext) -> int:
@@ -948,6 +948,25 @@ async def download_url_input(update: Update, context: CallbackContext) -> int:
     context.user_data["download_url"] = user_input
     context.user_data["platform"] = downloader.detect_platform(user_input)
 
+    # Check for playlist in YouTube URLs
+    if context.user_data["platform"] == "YouTube" and ("list=" in user_input or "playlist" in user_input.lower()):
+        # Playlist detected - ask user what they want to do
+        playlist_keyboard = [
+            ["🎵 Download Single Video Only"],
+            ["📋 Download Entire Playlist"],
+            ["❌ Cancel"]
+        ]
+
+        await update.message.reply_text(
+            f"🎯 *YouTube Playlist Detected!*\n\n"
+            f"This link contains a playlist. What would you like to do?\n\n"
+            f"⚠️ *Warning:* Downloading entire playlists can take a very long time and may contain many videos.",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardMarkup(playlist_keyboard, one_time_keyboard=True, resize_keyboard=True)
+        )
+        return PLAYLIST_CHOICE
+
+    # No playlist detected - proceed to quality selection
     # Show quality selection
     quality_keyboard = [
         ["🔥 High Quality (320kbps)", "🎵 Medium Quality (192kbps)"],
@@ -956,6 +975,55 @@ async def download_url_input(update: Update, context: CallbackContext) -> int:
 
     await update.message.reply_text(
         f"🎯 *{context.user_data['platform']} link detected!*\n\n"
+        "Please select the audio quality:",
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardMarkup(quality_keyboard, one_time_keyboard=True, resize_keyboard=True)
+    )
+    return SELECT_QUALITY
+
+async def download_playlist_choice(update: Update, context: CallbackContext) -> int:
+    """Handle playlist choice selection"""
+    choice = update.message.text.strip()
+    user = update.effective_user
+
+    if choice == "❌ Cancel":
+        await update.message.reply_text(
+            "❌ Download cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
+    # Store playlist preference
+    if choice == "🎵 Download Single Video Only":
+        context.user_data["download_playlist"] = False
+        await update.message.reply_text(
+            "✅ *Single video download selected*\n\n"
+            "Only the specific video will be downloaded, ignoring the playlist.",
+            parse_mode="Markdown"
+        )
+    elif choice == "📋 Download Entire Playlist":
+        context.user_data["download_playlist"] = True
+        await update.message.reply_text(
+            "✅ *Playlist download selected*\n\n"
+            "⚠️ *Warning:* This may take a very long time and download many files. "
+            "Please be patient and ensure you have enough storage space.",
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            "❌ Invalid selection. Please choose from the options provided.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return PLAYLIST_CHOICE
+
+    # Proceed to quality selection
+    quality_keyboard = [
+        ["🔥 High Quality (320kbps)", "🎵 Medium Quality (192kbps)"],
+        ["💾 Low Quality (128kbps)", "❌ Cancel"]
+    ]
+
+    await update.message.reply_text(
+        f"🎯 *{context.user_data['platform']} link ready!*\n\n"
         "Please select the audio quality:",
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardMarkup(quality_keyboard, one_time_keyboard=True, resize_keyboard=True)
@@ -1017,8 +1085,11 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
         # Initialize downloader
         downloader = AudioDownloader()
 
+        # Get playlist preference (default to single video for safety)
+        download_playlist = context.user_data.get("download_playlist", False)
+
         # Download the audio
-        result = await downloader.download_audio(url, quality, chat_id=chat_id)
+        result = await downloader.download_audio(url, quality, chat_id=chat_id, download_playlist=download_playlist)
 
         if result is None:
             # Log failed download to Google Doc
