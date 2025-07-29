@@ -1468,65 +1468,14 @@ class AudioDownloader:
                 logger.warning(f"Failed to resume from temp files: {e}")
                 # If resume fails, fall through to fresh download
 
-        # Check if spotdl is available before proceeding
-        try:
-            # First try to import spotdl module
-            try:
-                import spotdl
-                logger.info(f"spotdl module import successful, version: {getattr(spotdl, '__version__', 'Unknown')}")
-                downloader_logger.info(f"spotdl module available: {getattr(spotdl, '__version__', 'Unknown')}")
-                downloader_logger.info(f"spotdl module location: {spotdl.__file__}")
-            except ImportError as import_e:
-                logger.error(f"spotdl module import failed: {import_e}")
-                downloader_logger.error(f"spotdl module not available: {import_e}")
-                downloader_logger.error(f"Python path: {sys.path}")
-                downloader_logger.error(f"Environment: Streamlit Cloud = {self.is_streamlit_cloud}")
+        # Log the Spotify URL being processed
+        downloader_logger.info(f"Processing Spotify URL: {url}")
 
-                # Try to see what packages are actually installed
-                try:
-                    import pkg_resources
-                    installed = [d.project_name for d in pkg_resources.working_set]
-                    music_related = [pkg for pkg in installed if 'spot' in pkg.lower() or 'music' in pkg.lower()]
-                    downloader_logger.error(f"Music-related packages found: {music_related}")
-                except Exception as pkg_e:
-                    downloader_logger.error(f"Could not check installed packages: {pkg_e}")
-
-                # Skip to fallback immediately
-                return await self.download_spotify_fallback(url, quality)
-
-            # Test if spotdl command works
-            test_cmd = ["python", "-m", "spotdl", "--version"] if self.is_streamlit_cloud else ["py", "-m", "spotdl", "--version"]
-            test_result = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(
-                    None, lambda: sp.run(test_cmd, capture_output=True, text=True, timeout=10)
-                ),
-                timeout=15
-            )
-
-            if test_result.returncode != 0:
-                logger.error(f"spotdl command not available: {test_result.stderr}")
-                downloader_logger.error(f"spotdl command failed in environment: {test_result.stderr}")
-                downloader_logger.error(f"Command tried: {' '.join(test_cmd)}")
-                # Skip to fallback immediately
-                return await self.download_spotify_fallback(url, quality)
-
-            logger.info(f"spotdl command available: {test_result.stdout.strip()}")
-            downloader_logger.info(f"spotdl command confirmed: {test_result.stdout.strip()}")
-
-            # Log the Spotify URL being processed
-            downloader_logger.info(f"Processing Spotify URL: {url}")
-
-            # Extract and log track ID for reference
-            track_id_match = re.search(r'track/([a-zA-Z0-9]+)', url)
-            if track_id_match:
-                track_id = track_id_match.group(1)
-                downloader_logger.info(f"Spotify track ID: {track_id}")
-
-        except Exception as test_e:
-            logger.error(f"Failed to test spotdl availability: {test_e}")
-            downloader_logger.error(f"spotdl availability test failed: {test_e}")
-            # Skip to fallback immediately
-            return await self.download_spotify_fallback(url, quality)
+        # Extract and log track ID for reference
+        track_id_match = re.search(r'track/([a-zA-Z0-9]+)', url)
+        if track_id_match:
+            track_id = track_id_match.group(1)
+            downloader_logger.info(f"Spotify track ID: {track_id}")
 
         # Otherwise, proceed with fresh download
         try:
@@ -1544,11 +1493,10 @@ class AudioDownloader:
             output_dir.mkdir(exist_ok=True)
             
             # Prepare spotdl command with better output handling for Streamlit Cloud
-            # Use python -m spotdl for Streamlit Cloud, py -m spotdl for local
             if self.is_streamlit_cloud:
                 # Use a simpler output pattern for Streamlit Cloud
                 spotdl_cmd = [
-                    "python", "-m", "spotdl",  # Use 'python' on Streamlit Cloud
+                    "spotdl",  # Use direct command like the working version
                     "download",
                     url,
                     "--bitrate", f"{bitrate}k",
@@ -1558,7 +1506,7 @@ class AudioDownloader:
                 ]
             else:
                 spotdl_cmd = [
-                    "py", "-m", "spotdl",  # Use 'py' on Windows
+                    "spotdl",  # Use direct command like the working version
                     "download",
                     url,
                     "--bitrate", f"{bitrate}k",
