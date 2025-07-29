@@ -1059,6 +1059,13 @@ class AudioDownloader:
                 'quiet': True,
                 'no_warnings': True,
                 'noplaylist': not download_playlist,  # Download playlist if requested, otherwise single video
+                # Enhanced anti-blocking measures for Streamlit Cloud
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'referer': 'https://www.youtube.com/',
+                'sleep_interval': 1,
+                'max_sleep_interval': 5,
+                'extractor_retries': 3,
+                'fragment_retries': 3,
             }
 
             # Add FFmpeg location if found (using same logic as audio_downloader_bot.py)
@@ -1183,13 +1190,19 @@ class AudioDownloader:
             
         except Exception as e:
             logger.error(f"YouTube download failed: {e}")
-            # Proxy fallback for 403 Forbidden
+            # Enhanced fallback for 403 Forbidden (disable problematic proxy)
             if ("403" in str(e) or "Forbidden" in str(e)):
-                logger.warning("403 Forbidden detected. Retrying with proxy...")
-                proxy_url = 'http://proxy.scrapeops.io:5353'  # Example reliable public proxy
-                ydl_opts['proxy'] = proxy_url
+                logger.warning("403 Forbidden detected. Trying alternative approach...")
+                # Instead of using a proxy that requires authentication, try different headers
+                ydl_opts_fallback = ydl_opts.copy()
+                ydl_opts_fallback.update({
+                    'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'referer': 'https://www.google.com/',
+                    'sleep_interval': 3,
+                    'max_sleep_interval': 15,
+                })
                 try:
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl:
                         info = await asyncio.wait_for(
                             asyncio.get_event_loop().run_in_executor(
                                 None, lambda: ydl.extract_info(url, download=True)
@@ -1205,12 +1218,13 @@ class AudioDownloader:
                         'artist': info.get('uploader', 'Unknown'),
                         'duration': info.get('duration', 0),
                         'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                        'platform': 'YouTube (proxy)'
+                        'platform': 'YouTube (fallback)'
                     }
                     # (Optional: repeat renaming and metadata logic here if needed)
                     return downloaded_file, file_info
-                except Exception as proxy_e:
-                    logger.error(f"Proxy download also failed: {proxy_e}")
+                except Exception as fallback_e:
+                    logger.error(f"Fallback download also failed: {fallback_e}")
+                    downloader_logger.error(f"YouTube fallback failed: {fallback_e}")
                     return None
             return None
 
@@ -1389,11 +1403,11 @@ class AudioDownloader:
             output_dir.mkdir(exist_ok=True)
             
             # Prepare spotdl command with better output handling for Streamlit Cloud
-            # Use py -m spotdl instead of direct spotdl command for better compatibility
+            # Use python -m spotdl for Streamlit Cloud, py -m spotdl for local
             if self.is_streamlit_cloud:
                 # Use a simpler output pattern for Streamlit Cloud
                 spotdl_cmd = [
-                    "py", "-m", "spotdl",
+                    "python", "-m", "spotdl",  # Use 'python' on Streamlit Cloud
                     "download",
                     url,
                     "--bitrate", f"{bitrate}k",
@@ -1403,7 +1417,7 @@ class AudioDownloader:
                 ]
             else:
                 spotdl_cmd = [
-                    "py", "-m", "spotdl",
+                    "py", "-m", "spotdl",  # Use 'py' on Windows
                     "download",
                     url,
                     "--bitrate", f"{bitrate}k",
