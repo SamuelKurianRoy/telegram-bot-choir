@@ -20,6 +20,7 @@ import os
 import random
 import requests
 from data.drive import get_drive_service, append_download_to_google_doc, get_docs_service
+from googleapiclient.http import MediaIoBaseDownload
 from datetime import datetime
 import io
 from telegram_handlers.handlers import is_authorized
@@ -240,22 +241,72 @@ def fetch_lyrics_file_map(folder_url):
     return lyrics_file_map
 
 def download_lyrics_pdf(file_id, filename):
-    url = f"https://drive.google.com/uc?id={file_id}"
-    response = requests.get(url)
-    if response.status_code == 200:
+    """Download PDF file from Google Drive using proper API"""
+    try:
         save_path = os.path.join(LYRICS_DOWNLOAD_DIR, filename)
+
+        # Use Google Drive API for proper download
+        request = drive_service.files().get_media(fileId=file_id)
+        file_data = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_data, request)
+
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+
+        # Write the downloaded content to file
+        file_data.seek(0)
         with open(save_path, 'wb') as f:
-            f.write(response.content)
-        return save_path
-    else:
+            f.write(file_data.read())
+
+        # Verify the file was downloaded correctly
+        if os.path.exists(save_path) and os.path.getsize(save_path) > 0:
+            return save_path
+        else:
+            print(f"Failed to download or verify PDF: {filename}")
+            return None
+
+    except Exception as e:
+        print(f"Error downloading PDF {filename}: {str(e)}")
         return None
+
+def validate_pdf_file(file_path):
+    """Validate that the downloaded file is a proper PDF"""
+    try:
+        if not os.path.exists(file_path):
+            return False
+
+        # Check file size
+        if os.path.getsize(file_path) < 100:  # PDF files should be at least 100 bytes
+            return False
+
+        # Check PDF header
+        with open(file_path, 'rb') as f:
+            header = f.read(4)
+            if header != b'%PDF':
+                return False
+
+        return True
+    except Exception as e:
+        print(f"Error validating PDF {file_path}: {str(e)}")
+        return False
 
 def get_lyrics_pdf_by_lyric_number(lyric_number, lyrics_file_map):
     lyric_number = int(lyric_number)
     if lyric_number in lyrics_file_map:
         file_id = lyrics_file_map[lyric_number]
         filename = f"L-{lyric_number}.pdf"
-        return download_lyrics_pdf(file_id, filename)
+        pdf_path = download_lyrics_pdf(file_id, filename)
+
+        # Validate the downloaded PDF
+        if pdf_path and validate_pdf_file(pdf_path):
+            return pdf_path
+        else:
+            print(f"Invalid PDF downloaded for L-{lyric_number}")
+            # Clean up invalid file
+            if pdf_path and os.path.exists(pdf_path):
+                os.remove(pdf_path)
+            return None
     else:
         return None
 
@@ -303,17 +354,35 @@ async def notation_code_input(update: Update, context: ContextTypes.DEFAULT_TYPE
     elif code_input.startswith("L-") and code_input[2:].isdigit():
         lyric_number = int(code_input[2:])
         downloading_msg = await update.message.reply_text("⏳ Downloading music sheet... Please wait.")
-        pdf_path = get_lyrics_pdf_by_lyric_number(lyric_number, lyrics_file_map)
-        await downloading_msg.delete()
-        if pdf_path:
-            with open(pdf_path, 'rb') as pdf_file:
-                await update.message.reply_document(
-                    document=pdf_file,
-                    filename=f"L-{lyric_number}.pdf",
-                    caption=f"Here is the notation for Lyric L-{lyric_number}."
-                )
-        else:
-            await update.message.reply_text(f"❌ Could not find notation PDF for Lyric L-{lyric_number}.")
+
+        try:
+            pdf_path = get_lyrics_pdf_by_lyric_number(lyric_number, lyrics_file_map)
+            await downloading_msg.delete()
+
+            if pdf_path and os.path.exists(pdf_path):
+                # Verify file size before sending
+                file_size = os.path.getsize(pdf_path)
+                if file_size > 50 * 1024 * 1024:  # 50MB limit for Telegram
+                    await update.message.reply_text(f"❌ PDF file for L-{lyric_number} is too large to send via Telegram.")
+                else:
+                    with open(pdf_path, 'rb') as pdf_file:
+                        await update.message.reply_document(
+                            document=pdf_file,
+                            filename=f"L-{lyric_number}.pdf",
+                            caption=f"Here is the notation for Lyric L-{lyric_number}."
+                        )
+                    # Clean up the downloaded file after sending
+                    try:
+                        os.remove(pdf_path)
+                    except:
+                        pass  # Ignore cleanup errors
+            else:
+                await update.message.reply_text(f"❌ Could not find or download notation PDF for Lyric L-{lyric_number}.")
+        except Exception as e:
+            await downloading_msg.delete()
+            await update.message.reply_text(f"❌ Error processing L-{lyric_number}: {str(e)}")
+            print(f"Error processing L-{lyric_number}: {str(e)}")
+
         await update.message.reply_text("Enter another hymn or lyric number, or type /cancel to stop.")
         return NOTATION_TYPE
     else:
@@ -408,19 +477,33 @@ def get_image_files_from_folder(folder_url):
  
  # === DOWNLOAD IMAGE ===
 def download_image(file_id, filename):
+    """Download PDF file from Google Drive using proper API"""
     try:
-        url = f"https://drive.google.com/uc?id={file_id}&export=download"
-        response = requests.get(url, allow_redirects=True)
-        if response.status_code == 200:
-            save_path = os.path.join(DOWNLOAD_DIR, filename)
-            with open(save_path, 'wb') as f:
-                f.write(response.content)
+        save_path = os.path.join(DOWNLOAD_DIR, filename)
+
+        # Use Google Drive API for proper download
+        request = drive_service.files().get_media(fileId=file_id)
+        file_data = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_data, request)
+
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+
+        # Write the downloaded content to file
+        file_data.seek(0)
+        with open(save_path, 'wb') as f:
+            f.write(file_data.read())
+
+        # Verify the file was downloaded correctly
+        if os.path.exists(save_path) and os.path.getsize(save_path) > 0:
             return save_path
         else:
-            print(f"Failed to download PDF: Status code {response.status_code}")
+            print(f"Failed to download or verify PDF: {filename}")
             return None
+
     except Exception as e:
-        print(f"Error downloading PDF: {str(e)}")
+        print(f"Error downloading PDF {filename}: {str(e)}")
         return None
  
  # === GET IMAGE FOR PAGE ===
@@ -430,10 +513,15 @@ def get_image_by_page(page_number, file_map):
          file_id = file_map[page_number]
          filename = f"{page_number}.pdf"
          downloaded_path = download_image(file_id, filename)
-         if downloaded_path and os.path.exists(downloaded_path) and os.path.getsize(downloaded_path) > 0:
+
+         # Validate the downloaded PDF
+         if downloaded_path and validate_pdf_file(downloaded_path):
              return downloaded_path
          else:
              print(f"Failed to download or verify PDF for page {page_number}")
+             # Clean up invalid file
+             if downloaded_path and os.path.exists(downloaded_path):
+                 os.remove(downloaded_path)
              return None
      else:
          print(f"Page {page_number} not found in file map")
@@ -621,35 +709,62 @@ async def send_notation_image(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         # If there's only one page, send it directly
         if len(pdf_files) == 1:
-            with open(pdf_files[0], 'rb') as pdf_file:
-                await context.bot.send_document(
-                    chat_id=chat_id,
-                    document=pdf_file,
-                    filename=f"{song_id}_{tune_name}.pdf",
-                    caption=f"Notation for {song_id} ({tune_name})"
-                )
+            # Verify file size before sending
+            file_size = os.path.getsize(pdf_files[0])
+            if file_size > 50 * 1024 * 1024:  # 50MB limit for Telegram
+                await context.bot.send_message(chat_id=chat_id, text=f"❌ PDF file for {song_id} ({tune_name}) is too large to send via Telegram.")
+            else:
+                with open(pdf_files[0], 'rb') as pdf_file:
+                    await context.bot.send_document(
+                        chat_id=chat_id,
+                        document=pdf_file,
+                        filename=f"{song_id}_{tune_name}.pdf",
+                        caption=f"Notation for {song_id} ({tune_name})"
+                    )
         else:
             # If there are multiple pages, merge them
             merger = PdfMerger()
-            for pdf in pdf_files:
-                merger.append(pdf)
+            try:
+                for pdf in pdf_files:
+                    # Validate each PDF before merging
+                    if validate_pdf_file(pdf):
+                        merger.append(pdf)
+                    else:
+                        print(f"Skipping invalid PDF: {pdf}")
 
-            # Create a temporary file for the merged PDF
-            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
-                merger.write(tmp_file.name)
+                # Create a temporary file for the merged PDF
+                with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+                    merger.write(tmp_file.name)
+                    merger.close()
+
+                    # Check merged file size
+                    merged_size = os.path.getsize(tmp_file.name)
+                    if merged_size > 50 * 1024 * 1024:  # 50MB limit
+                        await context.bot.send_message(chat_id=chat_id, text=f"❌ Merged PDF for {song_id} ({tune_name}) is too large to send via Telegram.")
+                    else:
+                        # Send the merged PDF
+                        with open(tmp_file.name, 'rb') as merged_pdf:
+                            await context.bot.send_document(
+                                chat_id=chat_id,
+                                document=merged_pdf,
+                                filename=f"{song_id}_{tune_name}_complete.pdf",
+                                caption=f"Complete notation for {song_id} ({tune_name}) - {len(pdf_files)} pages"
+                            )
+
+                    # Clean up the temporary file
+                    os.unlink(tmp_file.name)
+            except Exception as merge_error:
                 merger.close()
+                await context.bot.send_message(chat_id=chat_id, text=f"❌ Error merging PDFs: {str(merge_error)}")
+                print(f"Error merging PDFs: {str(merge_error)}")
 
-                # Send the merged PDF
-                with open(tmp_file.name, 'rb') as merged_pdf:
-                    await context.bot.send_document(
-                        chat_id=chat_id,
-                        document=merged_pdf,
-                        filename=f"{song_id}_{tune_name}_complete.pdf",
-                        caption=f"Complete notation for {song_id} ({tune_name}) - {len(pdf_files)} pages"
-                    )
-
-                # Clean up the temporary file
-                os.unlink(tmp_file.name)
+        # Clean up downloaded files after sending
+        for pdf_file in pdf_files:
+            try:
+                if os.path.exists(pdf_file):
+                    os.remove(pdf_file)
+            except:
+                pass  # Ignore cleanup errors
 
     except Exception as e:
         await context.bot.send_message(chat_id=chat_id, text=f"❌ Error processing PDFs: {str(e)}")
