@@ -1439,7 +1439,18 @@ class AudioDownloader:
 
         # Check if spotdl is available before proceeding
         try:
-            # Test if spotdl is available
+            # First try to import spotdl module
+            try:
+                import spotdl
+                logger.info(f"spotdl module import successful, version: {getattr(spotdl, '__version__', 'Unknown')}")
+                downloader_logger.info(f"spotdl module available: {getattr(spotdl, '__version__', 'Unknown')}")
+            except ImportError as import_e:
+                logger.error(f"spotdl module import failed: {import_e}")
+                downloader_logger.error(f"spotdl module not available: {import_e}")
+                # Skip to fallback immediately
+                return await self.download_spotify_fallback(url, quality)
+
+            # Test if spotdl command works
             test_cmd = ["python", "-m", "spotdl", "--version"] if self.is_streamlit_cloud else ["py", "-m", "spotdl", "--version"]
             test_result = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(
@@ -1449,12 +1460,23 @@ class AudioDownloader:
             )
 
             if test_result.returncode != 0:
-                logger.error(f"spotdl not available: {test_result.stderr}")
-                downloader_logger.error(f"spotdl not available in environment: {test_result.stderr}")
+                logger.error(f"spotdl command not available: {test_result.stderr}")
+                downloader_logger.error(f"spotdl command failed in environment: {test_result.stderr}")
+                downloader_logger.error(f"Command tried: {' '.join(test_cmd)}")
                 # Skip to fallback immediately
                 return await self.download_spotify_fallback(url, quality)
 
-            logger.info(f"spotdl available: {test_result.stdout.strip()}")
+            logger.info(f"spotdl command available: {test_result.stdout.strip()}")
+            downloader_logger.info(f"spotdl command confirmed: {test_result.stdout.strip()}")
+
+            # Log the Spotify URL being processed
+            downloader_logger.info(f"Processing Spotify URL: {url}")
+
+            # Extract and log track ID for reference
+            track_id_match = re.search(r'track/([a-zA-Z0-9]+)', url)
+            if track_id_match:
+                track_id = track_id_match.group(1)
+                downloader_logger.info(f"Spotify track ID: {track_id}")
 
         except Exception as test_e:
             logger.error(f"Failed to test spotdl availability: {test_e}")
@@ -1526,6 +1548,10 @@ class AudioDownloader:
             logger.info(f"FFmpeg path configured: {self.ffmpeg_path}")
             logger.info(f"Streamlit Cloud mode: {self.is_streamlit_cloud}")
 
+            downloader_logger.info(f"Starting spotdl download for URL: {url}")
+            downloader_logger.info(f"Command: {' '.join(spotdl_cmd)}")
+            downloader_logger.info(f"Quality: {bitrate}k, Format: mp3")
+
             # Check if output directory exists and is writable
             if not output_dir.exists():
                 logger.error(f"Output directory does not exist: {output_dir}")
@@ -1556,10 +1582,19 @@ class AudioDownloader:
 
             # Log detailed output for debugging
             logger.info(f"spotdl exit code: {result.returncode}")
+            downloader_logger.info(f"spotdl command completed with exit code: {result.returncode}")
+
             if result.stdout:
                 logger.info(f"spotdl stdout: {result.stdout}")
+                downloader_logger.info(f"spotdl stdout: {result.stdout}")
+
+                # Try to extract track info from spotdl output
+                if "Found" in result.stdout and "by" in result.stdout:
+                    downloader_logger.info(f"spotdl found track info in output: {result.stdout}")
+
             if result.stderr:
                 logger.error(f"spotdl stderr: {result.stderr}")
+                downloader_logger.error(f"spotdl stderr: {result.stderr}")
 
             # Check what files were created in the output directory
             created_files = list(output_dir.glob("*"))
