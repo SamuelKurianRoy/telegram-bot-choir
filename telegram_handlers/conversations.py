@@ -1027,9 +1027,19 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
             if yfile_id:
                 append_download_to_google_doc(yfile_id, download_failed_entry)
 
-            await update.message.reply_text(
-                "❌ Download failed. Please try again or contact the administrator."
-            )
+            # Provide more specific error message based on platform
+            if platform == "YouTube":
+                error_msg = (
+                    "❌ YouTube download failed. This could be due to:\n"
+                    "• Video restrictions or age-gating\n"
+                    "• Regional blocking\n"
+                    "• Technical issues with the video\n\n"
+                    "Please try a different YouTube video or contact the administrator."
+                )
+            else:
+                error_msg = "❌ Download failed. Please try again or contact the administrator."
+
+            await update.message.reply_text(error_msg)
             return ConversationHandler.END
 
         file_path, file_info = result

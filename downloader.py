@@ -1058,6 +1058,11 @@ class AudioDownloader:
                 }],
                 'quiet': True,
                 'no_warnings': True,
+                # Anti-blocking measures
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'referer': 'https://www.youtube.com/',
+                'sleep_interval': 1,  # Add delay between requests
+                'max_sleep_interval': 5,
             }
 
             # Add FFmpeg location if found (using same logic as audio_downloader_bot.py)
@@ -1071,9 +1076,13 @@ class AudioDownloader:
             else:
                 # If no FFmpeg available, try to download audio-only formats that don't need conversion
                 logger.warning("No FFmpeg available, trying audio-only formats")
-                ydl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio'
+                downloader_logger.warning("No FFmpeg available for YouTube download, using fallback")
+                ydl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best[height<=480]'
                 # Remove post-processors that require FFmpeg
                 ydl_opts['postprocessors'] = []
+                # Add more fallback options
+                ydl_opts['ignoreerrors'] = False
+                ydl_opts['no_warnings'] = False  # Show warnings to help debug
             
             # Download with timeout
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -1180,37 +1189,138 @@ class AudioDownloader:
             
         except Exception as e:
             logger.error(f"YouTube download failed: {e}")
-            # Proxy fallback for 403 Forbidden
-            if ("403" in str(e) or "Forbidden" in str(e)):
-                logger.warning("403 Forbidden detected. Retrying with proxy...")
-                proxy_url = 'http://proxy.scrapeops.io:5353'  # Example reliable public proxy
-                ydl_opts['proxy'] = proxy_url
-                try:
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        info = await asyncio.wait_for(
-                            asyncio.get_event_loop().run_in_executor(
-                                None, lambda: ydl.extract_info(url, download=True)
-                            ),
-                            timeout=300
-                        )
-                    downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
-                    if not downloaded_files:
-                        raise FileNotFoundError("Download failed - no file found (proxy)")
-                    downloaded_file = downloaded_files[0]
-                    file_info = {
-                        'title': info.get('title', 'Unknown'),
-                        'artist': info.get('uploader', 'Unknown'),
-                        'duration': info.get('duration', 0),
-                        'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                        'platform': 'YouTube (proxy)'
-                    }
-                    # (Optional: repeat renaming and metadata logic here if needed)
-                    return downloaded_file, file_info
-                except Exception as proxy_e:
-                    logger.error(f"Proxy download also failed: {proxy_e}")
-                    return None
+            downloader_logger.error(f"YouTube download failed for URL {url}: {e}")
+            downloader_logger.error(f"FFmpeg path: {self.ffmpeg_path}")
+            downloader_logger.error(f"yt-dlp options: {ydl_opts}")
+
+            # Log more detailed error information
+            error_details = {
+                'error_type': type(e).__name__,
+                'error_message': str(e),
+                'url': url,
+                'quality': quality,
+                'ffmpeg_available': self.ffmpeg_path is not None,
+                'yt_dlp_available': yt_dlp is not None
+            }
+            downloader_logger.error(f"Detailed error info: {error_details}")
+
+            # Proxy fallback for 403 Forbidden or IP blocking
+            if ("403" in str(e) or "Forbidden" in str(e) or "429" in str(e) or "Too Many Requests" in str(e)):
+                logger.warning("IP blocking detected. Retrying with proxy...")
+                downloader_logger.warning(f"IP blocking detected for {url}, trying proxy fallback")
+
+                # Try multiple proxy options
+                proxy_urls = [
+                    'http://proxy.scrapeops.io:5353',
+                    'http://rotating-residential.proxymesh.com:31280',
+                    'http://us-wa.proxymesh.com:31280'
+                ]
+
+                for proxy_url in proxy_urls:
+                    try:
+                        logger.info(f"Trying proxy: {proxy_url}")
+                        ydl_opts_proxy = ydl_opts.copy()
+                        ydl_opts_proxy['proxy'] = proxy_url
+
+                        with yt_dlp.YoutubeDL(ydl_opts_proxy) as ydl:
+                            info = await asyncio.wait_for(
+                                asyncio.get_event_loop().run_in_executor(
+                                    None, lambda: ydl.extract_info(url, download=True)
+                                ),
+                                timeout=300
+                            )
+
+                        downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
+                        if not downloaded_files:
+                            continue  # Try next proxy
+
+                        downloaded_file = downloaded_files[0]
+                        file_info = {
+                            'title': info.get('title', 'Unknown'),
+                            'artist': info.get('uploader', 'Unknown'),
+                            'duration': info.get('duration', 0),
+                            'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
+                            'platform': 'YouTube (proxy)'
+                        }
+                        logger.info(f"Proxy download successful with {proxy_url}")
+                        return downloaded_file, file_info
+
+                    except Exception as proxy_e:
+                        logger.warning(f"Proxy {proxy_url} failed: {proxy_e}")
+                        continue  # Try next proxy
+
+                logger.error("All proxy attempts failed")
+
+            # Try a simpler fallback without FFmpeg
+            logger.info("Attempting YouTube download fallback without FFmpeg...")
+            downloader_logger.info("Attempting YouTube fallback without FFmpeg")
+            return await self.download_youtube_fallback(url, quality)
+
+        return None
+
+    async def download_youtube_fallback(self, url: str, quality: str) -> Optional[Tuple[Path, Dict]]:
+        """Fallback YouTube download method without FFmpeg conversion"""
+        if not yt_dlp:
+            logger.error("yt-dlp not available for YouTube fallback")
             return None
-    
+
+        try:
+            logger.info("Attempting YouTube fallback download...")
+            downloader_logger.info(f"YouTube fallback download for: {url}")
+
+            # Generate unique filename
+            temp_filename = f"audio_youtube_fallback_{int(time.time())}"
+            temp_filepath = self.temp_dir / temp_filename
+
+            # Simple yt-dlp options without FFmpeg post-processing
+            ydl_opts = {
+                'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio[ext=mp4]/bestaudio',
+                'outtmpl': str(temp_filepath) + '.%(ext)s',
+                'quiet': False,  # Show output for debugging
+                'no_warnings': False,
+                'extract_flat': False,
+                # Anti-blocking measures
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'referer': 'https://www.youtube.com/',
+                'sleep_interval': 1,
+                'max_sleep_interval': 5,
+            }
+
+            # Download without post-processing
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None, lambda: ydl.extract_info(url, download=True)
+                    ),
+                    timeout=300  # 5 minute timeout
+                )
+
+            # Find downloaded file
+            downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
+            if not downloaded_files:
+                raise FileNotFoundError("Fallback download failed - no file found")
+
+            downloaded_file = downloaded_files[0]
+
+            # Create file info
+            file_info = {
+                'title': info.get('title', 'Unknown'),
+                'artist': info.get('uploader', 'Unknown'),
+                'duration': info.get('duration', 0),
+                'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
+                'platform': 'YouTube (fallback)'
+            }
+
+            logger.info(f"YouTube fallback download successful: {downloaded_file.name}")
+            downloader_logger.info(f"YouTube fallback successful: {file_info}")
+
+            return downloaded_file, file_info
+
+        except Exception as e:
+            logger.error(f"YouTube fallback download failed: {e}")
+            downloader_logger.error(f"YouTube fallback failed: {e}")
+            return None
+
     async def download_spotify_audio(self, url: str, quality: str, chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
         """Download Spotify audio using spotdl with Streamlit Cloud optimizations and checkpoint/resume support."""
         import hashlib
