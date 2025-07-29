@@ -260,7 +260,7 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
         upload_log_to_google_doc(config.UFILE_ID, "user_log.txt")
 
         # Send final success message
-        await update.message.reply_text("✅ All components refreshed successfully!\n\n📊 Datasets reloaded\n🎵 Lyrics file map updated\n📝 Continue using the bot")
+        await update.message.reply_text("✅ All components refreshed successfully!")
 
         # Delete all progress messages
         for msg_id in progress_messages:
