@@ -84,10 +84,8 @@ def create_empty_user_database():
         'notes',             # Admin notes about user
         # User Preferences
         'bible_language',    # Default Bible language (malayalam/english)
-        'notification_enabled',  # Whether to receive notifications
         'search_results_limit',  # Number of search results to show
-        'theme_preference',  # UI theme preference (if applicable)
-        'timezone'           # User's timezone
+        'theme_preference'   # UI theme preference (if applicable)
     ])
 
 def ensure_user_database_structure(df):
@@ -106,10 +104,8 @@ def ensure_user_database_structure(df):
         'notes': 'object',
         # User Preferences
         'bible_language': 'object',
-        'notification_enabled': 'bool',
         'search_results_limit': 'int64',
-        'theme_preference': 'object',
-        'timezone': 'object'
+        'theme_preference': 'object'
     }
     
     # Add missing columns with default values
@@ -121,17 +117,12 @@ def ensure_user_database_structure(df):
                 else:
                     df[col] = 0
             elif dtype == 'bool':
-                if col == 'notification_enabled':
-                    df[col] = True  # Default notifications enabled
-                else:
-                    df[col] = False
+                df[col] = False
             else:
                 if col == 'bible_language':
                     df[col] = 'malayalam'  # Default Bible language
                 elif col == 'theme_preference':
                     df[col] = 'default'
-                elif col == 'timezone':
-                    df[col] = 'Asia/Kolkata'  # Default Indian timezone
                 else:
                     df[col] = ''
 
@@ -143,10 +134,8 @@ def ensure_user_database_structure(df):
 
     # Set default values for preference columns
     df['bible_language'] = df['bible_language'].fillna('malayalam')
-    df['notification_enabled'] = df['notification_enabled'].fillna(True).astype('bool')
     df['search_results_limit'] = df['search_results_limit'].fillna(10).astype('int64')
     df['theme_preference'] = df['theme_preference'].fillna('default')
-    df['timezone'] = df['timezone'].fillna('Asia/Kolkata')
     
     return df
 
@@ -232,10 +221,8 @@ def add_or_update_user(user_data):
                 'notes': '',
                 # Default preferences for new users
                 'bible_language': 'malayalam',
-                'notification_enabled': True,
                 'search_results_limit': 10,
-                'theme_preference': 'default',
-                'timezone': 'Asia/Kolkata'
+                'theme_preference': 'default'
             }
             
             # Add new row to database
@@ -521,8 +508,7 @@ def update_google_sheet_structure():
         required_headers = [
             'user_id', 'username', 'name', 'last_seen',
             'is_authorized', 'is_admin', 'status', 'notes',
-            'bible_language', 'notification_enabled', 'search_results_limit',
-            'theme_preference', 'timezone'
+            'bible_language', 'search_results_limit', 'theme_preference'
         ]
         
         # Check which headers are missing

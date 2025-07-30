@@ -34,9 +34,9 @@ try:
         initialize_theme_components
     )
     from telegram_handlers.preferences import (
-        preference_start, preference_menu_handler, bible_language_handler, notification_handler,
-        search_limit_handler, timezone_handler, cancel_preferences,
-        PREFERENCE_MENU, BIBLE_LANGUAGE_CHOICE, NOTIFICATION_CHOICE, SEARCH_LIMIT_INPUT, TIMEZONE_INPUT
+        preference_start, preference_menu_handler, bible_language_handler,
+        search_limit_handler, cancel_preferences,
+        PREFERENCE_MENU, BIBLE_LANGUAGE_CHOICE, SEARCH_LIMIT_INPUT
     )
 except ImportError as e:
     print(f"[DEBUG] ImportError during project imports: {e}")
@@ -209,9 +209,7 @@ preference_conv_handler = ConversationHandler(
     states={
         PREFERENCE_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, preference_menu_handler)],
         BIBLE_LANGUAGE_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_language_handler)],
-        NOTIFICATION_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, notification_handler)],
         SEARCH_LIMIT_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_limit_handler)],
-        TIMEZONE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, timezone_handler)],
     },
     fallbacks=[CommandHandler("cancel", cancel_preferences)],
 )
