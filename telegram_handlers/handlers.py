@@ -903,8 +903,8 @@ async def bible_start(update: Update, context: CallbackContext) -> int:
         "• `യോഹന്നാൻ 3`\n"
         "• `Gen 10 mal` (for Malayalam)\n"
         "• `Exodus 12 english` (for English)\n\n"
-        "        f"*Note:* If no language is specified, your default language ({get_user_bible_language(user.id).title()}) will be used.\n"
-        "You can change your default language using /preference.""
+        f"*Note:* If no language is specified, your default language ({get_user_bible_language(user.id).title()}) will be used.\n"
+        "You can change your default language using /preference."
     )
     
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
@@ -913,6 +913,7 @@ async def bible_start(update: Update, context: CallbackContext) -> int:
 async def bible_input_handler(update: Update, context: CallbackContext) -> int:
     """Handle book, chapter, and optional language input"""
     try:
+        user = update.effective_user
         user_input = update.message.text.strip()
         parts = user_input.split()
         # Get user's preferred Bible language
