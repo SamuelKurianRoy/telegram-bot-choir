@@ -84,6 +84,7 @@ def create_empty_user_database():
         'notes',             # Admin notes about user
         # User Preferences
         'bible_language',    # Default Bible language (malayalam/english)
+        'game_language',     # Default Bible game language (malayalam/english)
         'search_results_limit',  # Number of search results to show
         'theme_preference'   # UI theme preference (if applicable)
     ])
@@ -104,6 +105,7 @@ def ensure_user_database_structure(df):
         'notes': 'object',
         # User Preferences
         'bible_language': 'object',
+        'game_language': 'object',
         'search_results_limit': 'int64',
         'theme_preference': 'object'
     }
@@ -121,6 +123,8 @@ def ensure_user_database_structure(df):
             else:
                 if col == 'bible_language':
                     df[col] = 'malayalam'  # Default Bible language
+                elif col == 'game_language':
+                    df[col] = 'malayalam'  # Default Bible game language
                 elif col == 'theme_preference':
                     df[col] = 'default'
                 else:
@@ -134,6 +138,7 @@ def ensure_user_database_structure(df):
 
     # Set default values for preference columns
     df['bible_language'] = df['bible_language'].fillna('malayalam')
+    df['game_language'] = df['game_language'].fillna('malayalam')
     df['search_results_limit'] = df['search_results_limit'].fillna(10).astype('int64')
     df['theme_preference'] = df['theme_preference'].fillna('default')
     
@@ -221,6 +226,7 @@ def add_or_update_user(user_data):
                 'notes': '',
                 # Default preferences for new users
                 'bible_language': 'malayalam',
+                'game_language': 'malayalam',
                 'search_results_limit': 10,
                 'theme_preference': 'default'
             }
@@ -470,6 +476,34 @@ def update_user_bible_language(user_id, language):
 
     return update_user_preference(user_id, 'bible_language', language.lower())
 
+def get_user_game_language(user_id):
+    """
+    Get the user's preferred Bible game language.
+
+    Args:
+        user_id: Telegram user ID
+
+    Returns:
+        str: 'malayalam' or 'english' (default: 'malayalam')
+    """
+    return get_user_preference(user_id, 'game_language', 'malayalam')
+
+def update_user_game_language(user_id, language):
+    """
+    Update the user's preferred Bible game language.
+
+    Args:
+        user_id: Telegram user ID
+        language: 'malayalam' or 'english'
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    if language.lower() not in ['malayalam', 'english']:
+        return False
+
+    return update_user_preference(user_id, 'game_language', language.lower())
+
 def update_google_sheet_structure():
     """
     Updates the Google Sheet to include all required columns.
@@ -508,7 +542,7 @@ def update_google_sheet_structure():
         required_headers = [
             'user_id', 'username', 'name', 'last_seen',
             'is_authorized', 'is_admin', 'status', 'notes',
-            'bible_language', 'search_results_limit', 'theme_preference'
+            'bible_language', 'game_language', 'search_results_limit', 'theme_preference'
         ]
         
         # Check which headers are missing

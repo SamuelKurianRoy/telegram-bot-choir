@@ -4,8 +4,9 @@
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import CallbackContext, ConversationHandler
 from data.udb import (
-    get_user_preference, update_user_preference, 
+    get_user_preference, update_user_preference,
     get_user_bible_language, update_user_bible_language,
+    get_user_game_language, update_user_game_language,
     track_user_fast, save_if_pending
 )
 from config import get_config
@@ -15,7 +16,7 @@ from logging_utils import setup_loggers
 bot_logger, user_logger = setup_loggers()
 
 # Conversation states
-PREFERENCE_MENU, BIBLE_LANGUAGE_CHOICE, SEARCH_LIMIT_INPUT = range(3)
+PREFERENCE_MENU, BIBLE_LANGUAGE_CHOICE, GAME_LANGUAGE_CHOICE, SEARCH_LIMIT_INPUT = range(4)
 
 async def preference_start(update: Update, context: CallbackContext) -> int:
     """Start the preference management conversation"""
@@ -27,6 +28,7 @@ async def preference_start(update: Update, context: CallbackContext) -> int:
     
     # Get current preferences
     bible_lang = get_user_bible_language(user.id)
+    game_lang = get_user_game_language(user.id)
     search_limit = get_user_preference(user.id, 'search_results_limit', 10)
 
     # Create preference menu
@@ -34,13 +36,15 @@ async def preference_start(update: Update, context: CallbackContext) -> int:
         "⚙️ *User Preferences*\n\n"
         "*Current Settings:*\n"
         f"📖 Bible Language: *{bible_lang.title()}*\n"
+        f"🎮 Game Language: *{game_lang.title()}*\n"
         f"🔍 Search Results Limit: *{search_limit}*\n\n"
         "What would you like to change?"
     )
     
     keyboard = [
-        ["📖 Bible Language", "🔍 Search Results Limit"],
-        ["📊 View All Preferences", "❌ Cancel"]
+        ["📖 Bible Language", "🎮 Game Language"],
+        ["🔍 Search Results Limit", "📊 View All Preferences"],
+        ["❌ Cancel"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     
@@ -70,6 +74,24 @@ async def preference_menu_handler(update: Update, context: CallbackContext) -> i
         await update.message.reply_text(lang_text, parse_mode="Markdown", reply_markup=reply_markup)
         return BIBLE_LANGUAGE_CHOICE
 
+    elif user_input == "🎮 Game Language":
+        current_lang = get_user_game_language(user.id)
+
+        lang_text = (
+            "🎮 *Bible Game Language Preference*\n\n"
+            f"Current setting: *{current_lang.title()}*\n\n"
+            "Choose your preferred language for Bible games:"
+        )
+
+        keyboard = [
+            ["🇮🇳 Malayalam", "🇺🇸 English"],
+            ["🔙 Back to Menu", "❌ Cancel"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+
+        await update.message.reply_text(lang_text, parse_mode="Markdown", reply_markup=reply_markup)
+        return GAME_LANGUAGE_CHOICE
+
     elif user_input == "🔍 Search Results Limit":
         current_limit = get_user_preference(user.id, 'search_results_limit', 10)
         
@@ -85,20 +107,22 @@ async def preference_menu_handler(update: Update, context: CallbackContext) -> i
     elif user_input == "📊 View All Preferences":
         # Get all current preferences
         bible_lang = get_user_bible_language(user.id)
+        game_lang = get_user_game_language(user.id)
         search_limit = get_user_preference(user.id, 'search_results_limit', 10)
         theme = get_user_preference(user.id, 'theme_preference', 'default')
 
         all_prefs_text = (
             "📊 *All Your Preferences*\n\n"
             f"📖 *Bible Language:* {bible_lang.title()}\n"
+            f"🎮 *Game Language:* {game_lang.title()}\n"
             f"🔍 *Search Results Limit:* {search_limit}\n"
             f"🎨 *Theme Preference:* {theme.title()}\n\n"
             "Use the menu to change any setting."
         )
 
         keyboard = [
-            ["📖 Bible Language", "🔍 Search Results Limit"],
-            ["❌ Cancel"]
+            ["📖 Bible Language", "🎮 Game Language"],
+            ["🔍 Search Results Limit", "❌ Cancel"]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         
@@ -174,6 +198,64 @@ async def bible_language_handler(update: Update, context: CallbackContext) -> in
         )
         return ConversationHandler.END
         
+    else:
+        await update.message.reply_text(
+            "Please select a valid language option.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return await preference_start(update, context)
+
+async def game_language_handler(update: Update, context: CallbackContext) -> int:
+    """Handle Bible game language preference selection"""
+    user = update.effective_user
+    user_input = update.message.text.strip()
+
+    if user_input == "🇮🇳 Malayalam":
+        success = update_user_game_language(user.id, 'malayalam')
+        if success:
+            save_if_pending()  # Save changes immediately
+            await update.message.reply_text(
+                "✅ Bible game language set to *Malayalam*.\n\n"
+                "All Bible games will now use Malayalam by default.",
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) set game language to Malayalam")
+        else:
+            await update.message.reply_text(
+                "❌ Failed to update game language preference. Please try again.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        return ConversationHandler.END
+
+    elif user_input == "🇺🇸 English":
+        success = update_user_game_language(user.id, 'english')
+        if success:
+            save_if_pending()  # Save changes immediately
+            await update.message.reply_text(
+                "✅ Bible game language set to *English*.\n\n"
+                "All Bible games will now use English by default.",
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) set game language to English")
+        else:
+            await update.message.reply_text(
+                "❌ Failed to update game language preference. Please try again.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        return ConversationHandler.END
+
+    elif user_input == "🔙 Back to Menu":
+        return await preference_start(update, context)
+
+    elif user_input == "❌ Cancel":
+        await update.message.reply_text(
+            "✅ Game language preference unchanged.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
     else:
         await update.message.reply_text(
             "Please select a valid language option.",

@@ -19,7 +19,7 @@ from utils.notation import Music_notation_link, getNotation
 from data.datasets import Tunenofinder, Tune_finder_of_known_songs, Datefinder, IndexFinder, Hymn_Tune_no_Finder, get_all_data
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 from data.drive import save_game_score, get_user_best_score, get_user_best_scores_all_difficulties, get_leaderboard, get_combined_leaderboard
-from data.udb import get_user_bible_language, track_user_fast
+from data.udb import get_user_bible_language, get_user_game_language, track_user_fast
 import re
 import os
 import random
@@ -1327,9 +1327,9 @@ async def bible_game_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # Get user's best scores from database for all difficulties
     user_best_scores = get_user_best_scores_all_difficulties(user.id)
 
-    # Get user's preferred Bible language
-    user_bible_lang = get_user_bible_language(user.id)
-    default_lang_display = "🇮🇳 Malayalam" if user_bible_lang == 'malayalam' else "🇺🇸 English"
+    # Get user's preferred game language
+    user_game_lang = get_user_game_language(user.id)
+    default_lang_display = "🇮🇳 Malayalam" if user_game_lang == 'malayalam' else "🇺🇸 English"
 
     # Show welcome message and language selection
     welcome_text = (
@@ -1339,12 +1339,12 @@ async def bible_game_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         f"🟢 Easy: {user_best_scores['Easy']}\n"
         f"🟡 Medium: {user_best_scores['Medium']}\n"
         f"🔴 Hard: {user_best_scores['Hard']}\n\n"
-        f"Your default Bible language is *{user_bible_lang.title()}*.\n"
+        f"Your default game language is *{user_game_lang.title()}*.\n"
         "Choose your language for this game:"
     )
 
-    # Highlight user's default language
-    if user_bible_lang == 'malayalam':
+    # Highlight user's default game language
+    if user_game_lang == 'malayalam':
         keyboard = [
             ["🇺🇸 English", f"⭐ {default_lang_display} (Default)"],
             ["📊 View Stats", "🏅 Leaderboard"],
