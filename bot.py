@@ -33,6 +33,11 @@ try:
         bible_game_start, bible_game_language_handler, bible_game_difficulty_handler, bible_game_question_handler, BIBLE_GAME_LANGUAGE, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION,
         initialize_theme_components
     )
+    from telegram_handlers.preferences import (
+        preference_start, preference_menu_handler, bible_language_handler, notification_handler,
+        search_limit_handler, timezone_handler, cancel_preferences,
+        PREFERENCE_MENU, BIBLE_LANGUAGE_CHOICE, NOTIFICATION_CHOICE, SEARCH_LIMIT_INPUT, TIMEZONE_INPUT
+    )
 except ImportError as e:
     print(f"[DEBUG] ImportError during project imports: {e}")
     raise
@@ -198,10 +203,24 @@ bible_game_conv_handler = ConversationHandler(
     fallbacks=[CommandHandler("cancel", cancel)],
 )
 
+# Register the preference conversation handler
+preference_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("preference", preference_start)],
+    states={
+        PREFERENCE_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, preference_menu_handler)],
+        BIBLE_LANGUAGE_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_language_handler)],
+        NOTIFICATION_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, notification_handler)],
+        SEARCH_LIMIT_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_limit_handler)],
+        TIMEZONE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, timezone_handler)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel_preferences)],
+)
+
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
 app.add_handler(bible_conv_handler)
 app.add_handler(bible_game_conv_handler)
+app.add_handler(preference_conv_handler)
 app.add_handler(date_conv_handler)
 app.add_handler(CommandHandler("refresh", refresh_command))
 app.add_handler(admin_reply_conv_handler)

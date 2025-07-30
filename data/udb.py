@@ -81,7 +81,13 @@ def create_empty_user_database():
         'is_authorized',     # Whether user is in authorized list
         'is_admin',          # Whether user is admin
         'status',            # User status (active, blocked, etc.)
-        'notes'              # Admin notes about user
+        'notes',             # Admin notes about user
+        # User Preferences
+        'bible_language',    # Default Bible language (malayalam/english)
+        'notification_enabled',  # Whether to receive notifications
+        'search_results_limit',  # Number of search results to show
+        'theme_preference',  # UI theme preference (if applicable)
+        'timezone'           # User's timezone
     ])
 
 def ensure_user_database_structure(df):
@@ -97,24 +103,50 @@ def ensure_user_database_structure(df):
         'is_authorized': 'bool',
         'is_admin': 'bool',
         'status': 'object',
-        'notes': 'object'
+        'notes': 'object',
+        # User Preferences
+        'bible_language': 'object',
+        'notification_enabled': 'bool',
+        'search_results_limit': 'int64',
+        'theme_preference': 'object',
+        'timezone': 'object'
     }
     
     # Add missing columns with default values
     for col, dtype in required_columns.items():
         if col not in df.columns:
             if dtype == 'int64':
-                df[col] = 0
+                if col == 'search_results_limit':
+                    df[col] = 10  # Default search results limit
+                else:
+                    df[col] = 0
             elif dtype == 'bool':
-                df[col] = False
+                if col == 'notification_enabled':
+                    df[col] = True  # Default notifications enabled
+                else:
+                    df[col] = False
             else:
-                df[col] = ''
-    
+                if col == 'bible_language':
+                    df[col] = 'malayalam'  # Default Bible language
+                elif col == 'theme_preference':
+                    df[col] = 'default'
+                elif col == 'timezone':
+                    df[col] = 'Asia/Kolkata'  # Default Indian timezone
+                else:
+                    df[col] = ''
+
     # Set default values for existing but empty columns
     df['is_authorized'] = df['is_authorized'].fillna(False).astype('bool')
     df['is_admin'] = df['is_admin'].fillna(False).astype('bool')
     df['status'] = df['status'].fillna('active')
     df['notes'] = df['notes'].fillna('')
+
+    # Set default values for preference columns
+    df['bible_language'] = df['bible_language'].fillna('malayalam')
+    df['notification_enabled'] = df['notification_enabled'].fillna(True).astype('bool')
+    df['search_results_limit'] = df['search_results_limit'].fillna(10).astype('int64')
+    df['theme_preference'] = df['theme_preference'].fillna('default')
+    df['timezone'] = df['timezone'].fillna('Asia/Kolkata')
     
     return df
 
@@ -197,7 +229,13 @@ def add_or_update_user(user_data):
                 'is_authorized': user_id in config.AUTHORIZED_USERS,
                 'is_admin': user_id == config.ADMIN_ID,
                 'status': 'active',
-                'notes': ''
+                'notes': '',
+                # Default preferences for new users
+                'bible_language': 'malayalam',
+                'notification_enabled': True,
+                'search_results_limit': 10,
+                'theme_preference': 'default',
+                'timezone': 'Asia/Kolkata'
             }
             
             # Add new row to database
@@ -347,6 +385,104 @@ def get_user_summary(user_id):
     except Exception as e:
         return f"❌ Error getting user summary: {e}"
 
+def get_user_preference(user_id, preference_name, default_value=None):
+    """
+    Get a specific preference value for a user.
+
+    Args:
+        user_id: Telegram user ID
+        preference_name: Name of the preference column
+        default_value: Default value if preference not found
+
+    Returns:
+        The preference value or default_value
+    """
+    try:
+        user = get_user_by_id(user_id)
+        if user is None:
+            return default_value
+
+        if preference_name in user.index:
+            value = user[preference_name]
+            # Handle NaN values
+            if pd.isna(value):
+                return default_value
+            return value
+
+        return default_value
+
+    except Exception as e:
+        print(f"❌ Error getting user preference {preference_name} for {user_id}: {e}")
+        return default_value
+
+def update_user_preference(user_id, preference_name, preference_value):
+    """
+    Update a specific preference for a user.
+
+    Args:
+        user_id: Telegram user ID
+        preference_name: Name of the preference column
+        preference_value: New preference value
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        global user_db
+        db = get_user_database()
+
+        # Find user
+        user_idx = db[db['user_id'] == user_id].index
+        if user_idx.empty:
+            # User doesn't exist, create them first
+            user_data = {'user_id': user_id}
+            if not add_or_update_user(user_data):
+                return False
+            # Reload database and find user again
+            db = get_user_database()
+            user_idx = db[db['user_id'] == user_id].index
+
+        if not user_idx.empty:
+            idx = user_idx[0]
+            db.at[idx, preference_name] = preference_value
+            mark_pending_save()
+            print(f"✅ Updated {preference_name} = {preference_value} for user {user_id}")
+            return True
+
+        return False
+
+    except Exception as e:
+        print(f"❌ Error updating user preference {preference_name} for {user_id}: {e}")
+        return False
+
+def get_user_bible_language(user_id):
+    """
+    Get the user's preferred Bible language.
+
+    Args:
+        user_id: Telegram user ID
+
+    Returns:
+        str: 'malayalam' or 'english' (default: 'malayalam')
+    """
+    return get_user_preference(user_id, 'bible_language', 'malayalam')
+
+def update_user_bible_language(user_id, language):
+    """
+    Update the user's preferred Bible language.
+
+    Args:
+        user_id: Telegram user ID
+        language: 'malayalam' or 'english'
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    if language.lower() not in ['malayalam', 'english']:
+        return False
+
+    return update_user_preference(user_id, 'bible_language', language.lower())
+
 def update_google_sheet_structure():
     """
     Updates the Google Sheet to include all required columns.
@@ -383,8 +519,10 @@ def update_google_sheet_structure():
         
         # Define required headers
         required_headers = [
-            'user_id', 'username', 'name', 'last_seen', 
-            'is_authorized', 'is_admin', 'status', 'notes'
+            'user_id', 'username', 'name', 'last_seen',
+            'is_authorized', 'is_admin', 'status', 'notes',
+            'bible_language', 'notification_enabled', 'search_results_limit',
+            'theme_preference', 'timezone'
         ]
         
         # Check which headers are missing

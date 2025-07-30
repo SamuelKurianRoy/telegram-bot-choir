@@ -9,7 +9,7 @@ from logging_utils import setup_loggers
 from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
 from data.drive import upload_log_to_google_doc
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
-from data.udb import track_user_interaction, user_exists, get_user_by_id, get_user_stats, get_user_summary, save_user_database, track_user_fast, save_if_pending
+from data.udb import track_user_interaction, user_exists, get_user_by_id, get_user_stats, get_user_summary, save_user_database, track_user_fast, save_if_pending, get_user_bible_language
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import pandas as pd
 from datetime import date
@@ -185,6 +185,9 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "• **/comment**\n"
         "  - *Description:* Allows you to submit comments, recommendations, or feedback directly to the bot administrator.\n"
         "  - *Example:* Type `/comment Your message here` and the bot will forward it to the administrator for review.\n\n"
+        "• **/preference**\n"
+        "  - *Description:* Manage your personal preferences including default Bible language, notifications, search results limit, and timezone.\n"
+        "  - *Example:* Type `/preference` to access your settings menu.\n\n"
         "• **/cancel**\n"
         "  - *Description:* Cancels the current operation.\n"
         "  - *Example:* If you are in a conversation, type `/cancel` to stop it.\n\n"
@@ -900,7 +903,8 @@ async def bible_start(update: Update, context: CallbackContext) -> int:
         "• `യോഹന്നാൻ 3`\n"
         "• `Gen 10 mal` (for Malayalam)\n"
         "• `Exodus 12 english` (for English)\n\n"
-        "*Note:* If no language is specified, Malayalam will be used by default."
+        "        f"*Note:* If no language is specified, your default language ({get_user_bible_language(user.id).title()}) will be used.\n"
+        "You can change your default language using /preference.""
     )
     
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
@@ -911,7 +915,8 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
     try:
         user_input = update.message.text.strip()
         parts = user_input.split()
-        language = 'malayalam'  # default
+        # Get user's preferred Bible language
+        language = get_user_bible_language(user.id)  # Use user's preference
         book_chapter_input = user_input
         language_codes = {
             'mal', 'malayalam', 'eng', 'english', 'hin', 'hindi', 
@@ -1285,6 +1290,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/theme` - Search by themes
 • `/download` - Download audio from links
 • `/comment` - Send feedback to admin
+• `/preference` - Manage personal preferences
 
 **Usage Examples:**
 • `/admin_user_info 757438955`
