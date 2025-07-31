@@ -391,34 +391,57 @@ class AudioDownloader:
     def _setup_cookies(self) -> Optional[str]:
         """Setup cookie support for bypassing YouTube bot detection"""
         try:
-            # Look for cookie files in common locations
-            cookie_locations = [
-                # Netscape format cookie files
-                self.temp_dir / "youtube_cookies.txt",
-                Path.cwd() / "youtube_cookies.txt",
-                Path.cwd() / "cookies.txt",
-                # Browser cookie extraction (if available)
-                self._get_browser_cookie_path("chrome"),
-                self._get_browser_cookie_path("firefox"),
-                self._get_browser_cookie_path("brave"),
-                self._get_browser_cookie_path("edge"),
-            ]
+            if self.is_streamlit_cloud:
+                # Streamlit Cloud: Only check for uploaded cookie files
+                logger.info("Running on Streamlit Cloud - checking for uploaded cookie files only")
+                downloader_logger.info("Streamlit Cloud mode: Browser cookie extraction disabled")
 
-            # Check for existing cookie files
-            for cookie_path in cookie_locations:
-                if cookie_path and Path(cookie_path).exists():
-                    logger.info(f"Found cookie file: {cookie_path}")
-                    downloader_logger.info(f"Using cookie file: {cookie_path}")
-                    return str(cookie_path)
+                cookie_locations = [
+                    # Only check for manually uploaded cookie files
+                    self.temp_dir / "youtube_cookies.txt",
+                    Path.cwd() / "youtube_cookies.txt",
+                    Path.cwd() / "cookies.txt",
+                ]
 
-            # Try to extract cookies from browsers automatically
-            browser_success = self._try_extract_browser_cookies()
-            if browser_success:
-                return browser_success
+                for cookie_path in cookie_locations:
+                    if cookie_path.exists():
+                        logger.info(f"Found uploaded cookie file: {cookie_path}")
+                        downloader_logger.info(f"Using uploaded cookie file: {cookie_path}")
+                        return str(cookie_path)
 
-            logger.info("No cookie file found - will use cookieless mode")
-            downloader_logger.info("Cookie setup: No cookies available, using enhanced anti-detection instead")
-            return None
+                logger.info("No uploaded cookie files found - using Streamlit Cloud optimized mode")
+                downloader_logger.info("Streamlit Cloud: No cookies, using cloud-optimized anti-detection")
+                return None
+
+            else:
+                # Local environment: Full browser cookie support
+                cookie_locations = [
+                    # Netscape format cookie files
+                    self.temp_dir / "youtube_cookies.txt",
+                    Path.cwd() / "youtube_cookies.txt",
+                    Path.cwd() / "cookies.txt",
+                    # Browser cookie extraction (if available)
+                    self._get_browser_cookie_path("chrome"),
+                    self._get_browser_cookie_path("firefox"),
+                    self._get_browser_cookie_path("brave"),
+                    self._get_browser_cookie_path("edge"),
+                ]
+
+                # Check for existing cookie files
+                for cookie_path in cookie_locations:
+                    if cookie_path and Path(cookie_path).exists():
+                        logger.info(f"Found cookie file: {cookie_path}")
+                        downloader_logger.info(f"Using cookie file: {cookie_path}")
+                        return str(cookie_path)
+
+                # Try to extract cookies from browsers automatically
+                browser_success = self._try_extract_browser_cookies()
+                if browser_success:
+                    return browser_success
+
+                logger.info("No cookie file found - will use cookieless mode")
+                downloader_logger.info("Cookie setup: No cookies available, using enhanced anti-detection instead")
+                return None
 
         except Exception as e:
             logger.warning(f"Cookie setup failed: {e}")
@@ -1091,20 +1114,38 @@ class AudioDownloader:
         # Check for YouTube bot detection specifically
         if "sign in to confirm you're not a bot" in error_lower or ("cookies" in error_lower and "authentication" in error_lower):
             cookie_status = "✅ Enabled" if hasattr(self, 'cookie_file') and self.cookie_file else "❌ Not available"
-            return (
-                "🤖 **YouTube Bot Detection**\n\n"
-                "YouTube has detected automated access and is blocking downloads.\n\n"
-                f"**Cookie Authentication:** {cookie_status}\n\n"
-                "**What you can do:**\n"
-                "• Wait 10-15 minutes and try again\n"
-                "• Try a different video\n"
-                "• The bot automatically tries multiple bypass strategies\n"
-                "• Issue typically resolves within an hour\n\n"
-                "**For better reliability:**\n"
-                "• Use Brave browser and visit YouTube first\n"
-                "• The bot can extract cookies automatically\n\n"
-                "*Note: This is due to YouTube's anti-bot measures. The bot uses advanced bypass techniques including browser cookies when available.*"
-            )
+
+            if hasattr(self, 'is_streamlit_cloud') and self.is_streamlit_cloud:
+                return (
+                    "🤖 **YouTube Bot Detection (Streamlit Cloud)**\n\n"
+                    "YouTube has detected automated access and is blocking downloads.\n\n"
+                    f"**Cookie Authentication:** {cookie_status}\n"
+                    "**Environment:** Streamlit Cloud (optimized strategies active)\n\n"
+                    "**What you can do:**\n"
+                    "• Wait 10-15 minutes and try again\n"
+                    "• Try a different video\n"
+                    "• The bot uses cloud-optimized bypass strategies\n"
+                    "• Issue typically resolves within an hour\n\n"
+                    "**For better reliability on Streamlit Cloud:**\n"
+                    "• Upload a youtube_cookies.txt file to the app\n"
+                    "• The bot automatically tries mobile client strategies\n\n"
+                    "*Note: Running on Streamlit Cloud with enhanced anti-detection optimized for cloud environments.*"
+                )
+            else:
+                return (
+                    "🤖 **YouTube Bot Detection**\n\n"
+                    "YouTube has detected automated access and is blocking downloads.\n\n"
+                    f"**Cookie Authentication:** {cookie_status}\n\n"
+                    "**What you can do:**\n"
+                    "• Wait 10-15 minutes and try again\n"
+                    "• Try a different video\n"
+                    "• The bot automatically tries multiple bypass strategies\n"
+                    "• Issue typically resolves within an hour\n\n"
+                    "**For better reliability:**\n"
+                    "• Use Brave browser and visit YouTube first\n"
+                    "• The bot can extract cookies automatically\n\n"
+                    "*Note: This is due to YouTube's anti-bot measures. The bot uses advanced bypass techniques including browser cookies when available.*"
+                )
         elif "403" in error_str or "forbidden" in error_lower:
             return (
                 "🚫 **YouTube Access Blocked**\n\n"
@@ -1299,21 +1340,35 @@ class AudioDownloader:
             temp_filename = f"audio_youtube_{int(time.time())}"
             temp_filepath = self.temp_dir / temp_filename
             
-            # Enhanced anti-blocking user agents with Brave browser (less likely to be blocked)
-            user_agents = [
-                # Brave Browser (privacy-focused, less tracked)
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
-                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
-                # Standard browsers as fallback
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:122.0) Gecko/20100101 Firefox/122.0',
-                # Mobile variants
-                'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
-                'Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1'
-            ]
+            # Enhanced anti-blocking user agents optimized for cloud environments
+            if self.is_streamlit_cloud:
+                # Streamlit Cloud: Use server-friendly user agents
+                user_agents = [
+                    # Linux server variants (common on cloud platforms)
+                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                    'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0',
+                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                    # Mobile variants (often less restricted)
+                    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
+                    'Mozilla/5.0 (Android 13; Mobile; rv:122.0) Gecko/122.0 Firefox/122.0',
+                    'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
+                ]
+            else:
+                # Local environment: Full range including Brave browser
+                user_agents = [
+                    # Brave Browser (privacy-focused, less tracked)
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                    # Standard browsers as fallback
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0',
+                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:122.0) Gecko/20100101 Firefox/122.0',
+                    # Mobile variants
+                    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
+                    'Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1'
+                ]
 
             referers = ['https://www.youtube.com/', 'https://www.google.com/', 'https://music.youtube.com/', 'https://m.youtube.com/']
 
@@ -1368,12 +1423,11 @@ class AudioDownloader:
 
             # Add cookie support if available (most effective anti-bot measure)
             if self.cookie_file:
-                if "cookies_from_browser" not in ydl_opts:
-                    ydl_opts['cookiefile'] = self.cookie_file
-                    logger.info(f"Using cookie file for authentication: {self.cookie_file}")
-                    downloader_logger.info(f"Cookie authentication enabled: {self.cookie_file}")
-            else:
-                # Try browser cookie extraction as fallback
+                ydl_opts['cookiefile'] = self.cookie_file
+                logger.info(f"Using cookie file for authentication: {self.cookie_file}")
+                downloader_logger.info(f"Cookie authentication enabled: {self.cookie_file}")
+            elif not self.is_streamlit_cloud:
+                # Only try browser cookie extraction on local environments
                 try:
                     # Prefer Brave browser cookies (less tracked)
                     ydl_opts['cookies_from_browser'] = ('brave', None, None, None)
@@ -1388,6 +1442,10 @@ class AudioDownloader:
                     except Exception:
                         logger.info("No browser cookies available - using enhanced headers only")
                         downloader_logger.info("Cookie extraction failed - using cookieless mode")
+            else:
+                # Streamlit Cloud: Use cloud-optimized settings without browser cookies
+                logger.info("Streamlit Cloud: Using cloud-optimized anti-detection without browser cookies")
+                downloader_logger.info("Streamlit Cloud mode: Enhanced headers and user agents only")
 
             # Add FFmpeg location if found (using same logic as audio_downloader_bot.py)
             if self.ffmpeg_path == "system":
@@ -1546,30 +1604,74 @@ class AudioDownloader:
             if ("403" in str(e) or "Forbidden" in str(e) or "HTTP Error 403" in str(e)):
                 logger.warning("403 Forbidden detected. Trying multiple fallback strategies...")
 
-                # Enhanced fallback strategies to bypass bot detection
-                fallback_strategies = [
-                    # Strategy 1: Brave browser with cookies (most effective)
-                    {
-                        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
-                        'referer': 'https://www.youtube.com/',
-                        'cookies_from_browser': ('brave', None, None, None),
-                        'extractor_args': {
-                            'youtube': {
-                                'player_client': ['web'],
-                                'innertube_host': 'youtubei.googleapis.com',
-                            }
+                # Enhanced fallback strategies optimized for environment
+                if self.is_streamlit_cloud:
+                    # Streamlit Cloud optimized strategies
+                    fallback_strategies = [
+                        # Strategy 1: Android mobile client (cloud-friendly)
+                        {
+                            'user_agent': 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
+                            'referer': 'https://m.youtube.com/',
+                            'extractor_args': {
+                                'youtube': {
+                                    'player_client': ['android'],
+                                    'innertube_host': 'youtubei.googleapis.com',
+                                }
+                            },
+                            'sleep_interval': 8,
+                            'max_sleep_interval': 30,
+                            'http_headers': {
+                                'Accept': '*/*',
+                                'Accept-Language': 'en-US,en;q=0.9',
+                                'X-YouTube-Client-Name': '3',
+                                'X-YouTube-Client-Version': '18.11.34',
+                            },
                         },
-                        'sleep_interval': 5,
-                        'max_sleep_interval': 20,
-                        'http_headers': {
-                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                            'Accept-Language': 'en-US,en;q=0.9',
-                            'Sec-Fetch-Dest': 'document',
-                            'Sec-Fetch-Mode': 'navigate',
-                            'Sec-Fetch-Site': 'none',
-                            'Sec-Fetch-User': '?1',
+                        # Strategy 2: iOS client (often bypasses detection)
+                        {
+                            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+                            'referer': 'https://m.youtube.com/',
+                            'extractor_args': {
+                                'youtube': {
+                                    'player_client': ['ios'],
+                                    'innertube_host': 'youtubei.googleapis.com',
+                                }
+                            },
+                            'sleep_interval': 10,
+                            'max_sleep_interval': 35,
+                            'http_headers': {
+                                'Accept': '*/*',
+                                'Accept-Language': 'en-US,en;q=0.9',
+                                'X-YouTube-Client-Name': '5',
+                                'X-YouTube-Client-Version': '17.31.35',
+                            },
                         },
-                    },
+                    ]
+                else:
+                    # Local environment strategies with browser cookie support
+                    fallback_strategies = [
+                        # Strategy 1: Brave browser with cookies (most effective)
+                        {
+                            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                            'referer': 'https://www.youtube.com/',
+                            'cookies_from_browser': ('brave', None, None, None),
+                            'extractor_args': {
+                                'youtube': {
+                                    'player_client': ['web'],
+                                    'innertube_host': 'youtubei.googleapis.com',
+                                }
+                            },
+                            'sleep_interval': 5,
+                            'max_sleep_interval': 20,
+                            'http_headers': {
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                                'Accept-Language': 'en-US,en;q=0.9',
+                                'Sec-Fetch-Dest': 'document',
+                                'Sec-Fetch-Mode': 'navigate',
+                                'Sec-Fetch-Site': 'none',
+                                'Sec-Fetch-User': '?1',
+                            },
+                        },
                     # Strategy 2: iOS mobile client (often bypasses bot detection)
                     {
                         'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
