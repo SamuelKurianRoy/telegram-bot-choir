@@ -19,7 +19,7 @@ from utils.notation import Music_notation_link, getNotation
 from data.datasets import Tunenofinder, Tune_finder_of_known_songs, Datefinder, IndexFinder, Hymn_Tune_no_Finder, get_all_data
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 from data.drive import save_game_score, get_user_best_score, get_user_best_scores_all_difficulties, get_leaderboard, get_combined_leaderboard
-from data.udb import get_user_bible_language, get_user_game_language, track_user_fast
+from data.udb import get_user_bible_language, get_user_game_language, get_user_download_preference, track_user_fast
 import re
 import os
 import random
@@ -955,21 +955,35 @@ async def download_url_input(update: Update, context: CallbackContext) -> int:
 
     # Check for playlist in YouTube URLs
     if context.user_data["platform"] == "YouTube" and ("list=" in user_input or "playlist" in user_input.lower()):
-        # Playlist detected - ask user what they want to do
-        playlist_keyboard = [
-            ["🎵 Download Single Video Only"],
-            ["📋 Download Entire Playlist"],
-            ["❌ Cancel"]
-        ]
+        # Get user's download preference
+        download_pref = get_user_download_preference(user.id)
 
-        await update.message.reply_text(
-            f"🎯 *YouTube Playlist Detected!*\n\n"
-            f"This link contains a playlist. What would you like to do?\n\n"
-            f"⚠️ *Warning:* Downloading entire playlists can take a very long time and may contain many videos.",
-            parse_mode="Markdown",
-            reply_markup=ReplyKeyboardMarkup(playlist_keyboard, one_time_keyboard=True, resize_keyboard=True)
-        )
-        return PLAYLIST_CHOICE
+        if download_pref == 'single':
+            # User prefers single video - automatically set preference and continue
+            context.user_data["download_playlist"] = False
+            await update.message.reply_text(
+                "🎯 *YouTube Playlist Detected!*\n\n"
+                "✅ Based on your settings, downloading *single video only*.\n"
+                "The playlist will be ignored.\n\n"
+                "💡 You can change this behavior in `/setting` → `📥 Download Behavior`",
+                parse_mode="Markdown"
+            )
+        else:
+            # User prefers to be asked - show playlist options
+            playlist_keyboard = [
+                ["🎵 Download Single Video Only"],
+                ["📋 Download Entire Playlist"],
+                ["❌ Cancel"]
+            ]
+
+            await update.message.reply_text(
+                f"🎯 *YouTube Playlist Detected!*\n\n"
+                f"This link contains a playlist. What would you like to do?\n\n"
+                f"⚠️ *Warning:* Downloading entire playlists can take a very long time and may contain many videos.",
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardMarkup(playlist_keyboard, one_time_keyboard=True, resize_keyboard=True)
+            )
+            return PLAYLIST_CHOICE
 
     # No playlist detected - proceed to quality selection
     # Show quality selection

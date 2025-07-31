@@ -7,6 +7,7 @@ from data.udb import (
     get_user_preference, update_user_preference,
     get_user_bible_language, update_user_bible_language,
     get_user_game_language, update_user_game_language,
+    get_user_download_preference, update_user_download_preference,
     track_user_fast, save_if_pending
 )
 from config import get_config
@@ -16,7 +17,7 @@ from logging_utils import setup_loggers
 bot_logger, user_logger = setup_loggers()
 
 # Conversation states
-SETTING_MENU, BIBLE_LANGUAGE_CHOICE, GAME_LANGUAGE_CHOICE, SEARCH_LIMIT_INPUT = range(4)
+SETTING_MENU, BIBLE_LANGUAGE_CHOICE, GAME_LANGUAGE_CHOICE, SEARCH_LIMIT_INPUT, DOWNLOAD_PREFERENCE_CHOICE = range(5)
 
 async def setting_start(update: Update, context: CallbackContext) -> int:
     """Start the settings management conversation"""
@@ -30,6 +31,7 @@ async def setting_start(update: Update, context: CallbackContext) -> int:
     bible_lang = get_user_bible_language(user.id)
     game_lang = get_user_game_language(user.id)
     search_limit = get_user_preference(user.id, 'search_results_limit', 10)
+    download_pref = get_user_download_preference(user.id)
 
     # Create settings menu
     welcome_text = (
@@ -37,14 +39,15 @@ async def setting_start(update: Update, context: CallbackContext) -> int:
         "*Current Settings:*\n"
         f"📖 Bible Language: *{bible_lang.title()}*\n"
         f"🎮 Game Language: *{game_lang.title()}*\n"
-        f"🔍 Search Results Limit: *{search_limit}*\n\n"
+        f"🔍 Search Results Limit: *{search_limit}*\n"
+        f"📥 Download Behavior: *{download_pref.title()}*\n\n"
         "What would you like to change?"
     )
     
     keyboard = [
         ["📖 Bible Language", "🎮 Game Language"],
-        ["🔍 Search Results Limit", "📊 View All Settings"],
-        ["❌ Cancel"]
+        ["🔍 Search Results Limit", "📥 Download Behavior"],
+        ["📊 View All Settings", "❌ Cancel"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     
@@ -104,11 +107,32 @@ async def setting_menu_handler(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text(search_text, parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
         return SEARCH_LIMIT_INPUT
 
+    elif user_input == "📥 Download Behavior":
+        current_pref = get_user_download_preference(user.id)
+
+        download_text = (
+            "📥 *Download Behavior Setting*\n\n"
+            f"Current setting: *{current_pref.title()}*\n\n"
+            "Choose how you want playlist downloads to be handled:\n\n"
+            "🎵 *Single Video* - Always download only the specific video (faster)\n"
+            "❓ *Ask Every Time* - Show playlist options when detected"
+        )
+
+        keyboard = [
+            ["🎵 Single Video Only", "❓ Ask Every Time"],
+            ["🔙 Back to Menu", "❌ Cancel"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+
+        await update.message.reply_text(download_text, parse_mode="Markdown", reply_markup=reply_markup)
+        return DOWNLOAD_PREFERENCE_CHOICE
+
     elif user_input == "📊 View All Settings":
         # Get all current settings
         bible_lang = get_user_bible_language(user.id)
         game_lang = get_user_game_language(user.id)
         search_limit = get_user_preference(user.id, 'search_results_limit', 10)
+        download_pref = get_user_download_preference(user.id)
         theme = get_user_preference(user.id, 'theme_preference', 'default')
 
         all_settings_text = (
@@ -116,13 +140,15 @@ async def setting_menu_handler(update: Update, context: CallbackContext) -> int:
             f"📖 *Bible Language:* {bible_lang.title()}\n"
             f"🎮 *Game Language:* {game_lang.title()}\n"
             f"🔍 *Search Results Limit:* {search_limit}\n"
+            f"📥 *Download Behavior:* {download_pref.title()}\n"
             f"🎨 *Theme Setting:* {theme.title()}\n\n"
             "Use the menu to change any setting."
         )
 
         keyboard = [
             ["📖 Bible Language", "🎮 Game Language"],
-            ["🔍 Search Results Limit", "❌ Cancel"]
+            ["🔍 Search Results Limit", "📥 Download Behavior"],
+            ["❌ Cancel"]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         
@@ -259,6 +285,65 @@ async def game_language_handler(update: Update, context: CallbackContext) -> int
     else:
         await update.message.reply_text(
             "Please select a valid language option.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return await setting_start(update, context)
+
+async def download_preference_handler(update: Update, context: CallbackContext) -> int:
+    """Handle download preference selection"""
+    user = update.effective_user
+    user_input = update.message.text.strip()
+
+    if user_input == "🎵 Single Video Only":
+        success = update_user_download_preference(user.id, 'single')
+        if success:
+            save_if_pending()  # Save changes immediately
+            await update.message.reply_text(
+                "✅ Download behavior set to *Single Video Only*.\n\n"
+                "When you share playlist links, only the specific video will be downloaded automatically. "
+                "This is faster and uses less storage.",
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) set download preference to single")
+        else:
+            await update.message.reply_text(
+                "❌ Failed to update download preference. Please try again.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        return ConversationHandler.END
+
+    elif user_input == "❓ Ask Every Time":
+        success = update_user_download_preference(user.id, 'ask')
+        if success:
+            save_if_pending()  # Save changes immediately
+            await update.message.reply_text(
+                "✅ Download behavior set to *Ask Every Time*.\n\n"
+                "When you share playlist links, you'll be asked whether to download the single video or entire playlist.",
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) set download preference to ask")
+        else:
+            await update.message.reply_text(
+                "❌ Failed to update download preference. Please try again.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        return ConversationHandler.END
+
+    elif user_input == "🔙 Back to Menu":
+        return await setting_start(update, context)
+
+    elif user_input == "❌ Cancel":
+        await update.message.reply_text(
+            "✅ Download preference unchanged.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
+    else:
+        await update.message.reply_text(
+            "Please select a valid download option.",
             reply_markup=ReplyKeyboardRemove()
         )
         return await setting_start(update, context)
