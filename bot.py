@@ -34,9 +34,9 @@ try:
         initialize_theme_components
     )
     from telegram_handlers.preferences import (
-        preference_start, preference_menu_handler, bible_language_handler, game_language_handler,
-        search_limit_handler, cancel_preferences,
-        PREFERENCE_MENU, BIBLE_LANGUAGE_CHOICE, GAME_LANGUAGE_CHOICE, SEARCH_LIMIT_INPUT
+        setting_start, setting_menu_handler, bible_language_handler, game_language_handler,
+        search_limit_handler, cancel_settings,
+        SETTING_MENU, BIBLE_LANGUAGE_CHOICE, GAME_LANGUAGE_CHOICE, SEARCH_LIMIT_INPUT
     )
 except ImportError as e:
     print(f"[DEBUG] ImportError during project imports: {e}")
@@ -203,23 +203,23 @@ bible_game_conv_handler = ConversationHandler(
     fallbacks=[CommandHandler("cancel", cancel)],
 )
 
-# Register the preference conversation handler
-preference_conv_handler = ConversationHandler(
-    entry_points=[CommandHandler("preference", preference_start)],
+# Register the settings conversation handler
+settings_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("setting", setting_start)],
     states={
-        PREFERENCE_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, preference_menu_handler)],
+        SETTING_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, setting_menu_handler)],
         BIBLE_LANGUAGE_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, bible_language_handler)],
         GAME_LANGUAGE_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, game_language_handler)],
         SEARCH_LIMIT_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_limit_handler)],
     },
-    fallbacks=[CommandHandler("cancel", cancel_preferences)],
+    fallbacks=[CommandHandler("cancel", cancel_settings)],
 )
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
 app.add_handler(bible_conv_handler)
 app.add_handler(bible_game_conv_handler)
-app.add_handler(preference_conv_handler)
+app.add_handler(settings_conv_handler)
 app.add_handler(date_conv_handler)
 app.add_handler(CommandHandler("refresh", refresh_command))
 app.add_handler(admin_reply_conv_handler)

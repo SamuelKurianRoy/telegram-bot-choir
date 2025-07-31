@@ -185,9 +185,9 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "• **/comment**\n"
         "  - *Description:* Allows you to submit comments, recommendations, or feedback directly to the bot administrator.\n"
         "  - *Example:* Type `/comment Your message here` and the bot will forward it to the administrator for review.\n\n"
-        "• **/preference**\n"
-        "  - *Description:* Manage your personal preferences including default Bible language, notifications, search results limit, and timezone.\n"
-        "  - *Example:* Type `/preference` to access your settings menu.\n\n"
+        "• **/setting**\n"
+        "  - *Description:* Manage your personal settings including default Bible language, game language, and search results limit.\n"
+        "  - *Example:* Type `/setting` to access your settings menu.\n\n"
         "• **/cancel**\n"
         "  - *Description:* Cancels the current operation.\n"
         "  - *Example:* If you are in a conversation, type `/cancel` to stop it.\n\n"
@@ -904,7 +904,7 @@ async def bible_start(update: Update, context: CallbackContext) -> int:
         "• `Gen 10 mal` (for Malayalam)\n"
         "• `Exodus 12 english` (for English)\n\n"
         f"*Note:* If no language is specified, your default language ({get_user_bible_language(user.id).title()}) will be used.\n"
-        "You can change your default language using /preference."
+        "You can change your default language using /setting."
     )
     
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
@@ -1291,7 +1291,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/theme` - Search by themes
 • `/download` - Download audio from links
 • `/comment` - Send feedback to admin
-• `/preference` - Manage personal preferences
+• `/setting` - Manage personal settings
 
 **Usage Examples:**
 • `/admin_user_info 757438955`
