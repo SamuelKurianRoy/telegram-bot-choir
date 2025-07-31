@@ -1028,12 +1028,71 @@ class AudioDownloader:
         ]
         url_lower = url.lower()
         return any(domain in url_lower for domain in supported_domains)
+
+    def _validate_and_clean_url(self, url: str) -> Optional[str]:
+        """Validate and clean URL to prevent corruption issues"""
+        try:
+            if not url or not isinstance(url, str):
+                logger.error(f"Invalid URL type or empty: {type(url)} - {url}")
+                return None
+
+            # Strip whitespace and common issues
+            url = url.strip()
+
+            # Check minimum length and specific corruption patterns
+            if len(url) < 10:
+                logger.error(f"URL too short, likely corrupted: {url}")
+                return None
+
+            # Check for specific corruption patterns we've seen
+            if url in ['y', 'youtube', 'youtu', 'http', 'https']:
+                logger.error(f"URL appears to be corrupted fragment: {url}")
+                return None
+
+            # Validate URL format
+            import urllib.parse as urlparse
+            try:
+                parsed = urlparse.urlparse(url)
+                if not parsed.scheme or not parsed.netloc:
+                    logger.error(f"Invalid URL format: {url}")
+                    return None
+            except Exception as e:
+                logger.error(f"URL parsing failed: {url} - {e}")
+                return None
+
+            # Check for YouTube URL patterns
+            if self.detect_platform(url) == 'YouTube':
+                # Validate YouTube URL patterns
+                youtube_patterns = [
+                    r'youtube\.com/watch\?v=[\w-]+',
+                    r'youtu\.be/[\w-]+',
+                    r'youtube\.com/playlist\?list=[\w-]+',
+                    r'music\.youtube\.com'
+                ]
+
+                import re
+                if not any(re.search(pattern, url, re.IGNORECASE) for pattern in youtube_patterns):
+                    logger.error(f"Invalid YouTube URL pattern: {url}")
+                    return None
+
+            logger.debug(f"URL validation passed: {url}")
+            return url
+
+        except Exception as e:
+            logger.error(f"URL validation error: {e}")
+            return None
     
     async def extract_info(self, url: str) -> Optional[Dict]:
         """Extract basic info from URL"""
         if not yt_dlp:
             raise Exception("yt-dlp not installed")
-            
+
+        # Validate URL first
+        url = self._validate_and_clean_url(url)
+        if not url:
+            logger.error("Invalid URL provided to extract_info")
+            return None
+
         platform = self.detect_platform(url)
         
         try:
@@ -1101,6 +1160,14 @@ class AudioDownloader:
 
     async def download_audio(self, url: str, quality: str = "medium", chat_id: str = None, download_playlist: bool = False) -> Optional[Tuple[Path, Dict]]:
         """Download audio from URL, passing chat_id for checkpoint/resume."""
+        # Validate URL first
+        original_url = url
+        url = self._validate_and_clean_url(url)
+        if not url:
+            logger.error(f"Invalid URL provided to download_audio: {original_url}")
+            downloader_logger.error(f"URL validation failed in download_audio: {original_url}")
+            return None
+
         platform = self.detect_platform(url)
         if platform == 'Spotify':
             return await self.download_spotify_audio(url, quality, chat_id=chat_id)
@@ -1111,8 +1178,42 @@ class AudioDownloader:
         """Convert technical errors to user-friendly messages"""
         error_lower = error_str.lower()
 
+        # Check for DNS/URL resolution issues first (including the specific 'y' corruption)
+        if "failed to resolve" in error_lower or "name or service not known" in error_lower:
+            if "'y'" in error_lower or "resolve 'y'" in error_lower:
+                return (
+                    "🔧 **URL Corruption Detected**\n\n"
+                    "The URL appears to have been corrupted during processing.\n\n"
+                    "**This is a known issue that can occur when:**\n"
+                    "• The URL gets truncated during transmission\n"
+                    "• There's a parsing error in the bot\n"
+                    "• Memory issues on the server\n\n"
+                    "**Please try again:**\n"
+                    "1. Send /download command again\n"
+                    "2. Copy and paste the complete URL\n"
+                    "3. Make sure the URL starts with https://\n"
+                    "4. If it keeps failing, try a different video\n\n"
+                    "*Note: This is a technical issue with URL handling, not YouTube blocking.*"
+                )
+            else:
+                return (
+                    "🌐 **Network/URL Error**\n\n"
+                    "There was a problem resolving the URL or connecting to the service.\n\n"
+                    "**Possible causes:**\n"
+                    "• Network connectivity issues\n"
+                    "• Corrupted or invalid URL\n"
+                    "• DNS resolution problems\n"
+                    "• Temporary server issues\n\n"
+                    "**What you can do:**\n"
+                    "• Check your internet connection\n"
+                    "• Verify the URL is correct and complete\n"
+                    "• Try again in a few minutes\n"
+                    "• Try a different video/URL\n\n"
+                    "*Note: This appears to be a network or URL formatting issue.*"
+                )
+
         # Check for YouTube bot detection specifically
-        if "sign in to confirm you're not a bot" in error_lower or ("cookies" in error_lower and "authentication" in error_lower):
+        elif "sign in to confirm you're not a bot" in error_lower or ("cookies" in error_lower and "authentication" in error_lower):
             cookie_status = "✅ Enabled" if hasattr(self, 'cookie_file') and self.cookie_file else "❌ Not available"
 
             if hasattr(self, 'is_streamlit_cloud') and self.is_streamlit_cloud:
@@ -1204,6 +1305,16 @@ class AudioDownloader:
         import hashlib
         import json
         from datetime import datetime, timedelta
+
+        # Validate and clean URL first
+        url = self._validate_and_clean_url(url)
+        if not url:
+            logger.error("Invalid or corrupted URL provided")
+            downloader_logger.error("URL validation failed - URL is invalid or corrupted")
+            return None
+
+        logger.info(f"Starting YouTube download for URL: {url}")
+        downloader_logger.info(f"YouTube download initiated: {url}")
 
         def get_track_id(url):
             return hashlib.md5(url.encode()).hexdigest()[:12]
@@ -1479,6 +1590,10 @@ class AudioDownloader:
                         # Rotate user agent and referer for retry attempts
                         ydl_opts['user_agent'] = random.choice(user_agents)
                         ydl_opts['referer'] = random.choice(referers)
+
+                    # Debug: Log the exact URL being passed to yt-dlp
+                    logger.info(f"Passing URL to yt-dlp: '{url}' (length: {len(url)})")
+                    downloader_logger.info(f"yt-dlp download attempt {attempt + 1}: URL='{url}', length={len(url)}")
 
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         info = await asyncio.wait_for(
