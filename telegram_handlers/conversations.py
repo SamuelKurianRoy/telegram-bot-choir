@@ -938,6 +938,17 @@ async def download_url_input(update: Update, context: CallbackContext) -> int:
     user_input = update.message.text.strip()
     user = update.effective_user
 
+    # Debug: Log the raw input
+    bot_logger.info(f"Raw URL input from {user.full_name}: '{user_input}' (length: {len(user_input)})")
+
+    # Basic validation
+    if not user_input or len(user_input) < 10:
+        await update.message.reply_text(
+            "❌ Invalid URL. Please send a complete YouTube or Spotify link.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ENTER_URL
+
     # Initialize downloader
     downloader = AudioDownloader()
 
@@ -952,6 +963,9 @@ async def download_url_input(update: Update, context: CallbackContext) -> int:
     # Store URL in context
     context.user_data["download_url"] = user_input
     context.user_data["platform"] = downloader.detect_platform(user_input)
+
+    # Debug: Log what was stored
+    bot_logger.info(f"Stored URL in context: '{user_input}', Platform: {context.user_data['platform']}")
 
     # Check for playlist in YouTube URLs
     if context.user_data["platform"] == "YouTube" and ("list=" in user_input or "playlist" in user_input.lower()):
@@ -1107,6 +1121,22 @@ async def start_download_process(update: Update, context: CallbackContext) -> in
     platform = context.user_data.get("platform")
     quality = context.user_data.get("download_quality")
 
+    # Debug: Check if URL got corrupted
+    bot_logger.info(f"Retrieved from context - URL: '{url}' (length: {len(url) if url else 'None'}), Platform: {platform}, Quality: {quality}")
+
+    # Validate URL before proceeding
+    if not url or len(url) < 10:
+        await update.message.reply_text(
+            "❌ **Download Error**\n\n"
+            "The URL appears to be corrupted or missing. Please try again:\n"
+            "1. Send /download command\n"
+            "2. Paste the complete YouTube or Spotify URL\n"
+            "3. Select your preferences",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
     # Map quality to display text
     quality_display_map = {
         "high": "🔥 High Quality (320kbps)",
@@ -1207,6 +1237,10 @@ async def start_download_process(update: Update, context: CallbackContext) -> in
 
         else:
             # Single video download
+            # Debug: Log the URL being passed
+            bot_logger.info(f"Telegram handler passing URL to downloader: '{url}' (length: {len(url) if url else 'None'})")
+            user_logger.info(f"Download request from {user.full_name}: URL='{url}', Quality={quality}")
+
             result = await downloader.download_audio(url, quality, chat_id=str(chat_id), download_playlist=download_playlist)
 
             if result:

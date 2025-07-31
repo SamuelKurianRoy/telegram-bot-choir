@@ -93,6 +93,10 @@ class AudioDownloader:
             logger.info("Configured spotdl to use system FFmpeg on Streamlit Cloud")
             downloader_logger.info("Configured spotdl to use system FFmpeg on Streamlit Cloud")
 
+        # Setup cookie support for bypassing YouTube bot detection
+        self.cookie_file = self._setup_cookies()
+        downloader_logger.info(f"Cookie support initialized: {self.cookie_file}")
+
     def _detect_streamlit_cloud(self) -> bool:
         """Detect if running on Streamlit Cloud"""
         # Check for Streamlit Cloud environment indicators
@@ -382,6 +386,160 @@ class AudioDownloader:
         except Exception as e:
             logger.error(f"Error setting up FFmpeg: {e}")
             downloader_logger.error(f"Error setting up FFmpeg: {e}")
+            return None
+
+    def _setup_cookies(self) -> Optional[str]:
+        """Setup cookie support for bypassing YouTube bot detection"""
+        try:
+            if self.is_streamlit_cloud:
+                # Streamlit Cloud: Only check for uploaded cookie files
+                logger.info("Running on Streamlit Cloud - checking for uploaded cookie files only")
+                downloader_logger.info("Streamlit Cloud mode: Browser cookie extraction disabled")
+
+                cookie_locations = [
+                    # Only check for manually uploaded cookie files
+                    self.temp_dir / "youtube_cookies.txt",
+                    Path.cwd() / "youtube_cookies.txt",
+                    Path.cwd() / "cookies.txt",
+                ]
+
+                for cookie_path in cookie_locations:
+                    if cookie_path.exists():
+                        logger.info(f"Found uploaded cookie file: {cookie_path}")
+                        downloader_logger.info(f"Using uploaded cookie file: {cookie_path}")
+                        return str(cookie_path)
+
+                logger.info("No uploaded cookie files found - using Streamlit Cloud optimized mode")
+                downloader_logger.info("Streamlit Cloud: No cookies, using cloud-optimized anti-detection")
+                return None
+
+            else:
+                # Local environment: Full browser cookie support
+                cookie_locations = [
+                    # Netscape format cookie files
+                    self.temp_dir / "youtube_cookies.txt",
+                    Path.cwd() / "youtube_cookies.txt",
+                    Path.cwd() / "cookies.txt",
+                    # Browser cookie extraction (if available)
+                    self._get_browser_cookie_path("chrome"),
+                    self._get_browser_cookie_path("firefox"),
+                    self._get_browser_cookie_path("brave"),
+                    self._get_browser_cookie_path("edge"),
+                ]
+
+                # Check for existing cookie files
+                for cookie_path in cookie_locations:
+                    if cookie_path and Path(cookie_path).exists():
+                        logger.info(f"Found cookie file: {cookie_path}")
+                        downloader_logger.info(f"Using cookie file: {cookie_path}")
+                        return str(cookie_path)
+
+                # Try to extract cookies from browsers automatically
+                browser_success = self._try_extract_browser_cookies()
+                if browser_success:
+                    return browser_success
+
+                logger.info("No cookie file found - will use cookieless mode")
+                downloader_logger.info("Cookie setup: No cookies available, using enhanced anti-detection instead")
+                return None
+
+        except Exception as e:
+            logger.warning(f"Cookie setup failed: {e}")
+            downloader_logger.warning(f"Cookie setup failed: {e}")
+            return None
+
+    def _get_browser_cookie_path(self, browser: str) -> Optional[str]:
+        """Get the cookie database path for a specific browser"""
+        try:
+            system = platform.system().lower()
+            home = Path.home()
+
+            if browser == "chrome":
+                if system == "windows":
+                    return home / "AppData/Local/Google/Chrome/User Data/Default/Cookies"
+                elif system == "darwin":  # macOS
+                    return home / "Library/Application Support/Google/Chrome/Default/Cookies"
+                else:  # Linux
+                    return home / ".config/google-chrome/Default/Cookies"
+
+            elif browser == "brave":
+                if system == "windows":
+                    return home / "AppData/Local/BraveSoftware/Brave-Browser/User Data/Default/Cookies"
+                elif system == "darwin":  # macOS
+                    return home / "Library/Application Support/BraveSoftware/Brave-Browser/Default/Cookies"
+                else:  # Linux
+                    return home / ".config/BraveSoftware/Brave-Browser/Default/Cookies"
+
+            elif browser == "firefox":
+                if system == "windows":
+                    profiles_dir = home / "AppData/Roaming/Mozilla/Firefox/Profiles"
+                elif system == "darwin":  # macOS
+                    profiles_dir = home / "Library/Application Support/Firefox/Profiles"
+                else:  # Linux
+                    profiles_dir = home / ".mozilla/firefox"
+
+                if profiles_dir.exists():
+                    # Find the default profile
+                    for profile in profiles_dir.iterdir():
+                        if profile.is_dir() and "default" in profile.name.lower():
+                            return profile / "cookies.sqlite"
+
+            elif browser == "edge":
+                if system == "windows":
+                    return home / "AppData/Local/Microsoft/Edge/User Data/Default/Cookies"
+                elif system == "darwin":  # macOS
+                    return home / "Library/Application Support/Microsoft Edge/Default/Cookies"
+                else:  # Linux
+                    return home / ".config/microsoft-edge/Default/Cookies"
+
+        except Exception as e:
+            logger.debug(f"Error getting {browser} cookie path: {e}")
+
+        return None
+
+    def _try_extract_browser_cookies(self) -> Optional[str]:
+        """Try to extract cookies from browsers using yt-dlp's built-in functionality"""
+        try:
+            # Create a temporary cookie file
+            cookie_file = self.temp_dir / "extracted_cookies.txt"
+
+            # Try different browsers in order of preference (Brave first as it's less tracked)
+            browsers = ["brave", "chrome", "firefox", "edge"]
+
+            for browser in browsers:
+                try:
+                    logger.info(f"Attempting to extract cookies from {browser}...")
+
+                    # Use yt-dlp's cookie extraction
+                    import yt_dlp
+
+                    # Test extraction with a simple YouTube URL
+                    test_opts = {
+                        'quiet': True,
+                        'no_warnings': True,
+                        'extract_flat': True,
+                        'cookies_from_browser': (browser, None, None, None),
+                        'cookiefile': str(cookie_file),
+                    }
+
+                    with yt_dlp.YoutubeDL(test_opts) as ydl:
+                        # Try to extract info from YouTube homepage to test cookies
+                        ydl.extract_info("https://www.youtube.com", download=False)
+
+                    if cookie_file.exists() and cookie_file.stat().st_size > 0:
+                        logger.info(f"Successfully extracted cookies from {browser}")
+                        downloader_logger.info(f"Cookie extraction successful: {browser} -> {cookie_file}")
+                        return str(cookie_file)
+
+                except Exception as e:
+                    logger.debug(f"Failed to extract cookies from {browser}: {e}")
+                    continue
+
+            logger.info("Could not extract cookies from any browser")
+            return None
+
+        except Exception as e:
+            logger.warning(f"Browser cookie extraction failed: {e}")
             return None
 
     async def configure_spotdl_ffmpeg(self):
@@ -870,12 +1028,71 @@ class AudioDownloader:
         ]
         url_lower = url.lower()
         return any(domain in url_lower for domain in supported_domains)
+
+    def _validate_and_clean_url(self, url: str) -> Optional[str]:
+        """Validate and clean URL to prevent corruption issues"""
+        try:
+            if not url or not isinstance(url, str):
+                logger.error(f"Invalid URL type or empty: {type(url)} - {url}")
+                return None
+
+            # Strip whitespace and common issues
+            url = url.strip()
+
+            # Check minimum length and specific corruption patterns
+            if len(url) < 10:
+                logger.error(f"URL too short, likely corrupted: {url}")
+                return None
+
+            # Check for specific corruption patterns we've seen
+            if url in ['y', 'youtube', 'youtu', 'http', 'https']:
+                logger.error(f"URL appears to be corrupted fragment: {url}")
+                return None
+
+            # Validate URL format
+            import urllib.parse as urlparse
+            try:
+                parsed = urlparse.urlparse(url)
+                if not parsed.scheme or not parsed.netloc:
+                    logger.error(f"Invalid URL format: {url}")
+                    return None
+            except Exception as e:
+                logger.error(f"URL parsing failed: {url} - {e}")
+                return None
+
+            # Check for YouTube URL patterns
+            if self.detect_platform(url) == 'YouTube':
+                # Validate YouTube URL patterns
+                youtube_patterns = [
+                    r'youtube\.com/watch\?v=[\w-]+',
+                    r'youtu\.be/[\w-]+',
+                    r'youtube\.com/playlist\?list=[\w-]+',
+                    r'music\.youtube\.com'
+                ]
+
+                import re
+                if not any(re.search(pattern, url, re.IGNORECASE) for pattern in youtube_patterns):
+                    logger.error(f"Invalid YouTube URL pattern: {url}")
+                    return None
+
+            logger.debug(f"URL validation passed: {url}")
+            return url
+
+        except Exception as e:
+            logger.error(f"URL validation error: {e}")
+            return None
     
     async def extract_info(self, url: str) -> Optional[Dict]:
         """Extract basic info from URL"""
         if not yt_dlp:
             raise Exception("yt-dlp not installed")
-            
+
+        # Validate URL first
+        url = self._validate_and_clean_url(url)
+        if not url:
+            logger.error("Invalid URL provided to extract_info")
+            return None
+
         platform = self.detect_platform(url)
         
         try:
@@ -943,6 +1160,14 @@ class AudioDownloader:
 
     async def download_audio(self, url: str, quality: str = "medium", chat_id: str = None, download_playlist: bool = False) -> Optional[Tuple[Path, Dict]]:
         """Download audio from URL, passing chat_id for checkpoint/resume."""
+        # Validate URL first
+        original_url = url
+        url = self._validate_and_clean_url(url)
+        if not url:
+            logger.error(f"Invalid URL provided to download_audio: {original_url}")
+            downloader_logger.error(f"URL validation failed in download_audio: {original_url}")
+            return None
+
         platform = self.detect_platform(url)
         if platform == 'Spotify':
             return await self.download_spotify_audio(url, quality, chat_id=chat_id)
@@ -953,7 +1178,76 @@ class AudioDownloader:
         """Convert technical errors to user-friendly messages"""
         error_lower = error_str.lower()
 
-        if "403" in error_str or "forbidden" in error_lower:
+        # Check for DNS/URL resolution issues first (including the specific 'y' corruption)
+        if "failed to resolve" in error_lower or "name or service not known" in error_lower:
+            if "'y'" in error_lower or "resolve 'y'" in error_lower:
+                return (
+                    "🔧 **URL Corruption Detected**\n\n"
+                    "The URL appears to have been corrupted during processing.\n\n"
+                    "**This is a known issue that can occur when:**\n"
+                    "• The URL gets truncated during transmission\n"
+                    "• There's a parsing error in the bot\n"
+                    "• Memory issues on the server\n\n"
+                    "**Please try again:**\n"
+                    "1. Send /download command again\n"
+                    "2. Copy and paste the complete URL\n"
+                    "3. Make sure the URL starts with https://\n"
+                    "4. If it keeps failing, try a different video\n\n"
+                    "*Note: This is a technical issue with URL handling, not YouTube blocking.*"
+                )
+            else:
+                return (
+                    "🌐 **Network/URL Error**\n\n"
+                    "There was a problem resolving the URL or connecting to the service.\n\n"
+                    "**Possible causes:**\n"
+                    "• Network connectivity issues\n"
+                    "• Corrupted or invalid URL\n"
+                    "• DNS resolution problems\n"
+                    "• Temporary server issues\n\n"
+                    "**What you can do:**\n"
+                    "• Check your internet connection\n"
+                    "• Verify the URL is correct and complete\n"
+                    "• Try again in a few minutes\n"
+                    "• Try a different video/URL\n\n"
+                    "*Note: This appears to be a network or URL formatting issue.*"
+                )
+
+        # Check for YouTube bot detection specifically
+        elif "sign in to confirm you're not a bot" in error_lower or ("cookies" in error_lower and "authentication" in error_lower):
+            cookie_status = "✅ Enabled" if hasattr(self, 'cookie_file') and self.cookie_file else "❌ Not available"
+
+            if hasattr(self, 'is_streamlit_cloud') and self.is_streamlit_cloud:
+                return (
+                    "🤖 **YouTube Bot Detection (Streamlit Cloud)**\n\n"
+                    "YouTube has detected automated access and is blocking downloads.\n\n"
+                    f"**Cookie Authentication:** {cookie_status}\n"
+                    "**Environment:** Streamlit Cloud (optimized strategies active)\n\n"
+                    "**What you can do:**\n"
+                    "• Wait 10-15 minutes and try again\n"
+                    "• Try a different video\n"
+                    "• The bot uses cloud-optimized bypass strategies\n"
+                    "• Issue typically resolves within an hour\n\n"
+                    "**For better reliability on Streamlit Cloud:**\n"
+                    "• Upload a youtube_cookies.txt file to the app\n"
+                    "• The bot automatically tries mobile client strategies\n\n"
+                    "*Note: Running on Streamlit Cloud with enhanced anti-detection optimized for cloud environments.*"
+                )
+            else:
+                return (
+                    "🤖 **YouTube Bot Detection**\n\n"
+                    "YouTube has detected automated access and is blocking downloads.\n\n"
+                    f"**Cookie Authentication:** {cookie_status}\n\n"
+                    "**What you can do:**\n"
+                    "• Wait 10-15 minutes and try again\n"
+                    "• Try a different video\n"
+                    "• The bot automatically tries multiple bypass strategies\n"
+                    "• Issue typically resolves within an hour\n\n"
+                    "**For better reliability:**\n"
+                    "• Use Brave browser and visit YouTube first\n"
+                    "• The bot can extract cookies automatically\n\n"
+                    "*Note: This is due to YouTube's anti-bot measures. The bot uses advanced bypass techniques including browser cookies when available.*"
+                )
+        elif "403" in error_str or "forbidden" in error_lower:
             return (
                 "🚫 **YouTube Access Blocked**\n\n"
                 "YouTube has temporarily blocked our download requests. This happens when:\n"
@@ -1011,6 +1305,16 @@ class AudioDownloader:
         import hashlib
         import json
         from datetime import datetime, timedelta
+
+        # Validate and clean URL first
+        url = self._validate_and_clean_url(url)
+        if not url:
+            logger.error("Invalid or corrupted URL provided")
+            downloader_logger.error("URL validation failed - URL is invalid or corrupted")
+            return None
+
+        logger.info(f"Starting YouTube download for URL: {url}")
+        downloader_logger.info(f"YouTube download initiated: {url}")
 
         def get_track_id(url):
             return hashlib.md5(url.encode()).hexdigest()[:12]
@@ -1147,16 +1451,37 @@ class AudioDownloader:
             temp_filename = f"audio_youtube_{int(time.time())}"
             temp_filepath = self.temp_dir / temp_filename
             
-            # Enhanced anti-blocking user agents rotation
-            user_agents = [
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/121.0'
-            ]
+            # Enhanced anti-blocking user agents optimized for cloud environments
+            if self.is_streamlit_cloud:
+                # Streamlit Cloud: Use server-friendly user agents
+                user_agents = [
+                    # Linux server variants (common on cloud platforms)
+                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                    'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0',
+                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                    # Mobile variants (often less restricted)
+                    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
+                    'Mozilla/5.0 (Android 13; Mobile; rv:122.0) Gecko/122.0 Firefox/122.0',
+                    'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
+                ]
+            else:
+                # Local environment: Full range including Brave browser
+                user_agents = [
+                    # Brave Browser (privacy-focused, less tracked)
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                    # Standard browsers as fallback
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0',
+                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:122.0) Gecko/20100101 Firefox/122.0',
+                    # Mobile variants
+                    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
+                    'Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1'
+                ]
 
-            referers = ['https://www.youtube.com/', 'https://www.google.com/', 'https://music.youtube.com/']
+            referers = ['https://www.youtube.com/', 'https://www.google.com/', 'https://music.youtube.com/', 'https://m.youtube.com/']
 
             ydl_opts = {
                 'format': 'bestaudio/best',
@@ -1175,30 +1500,78 @@ class AudioDownloader:
                 # Enhanced anti-blocking measures
                 'user_agent': random.choice(user_agents),
                 'referer': random.choice(referers),
-                'sleep_interval': random.uniform(2, 4),
-                'max_sleep_interval': random.uniform(10, 15),
-                'extractor_retries': 5,
-                'fragment_retries': 5,
-                'socket_timeout': 60,
+                'sleep_interval': random.uniform(3, 6),
+                'max_sleep_interval': random.uniform(15, 25),
+                'extractor_retries': 8,
+                'fragment_retries': 8,
+                'socket_timeout': 120,
 
-                # Advanced YouTube-specific options to bypass blocks
+                # Advanced YouTube-specific options to bypass bot detection
                 'extractor_args': {
                     'youtube': {
-                        'player_client': ['android', 'web'],
+                        'player_client': ['android', 'ios', 'web'],
                         'player_skip': ['configs', 'webpage'],
                         'skip': ['dash', 'hls'] if self.is_streamlit_cloud else [],
+                        'innertube_host': 'youtubei.googleapis.com',
+                        'innertube_key': None,  # Let yt-dlp auto-detect
                     }
                 },
 
+                # Network and DNS configuration for Streamlit Cloud
+                'socket_timeout': 120,
+                'retries': 10,
+                'fragment_retries': 10,
+                'skip_unavailable_fragments': True,
+                'keep_fragments': False,
+
+                # Force IPv4 to avoid DNS issues
+                'force_ipv4': True,
+
+                # Additional network robustness
+                'http_chunk_size': 10485760,  # 10MB chunks
+                'prefer_insecure': False,
+                'no_check_certificate': False,
+
+                # Additional headers to mimic real browser behavior
                 'http_headers': {
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
                     'DNT': '1',
                     'Connection': 'keep-alive',
                     'Upgrade-Insecure-Requests': '1',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1',
                 },
             }
+
+            # Add cookie support if available (most effective anti-bot measure)
+            if self.cookie_file:
+                ydl_opts['cookiefile'] = self.cookie_file
+                logger.info(f"Using cookie file for authentication: {self.cookie_file}")
+                downloader_logger.info(f"Cookie authentication enabled: {self.cookie_file}")
+            elif not self.is_streamlit_cloud:
+                # Only try browser cookie extraction on local environments
+                try:
+                    # Prefer Brave browser cookies (less tracked)
+                    ydl_opts['cookies_from_browser'] = ('brave', None, None, None)
+                    logger.info("Attempting to use Brave browser cookies")
+                    downloader_logger.info("Using Brave browser cookie extraction")
+                except Exception:
+                    try:
+                        # Fallback to Chrome
+                        ydl_opts['cookies_from_browser'] = ('chrome', None, None, None)
+                        logger.info("Attempting to use Chrome browser cookies")
+                        downloader_logger.info("Using Chrome browser cookie extraction")
+                    except Exception:
+                        logger.info("No browser cookies available - using enhanced headers only")
+                        downloader_logger.info("Cookie extraction failed - using cookieless mode")
+            else:
+                # Streamlit Cloud: Use cloud-optimized settings without browser cookies
+                logger.info("Streamlit Cloud: Using cloud-optimized anti-detection without browser cookies")
+                downloader_logger.info("Streamlit Cloud mode: Enhanced headers and user agents only")
 
             # Add FFmpeg location if found (using same logic as audio_downloader_bot.py)
             if self.ffmpeg_path == "system":
@@ -1233,6 +1606,10 @@ class AudioDownloader:
                         ydl_opts['user_agent'] = random.choice(user_agents)
                         ydl_opts['referer'] = random.choice(referers)
 
+                    # Debug: Log the exact URL being passed to yt-dlp
+                    logger.info(f"Passing URL to yt-dlp: '{url}' (length: {len(url)})")
+                    downloader_logger.info(f"yt-dlp download attempt {attempt + 1}: URL='{url}', length={len(url)}")
+
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         info = await asyncio.wait_for(
                             asyncio.get_event_loop().run_in_executor(
@@ -1247,8 +1624,24 @@ class AudioDownloader:
                     if attempt == max_retries - 1:
                         raise  # Re-raise on final attempt
 
+                    # Check for DNS resolution issues and try different approach
+                    if "Failed to resolve 'y'" in str(e) or "Name or service not known" in str(e):
+                        logger.info("DNS resolution issue detected, trying alternative configuration")
+                        # Use more basic configuration for next attempt
+                        ydl_opts['force_ipv4'] = True
+                        ydl_opts['socket_timeout'] = 60
+                        ydl_opts['extractor_args'] = {
+                            'youtube': {
+                                'player_client': ['android'],  # Use only Android client
+                            }
+                        }
+                        # Remove complex headers that might cause issues
+                        ydl_opts['http_headers'] = {
+                            'User-Agent': random.choice(user_agents),
+                            'Accept': '*/*',
+                        }
                     # Check if it's a 403 error and adjust strategy
-                    if "403" in str(e) or "Forbidden" in str(e):
+                    elif "403" in str(e) or "Forbidden" in str(e):
                         logger.info("403 error detected, adjusting strategy for next attempt")
                         # Use more conservative settings for next attempt
                         ydl_opts['sleep_interval'] = random.uniform(5, 8)
@@ -1353,25 +1746,193 @@ class AudioDownloader:
             
         except Exception as e:
             logger.error(f"YouTube download failed: {e}")
+
+            # Special handling for DNS resolution issues (Failed to resolve 'y')
+            if "Failed to resolve 'y'" in str(e) or "Name or service not known" in str(e):
+                logger.warning("DNS resolution issue detected - trying URL transformation workaround")
+                try:
+                    # Try converting youtu.be URLs to full youtube.com format
+                    if 'youtu.be/' in url:
+                        video_id = url.split('youtu.be/')[-1].split('?')[0].split('&')[0]
+                        transformed_url = f"https://www.youtube.com/watch?v={video_id}"
+                        logger.info(f"Transforming URL: {url} -> {transformed_url}")
+
+                        # Try with minimal, robust configuration
+                        minimal_opts = {
+                            'format': 'bestaudio/best',
+                            'outtmpl': str(temp_filepath) + '.%(ext)s',
+                            'postprocessors': [{
+                                'key': 'FFmpegExtractAudio',
+                                'preferredcodec': 'mp3',
+                                'preferredquality': bitrate,
+                            }],
+                            'quiet': True,
+                            'force_ipv4': True,
+                            'socket_timeout': 30,
+                            'retries': 3,
+                            'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
+                            'extractor_args': {
+                                'youtube': {
+                                    'player_client': ['android'],
+                                }
+                            },
+                        }
+
+                        with yt_dlp.YoutubeDL(minimal_opts) as ydl:
+                            info = await asyncio.wait_for(
+                                asyncio.get_event_loop().run_in_executor(
+                                    None, lambda: ydl.extract_info(transformed_url, download=True)
+                                ),
+                                timeout=120
+                            )
+
+                        # If successful, find the downloaded file
+                        downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
+                        if downloaded_files:
+                            downloaded_file = downloaded_files[0]
+                            file_info = {
+                                'title': info.get('title', 'Unknown'),
+                                'artist': info.get('uploader', 'Unknown'),
+                                'duration': info.get('duration', 0),
+                                'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
+                                'platform': 'YouTube (DNS workaround)',
+                                'filename': str(downloaded_file.name)
+                            }
+                            logger.info("DNS workaround with URL transformation succeeded!")
+                            return downloaded_file, file_info
+
+                except Exception as transform_e:
+                    logger.warning(f"DNS workaround failed: {transform_e}")
+
             # Enhanced fallback for 403 Forbidden with multiple strategies
             if ("403" in str(e) or "Forbidden" in str(e) or "HTTP Error 403" in str(e)):
                 logger.warning("403 Forbidden detected. Trying multiple fallback strategies...")
 
-                # Strategy 1: Different user agent and mobile client
-                fallback_strategies = [
+                # Enhanced fallback strategies optimized for environment
+                if self.is_streamlit_cloud:
+                    # Streamlit Cloud optimized strategies
+                    fallback_strategies = [
+                        # Strategy 1: Android mobile client (cloud-friendly)
+                        {
+                            'user_agent': 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
+                            'referer': 'https://m.youtube.com/',
+                            'extractor_args': {
+                                'youtube': {
+                                    'player_client': ['android'],
+                                    'innertube_host': 'youtubei.googleapis.com',
+                                }
+                            },
+                            'sleep_interval': 8,
+                            'max_sleep_interval': 30,
+                            'http_headers': {
+                                'Accept': '*/*',
+                                'Accept-Language': 'en-US,en;q=0.9',
+                                'X-YouTube-Client-Name': '3',
+                                'X-YouTube-Client-Version': '18.11.34',
+                            },
+                        },
+                        # Strategy 2: iOS client (often bypasses detection)
+                        {
+                            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+                            'referer': 'https://m.youtube.com/',
+                            'extractor_args': {
+                                'youtube': {
+                                    'player_client': ['ios'],
+                                    'innertube_host': 'youtubei.googleapis.com',
+                                }
+                            },
+                            'sleep_interval': 10,
+                            'max_sleep_interval': 35,
+                            'http_headers': {
+                                'Accept': '*/*',
+                                'Accept-Language': 'en-US,en;q=0.9',
+                                'X-YouTube-Client-Name': '5',
+                                'X-YouTube-Client-Version': '17.31.35',
+                            },
+                        },
+                    ]
+                else:
+                    # Local environment strategies with browser cookie support
+                    fallback_strategies = [
+                        # Strategy 1: Brave browser with cookies (most effective)
+                        {
+                            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                            'referer': 'https://www.youtube.com/',
+                            'cookies_from_browser': ('brave', None, None, None),
+                            'extractor_args': {
+                                'youtube': {
+                                    'player_client': ['web'],
+                                    'innertube_host': 'youtubei.googleapis.com',
+                                }
+                            },
+                            'sleep_interval': 5,
+                            'max_sleep_interval': 20,
+                            'http_headers': {
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                                'Accept-Language': 'en-US,en;q=0.9',
+                                'Sec-Fetch-Dest': 'document',
+                                'Sec-Fetch-Mode': 'navigate',
+                                'Sec-Fetch-Site': 'none',
+                                'Sec-Fetch-User': '?1',
+                            },
+                        },
+                    # Strategy 2: iOS mobile client (often bypasses bot detection)
                     {
-                        'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+                        'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
                         'referer': 'https://m.youtube.com/',
-                        'extractor_args': {'youtube': {'player_client': ['android', 'ios']}},
-                        'sleep_interval': 5,
-                        'max_sleep_interval': 20,
-                    },
-                    {
-                        'user_agent': 'Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                        'referer': 'https://www.google.com/',
-                        'extractor_args': {'youtube': {'player_client': ['android']}},
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['ios'],
+                                'innertube_host': 'youtubei.googleapis.com',
+                                'innertube_key': None,
+                            }
+                        },
                         'sleep_interval': 8,
-                        'max_sleep_interval': 25,
+                        'max_sleep_interval': 30,
+                        'http_headers': {
+                            'Accept': '*/*',
+                            'Accept-Language': 'en-US,en;q=0.9',
+                            'X-YouTube-Client-Name': '5',
+                            'X-YouTube-Client-Version': '17.31.35',
+                        },
+                    },
+                    # Strategy 2: Android TV client (different API endpoint)
+                    {
+                        'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                        'referer': 'https://www.youtube.com/',
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['android'],
+                                'innertube_host': 'youtubei.googleapis.com',
+                            }
+                        },
+                        'sleep_interval': 10,
+                        'max_sleep_interval': 35,
+                        'http_headers': {
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                            'Accept-Language': 'en-US,en;q=0.5',
+                            'X-YouTube-Client-Name': '3',
+                            'X-YouTube-Client-Version': '18.11.34',
+                        },
+                    },
+                    # Strategy 3: Web client with different headers
+                    {
+                        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'referer': 'https://www.google.com/',
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['web'],
+                                'innertube_host': 'youtubei.googleapis.com',
+                            }
+                        },
+                        'sleep_interval': 12,
+                        'max_sleep_interval': 40,
+                        'http_headers': {
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                            'Accept-Language': 'en-US,en;q=0.9',
+                            'Cache-Control': 'no-cache',
+                            'Pragma': 'no-cache',
+                        },
                     },
                     {
                         'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -1411,7 +1972,8 @@ class AudioDownloader:
                             'artist': info.get('uploader', 'Unknown'),
                             'duration': info.get('duration', 0),
                             'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                            'platform': f'YouTube (fallback strategy {i + 1})'
+                            'platform': f'YouTube (fallback strategy {i + 1})',
+                            'filename': str(downloaded_file.name)
                         }
 
                         logger.info(f"Fallback strategy {i + 1} succeeded!")
@@ -1424,50 +1986,55 @@ class AudioDownloader:
                             downloader_logger.error(f"All YouTube fallback strategies failed: {fallback_e}")
                         continue
 
-                    # Try one more time with minimal options (last resort)
-                    logger.warning("Trying minimal extraction as last resort...")
-                    try:
-                        minimal_opts = {
-                            'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
-                            'outtmpl': str(temp_filepath) + '.%(ext)s',
-                            'quiet': False,  # Show output for debugging
-                            'no_warnings': False,
-                            'user_agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-                            'sleep_interval': 5,
-                        }
-
-                        with yt_dlp.YoutubeDL(minimal_opts) as ydl:
-                            info = await asyncio.wait_for(
-                                asyncio.get_event_loop().run_in_executor(
-                                    None, lambda: ydl.extract_info(url, download=True)
-                                ),
-                                timeout=180
-                            )
-
-                        # Find downloaded file
-                        downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
-                        if downloaded_files:
-                            downloaded_file = downloaded_files[0]
-                            file_info = {
-                                'title': info.get('title', 'Unknown'),
-                                'artist': info.get('uploader', 'Unknown'),
-                                'duration': info.get('duration', 0),
-                                'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                                'platform': 'YouTube (minimal)',
-                                'filename': str(downloaded_file.name)
+                # Try one more time with minimal options (last resort)
+                logger.warning("Trying minimal extraction as last resort...")
+                try:
+                    minimal_opts = {
+                        'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
+                        'outtmpl': str(temp_filepath) + '.%(ext)s',
+                        'quiet': False,  # Show output for debugging
+                        'no_warnings': False,
+                        'user_agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+                        'sleep_interval': 5,
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['web'],
                             }
-                            logger.info("Minimal extraction successful")
-                            return downloaded_file, file_info
-                        else:
-                            logger.error("Minimal extraction failed - no file found")
+                        },
+                    }
 
-                    except Exception as minimal_e:
-                        logger.error(f"Minimal extraction also failed: {minimal_e}")
+                    with yt_dlp.YoutubeDL(minimal_opts) as ydl:
+                        info = await asyncio.wait_for(
+                            asyncio.get_event_loop().run_in_executor(
+                                None, lambda: ydl.extract_info(url, download=True)
+                            ),
+                            timeout=180
+                        )
 
-                    # Store user-friendly error message for the calling function
-                    error_msg = self.get_user_friendly_error_message(str(e))
-                    logger.error(f"Final download failure. User message: {error_msg}")
-                    return None
+                    # Find downloaded file
+                    downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
+                    if downloaded_files:
+                        downloaded_file = downloaded_files[0]
+                        file_info = {
+                            'title': info.get('title', 'Unknown'),
+                            'artist': info.get('uploader', 'Unknown'),
+                            'duration': info.get('duration', 0),
+                            'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
+                            'platform': 'YouTube (minimal)',
+                            'filename': str(downloaded_file.name)
+                        }
+                        logger.info("Minimal extraction successful")
+                        return downloaded_file, file_info
+                    else:
+                        logger.error("Minimal extraction failed - no file found")
+
+                except Exception as minimal_e:
+                    logger.error(f"Minimal extraction also failed: {minimal_e}")
+
+                # Store user-friendly error message for the calling function
+                error_msg = self.get_user_friendly_error_message(str(e))
+                logger.error(f"Final download failure. User message: {error_msg}")
+                return None
 
             # Store user-friendly error message for the calling function
             error_msg = self.get_user_friendly_error_message(str(e))
@@ -1517,7 +2084,7 @@ class AudioDownloader:
                     result = await self.download_youtube_audio(video_url, quality, chat_id=chat_id, download_playlist=False)
 
                     if result is not None:
-                        file_path, file_info = result
+                        _, file_info = result
                         # Add playlist context to file info
                         file_info['playlist_position'] = f"{index}/{total_videos}"
                         file_info['playlist_title'] = playlist_info.get('title', 'Unknown Playlist')
