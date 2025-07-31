@@ -1237,23 +1237,76 @@ async def start_download_process(update: Update, context: CallbackContext) -> in
                     parse_mode="Markdown"
                 )
             else:
-                await update.message.reply_text(
-                    "❌ **Download failed**\n\n"
-                    "Could not download the audio. This might be due to:\n"
-                    "• The video/track is not available\n"
-                    "• Geographic restrictions\n"
-                    "• The link has expired\n\n"
-                    "Please try with a different link.",
-                    parse_mode="Markdown"
-                )
+                # Try to get a user-friendly error message from the downloader
+                error_message = "❌ **Download failed**\n\n"
+
+                # Check if it's likely a YouTube blocking issue
+                if platform == "YouTube":
+                    error_message = (
+                        "🚫 **YouTube Download Failed**\n\n"
+                        "This is likely due to YouTube's anti-bot measures. Common causes:\n\n"
+                        "• **IP blocking** - Too many requests from our server\n"
+                        "• **Rate limiting** - YouTube is restricting downloads\n"
+                        "• **Video restrictions** - Age-restricted or private content\n"
+                        "• **Geographic blocks** - Content not available in this region\n\n"
+                        "**What you can do:**\n"
+                        "• ⏰ Wait 10-15 minutes and try again\n"
+                        "• 🔄 Try a different video\n"
+                        "• 📱 Use a shorter video (less likely to be blocked)\n"
+                        "• 💬 Contact admin if this keeps happening\n\n"
+                        "We're constantly working to improve download reliability!"
+                    )
+                else:
+                    error_message = (
+                        "❌ **Download Failed**\n\n"
+                        "Could not download the audio. This might be due to:\n"
+                        "• The track is not available\n"
+                        "• Geographic restrictions\n"
+                        "• The link has expired\n"
+                        "• Server issues\n\n"
+                        "Please try with a different link."
+                    )
+
+                await update.message.reply_text(error_message, parse_mode="Markdown")
 
     except Exception as e:
-        await update.message.reply_text(
-            f"❌ **Download error occurred**\n\n"
-            f"Error: {str(e)}\n\n"
-            "Please try again later or contact support if the problem persists.",
-            parse_mode="Markdown"
-        )
+        error_str = str(e).lower()
+
+        # Provide specific error messages based on the error type
+        if "403" in error_str or "forbidden" in error_str:
+            error_message = (
+                "🚫 **YouTube Access Temporarily Blocked**\n\n"
+                "YouTube has blocked our download requests due to high traffic.\n\n"
+                "**This is temporary!** Please:\n"
+                "• ⏰ Wait 10-15 minutes and try again\n"
+                "• 🔄 Try a different video in the meantime\n"
+                "• 📱 Shorter videos are less likely to be blocked\n\n"
+                "We're working on improving our download system to avoid these blocks."
+            )
+        elif "timeout" in error_str:
+            error_message = (
+                "⏱️ **Download Timeout**\n\n"
+                "The download took too long and was cancelled.\n\n"
+                "This usually happens with:\n"
+                "• Very long videos\n"
+                "• Slow server connections\n"
+                "• High-quality downloads\n\n"
+                "Try again with a shorter video or lower quality setting."
+            )
+        elif "network" in error_str or "connection" in error_str:
+            error_message = (
+                "🌐 **Network Error**\n\n"
+                "There was a connection problem during download.\n\n"
+                "Please try again in a few minutes."
+            )
+        else:
+            error_message = (
+                f"❌ **Download Error**\n\n"
+                f"An unexpected error occurred: {str(e)[:100]}{'...' if len(str(e)) > 100 else ''}\n\n"
+                "Please try again later or contact support if the problem persists."
+            )
+
+        await update.message.reply_text(error_message, parse_mode="Markdown")
 
     return ConversationHandler.END
 

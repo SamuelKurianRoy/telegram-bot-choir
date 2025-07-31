@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import time
+import random
 import asyncio
 import logging
 import subprocess as sp
@@ -881,11 +882,23 @@ class AudioDownloader:
             if platform == 'Spotify':
                 return await self.extract_spotify_info(url)
             else:
-                # Use yt-dlp for other platforms
+                # Use yt-dlp for other platforms with anti-blocking measures
+                user_agents = [
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                ]
+
                 ydl_opts = {
                     'quiet': True,
                     'no_warnings': True,
                     'extract_flat': False,
+                    'user_agent': random.choice(user_agents),
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['android', 'web'],
+                        }
+                    },
                 }
                 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -936,6 +949,63 @@ class AudioDownloader:
         else:
             return await self.download_youtube_audio(url, quality, chat_id=chat_id, download_playlist=download_playlist)
     
+    def get_user_friendly_error_message(self, error_str: str) -> str:
+        """Convert technical errors to user-friendly messages"""
+        error_lower = error_str.lower()
+
+        if "403" in error_str or "forbidden" in error_lower:
+            return (
+                "🚫 **YouTube Access Blocked**\n\n"
+                "YouTube has temporarily blocked our download requests. This happens when:\n"
+                "• Too many downloads in a short time\n"
+                "• YouTube's anti-bot measures are active\n"
+                "• Regional restrictions apply\n\n"
+                "**Solutions:**\n"
+                "• Wait 10-15 minutes and try again\n"
+                "• Try a different video\n"
+                "• Contact admin if the issue persists"
+            )
+        elif "private" in error_lower or "unavailable" in error_lower:
+            return (
+                "🔒 **Video Not Available**\n\n"
+                "This video cannot be downloaded because:\n"
+                "• Video is private or unlisted\n"
+                "• Video has been removed\n"
+                "• Geographic restrictions\n\n"
+                "Please try a different video."
+            )
+        elif "age" in error_lower and "restricted" in error_lower:
+            return (
+                "🔞 **Age-Restricted Content**\n\n"
+                "This video is age-restricted and cannot be downloaded.\n"
+                "Please try a different video."
+            )
+        elif "copyright" in error_lower or "blocked" in error_lower:
+            return (
+                "⚖️ **Copyright Protected**\n\n"
+                "This video is protected by copyright and cannot be downloaded.\n"
+                "Please try a different video."
+            )
+        elif "timeout" in error_lower:
+            return (
+                "⏱️ **Download Timeout**\n\n"
+                "The download took too long and timed out.\n"
+                "This might be due to:\n"
+                "• Slow internet connection\n"
+                "• Large file size\n"
+                "• Server issues\n\n"
+                "Please try again or choose a shorter video."
+            )
+        else:
+            return (
+                "❌ **Download Failed**\n\n"
+                "An unexpected error occurred during download.\n"
+                "This might be temporary. Please:\n"
+                "• Try again in a few minutes\n"
+                "• Try a different video\n"
+                "• Contact admin if the problem persists"
+            )
+
     async def download_youtube_audio(self, url: str, quality: str, chat_id: str = None, download_playlist: bool = False) -> Optional[Tuple[Path, Dict]]:
         """Download audio from YouTube using yt-dlp, with checkpoint/resume support."""
         import hashlib
@@ -1077,6 +1147,17 @@ class AudioDownloader:
             temp_filename = f"audio_youtube_{int(time.time())}"
             temp_filepath = self.temp_dir / temp_filename
             
+            # Enhanced anti-blocking user agents rotation
+            user_agents = [
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/121.0'
+            ]
+
+            referers = ['https://www.youtube.com/', 'https://www.google.com/', 'https://music.youtube.com/']
+
             ydl_opts = {
                 'format': 'bestaudio/best',
                 'outtmpl': str(temp_filepath) + '.%(ext)s',
@@ -1087,17 +1168,28 @@ class AudioDownloader:
                 }],
                 'quiet': True,
                 'no_warnings': True,
-                'noplaylist': not download_playlist,  # Download playlist if requested, otherwise single video
-                'extract_flat': False,  # Ensure we get full video info, not just playlist entries
-                'ignoreerrors': False,  # Don't ignore errors, we want to know if something fails
-                # Enhanced anti-blocking measures for Streamlit Cloud
-                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'referer': 'https://www.youtube.com/',
-                'sleep_interval': 2,
-                'max_sleep_interval': 10,
+                'noplaylist': not download_playlist,
+                'extract_flat': False,
+                'ignoreerrors': False,
+
+                # Enhanced anti-blocking measures
+                'user_agent': random.choice(user_agents),
+                'referer': random.choice(referers),
+                'sleep_interval': random.uniform(2, 4),
+                'max_sleep_interval': random.uniform(10, 15),
                 'extractor_retries': 5,
                 'fragment_retries': 5,
-                'socket_timeout': 30,
+                'socket_timeout': 60,
+
+                # Advanced YouTube-specific options to bypass blocks
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android', 'web'],
+                        'player_skip': ['configs', 'webpage'],
+                        'skip': ['dash', 'hls'] if self.is_streamlit_cloud else [],
+                    }
+                },
+
                 'http_headers': {
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                     'Accept-Language': 'en-US,en;q=0.5',
@@ -1125,14 +1217,45 @@ class AudioDownloader:
                 # Ensure noplaylist is still set
                 ydl_opts['noplaylist'] = not download_playlist
             
-            # Download with timeout
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = await asyncio.wait_for(
-                    asyncio.get_event_loop().run_in_executor(
-                        None, lambda: ydl.extract_info(url, download=True)
-                    ),
-                    timeout=300  # 5 minute timeout
-                )
+            # Download with retry mechanism and exponential backoff
+            max_retries = 3
+            info = None
+
+            for attempt in range(max_retries):
+                try:
+                    # Add random delay before each attempt to avoid rate limiting
+                    if attempt > 0:
+                        delay = (2 ** attempt) + random.uniform(0, 2)
+                        logger.info(f"Retry attempt {attempt + 1}/{max_retries} after {delay:.1f}s delay")
+                        await asyncio.sleep(delay)
+
+                        # Rotate user agent and referer for retry attempts
+                        ydl_opts['user_agent'] = random.choice(user_agents)
+                        ydl_opts['referer'] = random.choice(referers)
+
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = await asyncio.wait_for(
+                            asyncio.get_event_loop().run_in_executor(
+                                None, lambda: ydl.extract_info(url, download=True)
+                            ),
+                            timeout=300  # 5 minute timeout
+                        )
+                    break  # Success, exit retry loop
+
+                except Exception as e:
+                    logger.warning(f"Download attempt {attempt + 1} failed: {e}")
+                    if attempt == max_retries - 1:
+                        raise  # Re-raise on final attempt
+
+                    # Check if it's a 403 error and adjust strategy
+                    if "403" in str(e) or "Forbidden" in str(e):
+                        logger.info("403 error detected, adjusting strategy for next attempt")
+                        # Use more conservative settings for next attempt
+                        ydl_opts['sleep_interval'] = random.uniform(5, 8)
+                        ydl_opts['max_sleep_interval'] = random.uniform(15, 20)
+
+            if info is None:
+                raise Exception("All download attempts failed")
             
             # Find downloaded file
             downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
@@ -1230,41 +1353,76 @@ class AudioDownloader:
             
         except Exception as e:
             logger.error(f"YouTube download failed: {e}")
-            # Enhanced fallback for 403 Forbidden (disable problematic proxy)
-            if ("403" in str(e) or "Forbidden" in str(e)):
-                logger.warning("403 Forbidden detected. Trying alternative approach...")
-                # Instead of using a proxy that requires authentication, try different headers
-                ydl_opts_fallback = ydl_opts.copy()
-                ydl_opts_fallback.update({
-                    'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'referer': 'https://www.google.com/',
-                    'sleep_interval': 3,
-                    'max_sleep_interval': 15,
-                })
-                try:
-                    with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl:
-                        info = await asyncio.wait_for(
-                            asyncio.get_event_loop().run_in_executor(
-                                None, lambda: ydl.extract_info(url, download=True)
-                            ),
-                            timeout=300
-                        )
-                    downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
-                    if not downloaded_files:
-                        raise FileNotFoundError("Download failed - no file found (proxy)")
-                    downloaded_file = downloaded_files[0]
-                    file_info = {
-                        'title': info.get('title', 'Unknown'),
-                        'artist': info.get('uploader', 'Unknown'),
-                        'duration': info.get('duration', 0),
-                        'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                        'platform': 'YouTube (fallback)'
+            # Enhanced fallback for 403 Forbidden with multiple strategies
+            if ("403" in str(e) or "Forbidden" in str(e) or "HTTP Error 403" in str(e)):
+                logger.warning("403 Forbidden detected. Trying multiple fallback strategies...")
+
+                # Strategy 1: Different user agent and mobile client
+                fallback_strategies = [
+                    {
+                        'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+                        'referer': 'https://m.youtube.com/',
+                        'extractor_args': {'youtube': {'player_client': ['android', 'ios']}},
+                        'sleep_interval': 5,
+                        'max_sleep_interval': 20,
+                    },
+                    {
+                        'user_agent': 'Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                        'referer': 'https://www.google.com/',
+                        'extractor_args': {'youtube': {'player_client': ['android']}},
+                        'sleep_interval': 8,
+                        'max_sleep_interval': 25,
+                    },
+                    {
+                        'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'referer': 'https://music.youtube.com/',
+                        'extractor_args': {'youtube': {'player_client': ['web']}},
+                        'sleep_interval': 10,
+                        'max_sleep_interval': 30,
                     }
-                    # (Optional: repeat renaming and metadata logic here if needed)
-                    return downloaded_file, file_info
-                except Exception as fallback_e:
-                    logger.error(f"Fallback download also failed: {fallback_e}")
-                    downloader_logger.error(f"YouTube fallback failed: {fallback_e}")
+                ]
+
+                for i, strategy in enumerate(fallback_strategies):
+                    logger.info(f"Trying fallback strategy {i + 1}/{len(fallback_strategies)}")
+                    ydl_opts_fallback = ydl_opts.copy()
+                    ydl_opts_fallback.update(strategy)
+                    try:
+                        # Add delay before each fallback strategy
+                        if i > 0:
+                            delay = random.uniform(3, 6)
+                            logger.info(f"Waiting {delay:.1f}s before trying next strategy")
+                            await asyncio.sleep(delay)
+
+                        with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl:
+                            info = await asyncio.wait_for(
+                                asyncio.get_event_loop().run_in_executor(
+                                    None, lambda: ydl.extract_info(url, download=True)
+                                ),
+                                timeout=300
+                            )
+
+                        downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
+                        if not downloaded_files:
+                            raise FileNotFoundError("Download failed - no file found")
+
+                        downloaded_file = downloaded_files[0]
+                        file_info = {
+                            'title': info.get('title', 'Unknown'),
+                            'artist': info.get('uploader', 'Unknown'),
+                            'duration': info.get('duration', 0),
+                            'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
+                            'platform': f'YouTube (fallback strategy {i + 1})'
+                        }
+
+                        logger.info(f"Fallback strategy {i + 1} succeeded!")
+                        return downloaded_file, file_info
+
+                    except Exception as fallback_e:
+                        logger.warning(f"Fallback strategy {i + 1} failed: {fallback_e}")
+                        if i == len(fallback_strategies) - 1:
+                            logger.error("All fallback strategies failed")
+                            downloader_logger.error(f"All YouTube fallback strategies failed: {fallback_e}")
+                        continue
 
                     # Try one more time with minimal options (last resort)
                     logger.warning("Trying minimal extraction as last resort...")
@@ -1306,7 +1464,14 @@ class AudioDownloader:
                     except Exception as minimal_e:
                         logger.error(f"Minimal extraction also failed: {minimal_e}")
 
+                    # Store user-friendly error message for the calling function
+                    error_msg = self.get_user_friendly_error_message(str(e))
+                    logger.error(f"Final download failure. User message: {error_msg}")
                     return None
+
+            # Store user-friendly error message for the calling function
+            error_msg = self.get_user_friendly_error_message(str(e))
+            logger.error(f"Download failed completely. User message: {error_msg}")
             return None
 
     async def download_playlist_progressive(self, url: str, quality: str, chat_id: str = None):
@@ -1855,11 +2020,22 @@ class AudioDownloader:
         try:
             downloader_logger.info(f"Searching YouTube for: '{query}'")
 
-            # Enhanced search for music content
+            # Enhanced search for music content with anti-blocking
+            user_agents = [
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            ]
+
             ydl_opts = {
                 'quiet': True,
                 'no_warnings': True,
                 'default_search': 'ytsearch5:',  # Get top 5 results for better matching
+                'user_agent': random.choice(user_agents),
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android', 'web'],
+                    }
+                },
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
