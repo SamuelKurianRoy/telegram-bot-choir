@@ -29,7 +29,7 @@ nest_asyncio>=1.5.0
 psutil>=5.8.0
 
 # Audio downloader dependencies
-yt-dlp>=2024.4.9
+yt-dlp>=2024.12.13
 requests
 spotdl>=4.2.0
 beautifulsoup4>=4.12.0

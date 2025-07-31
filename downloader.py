@@ -953,7 +953,19 @@ class AudioDownloader:
         """Convert technical errors to user-friendly messages"""
         error_lower = error_str.lower()
 
-        if "403" in error_str or "forbidden" in error_lower:
+        # Check for YouTube bot detection specifically
+        if "sign in to confirm you're not a bot" in error_lower or ("cookies" in error_lower and "authentication" in error_lower):
+            return (
+                "🤖 **YouTube Bot Detection**\n\n"
+                "YouTube has detected automated access and is blocking downloads.\n\n"
+                "**This is a temporary issue that usually resolves automatically.**\n\n"
+                "**What you can do:**\n"
+                "• Wait 10-15 minutes and try again\n"
+                "• Try a different video\n"
+                "• The issue typically resolves within an hour\n\n"
+                "*Note: This is due to YouTube's anti-bot measures, not a problem with our bot.*"
+            )
+        elif "403" in error_str or "forbidden" in error_lower:
             return (
                 "🚫 **YouTube Access Blocked**\n\n"
                 "YouTube has temporarily blocked our download requests. This happens when:\n"
@@ -1147,16 +1159,18 @@ class AudioDownloader:
             temp_filename = f"audio_youtube_{int(time.time())}"
             temp_filepath = self.temp_dir / temp_filename
             
-            # Enhanced anti-blocking user agents rotation
+            # Enhanced anti-blocking user agents rotation with latest versions
             user_agents = [
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/121.0'
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:122.0) Gecko/20100101 Firefox/122.0',
+                'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
+                'Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1'
             ]
 
-            referers = ['https://www.youtube.com/', 'https://www.google.com/', 'https://music.youtube.com/']
+            referers = ['https://www.youtube.com/', 'https://www.google.com/', 'https://music.youtube.com/', 'https://m.youtube.com/']
 
             ydl_opts = {
                 'format': 'bestaudio/best',
@@ -1175,19 +1189,31 @@ class AudioDownloader:
                 # Enhanced anti-blocking measures
                 'user_agent': random.choice(user_agents),
                 'referer': random.choice(referers),
-                'sleep_interval': random.uniform(2, 4),
-                'max_sleep_interval': random.uniform(10, 15),
-                'extractor_retries': 5,
-                'fragment_retries': 5,
-                'socket_timeout': 60,
+                'sleep_interval': random.uniform(3, 6),
+                'max_sleep_interval': random.uniform(15, 25),
+                'extractor_retries': 8,
+                'fragment_retries': 8,
+                'socket_timeout': 120,
 
-                # Advanced YouTube-specific options to bypass blocks
+                # Advanced YouTube-specific options to bypass bot detection
                 'extractor_args': {
                     'youtube': {
-                        'player_client': ['android', 'web'],
+                        'player_client': ['android', 'ios', 'web'],
                         'player_skip': ['configs', 'webpage'],
                         'skip': ['dash', 'hls'] if self.is_streamlit_cloud else [],
+                        'innertube_host': 'youtubei.googleapis.com',
+                        'innertube_key': None,  # Let yt-dlp auto-detect
                     }
+                },
+
+                # Additional headers to mimic real browser behavior
+                'http_headers': {
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-us,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'DNT': '1',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
                 },
 
                 'http_headers': {
@@ -1357,21 +1383,65 @@ class AudioDownloader:
             if ("403" in str(e) or "Forbidden" in str(e) or "HTTP Error 403" in str(e)):
                 logger.warning("403 Forbidden detected. Trying multiple fallback strategies...")
 
-                # Strategy 1: Different user agent and mobile client
+                # Enhanced fallback strategies to bypass bot detection
                 fallback_strategies = [
+                    # Strategy 1: iOS mobile client (often bypasses bot detection)
                     {
-                        'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+                        'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
                         'referer': 'https://m.youtube.com/',
-                        'extractor_args': {'youtube': {'player_client': ['android', 'ios']}},
-                        'sleep_interval': 5,
-                        'max_sleep_interval': 20,
-                    },
-                    {
-                        'user_agent': 'Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                        'referer': 'https://www.google.com/',
-                        'extractor_args': {'youtube': {'player_client': ['android']}},
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['ios'],
+                                'innertube_host': 'youtubei.googleapis.com',
+                                'innertube_key': None,
+                            }
+                        },
                         'sleep_interval': 8,
-                        'max_sleep_interval': 25,
+                        'max_sleep_interval': 30,
+                        'http_headers': {
+                            'Accept': '*/*',
+                            'Accept-Language': 'en-US,en;q=0.9',
+                            'X-YouTube-Client-Name': '5',
+                            'X-YouTube-Client-Version': '17.31.35',
+                        },
+                    },
+                    # Strategy 2: Android TV client (different API endpoint)
+                    {
+                        'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                        'referer': 'https://www.youtube.com/',
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['android'],
+                                'innertube_host': 'youtubei.googleapis.com',
+                            }
+                        },
+                        'sleep_interval': 10,
+                        'max_sleep_interval': 35,
+                        'http_headers': {
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                            'Accept-Language': 'en-US,en;q=0.5',
+                            'X-YouTube-Client-Name': '3',
+                            'X-YouTube-Client-Version': '18.11.34',
+                        },
+                    },
+                    # Strategy 3: Web client with different headers
+                    {
+                        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'referer': 'https://www.google.com/',
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['web'],
+                                'innertube_host': 'youtubei.googleapis.com',
+                            }
+                        },
+                        'sleep_interval': 12,
+                        'max_sleep_interval': 40,
+                        'http_headers': {
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                            'Accept-Language': 'en-US,en;q=0.9',
+                            'Cache-Control': 'no-cache',
+                            'Pragma': 'no-cache',
+                        },
                     },
                     {
                         'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -1411,7 +1481,8 @@ class AudioDownloader:
                             'artist': info.get('uploader', 'Unknown'),
                             'duration': info.get('duration', 0),
                             'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                            'platform': f'YouTube (fallback strategy {i + 1})'
+                            'platform': f'YouTube (fallback strategy {i + 1})',
+                            'filename': str(downloaded_file.name)
                         }
 
                         logger.info(f"Fallback strategy {i + 1} succeeded!")
@@ -1424,50 +1495,55 @@ class AudioDownloader:
                             downloader_logger.error(f"All YouTube fallback strategies failed: {fallback_e}")
                         continue
 
-                    # Try one more time with minimal options (last resort)
-                    logger.warning("Trying minimal extraction as last resort...")
-                    try:
-                        minimal_opts = {
-                            'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
-                            'outtmpl': str(temp_filepath) + '.%(ext)s',
-                            'quiet': False,  # Show output for debugging
-                            'no_warnings': False,
-                            'user_agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-                            'sleep_interval': 5,
-                        }
-
-                        with yt_dlp.YoutubeDL(minimal_opts) as ydl:
-                            info = await asyncio.wait_for(
-                                asyncio.get_event_loop().run_in_executor(
-                                    None, lambda: ydl.extract_info(url, download=True)
-                                ),
-                                timeout=180
-                            )
-
-                        # Find downloaded file
-                        downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
-                        if downloaded_files:
-                            downloaded_file = downloaded_files[0]
-                            file_info = {
-                                'title': info.get('title', 'Unknown'),
-                                'artist': info.get('uploader', 'Unknown'),
-                                'duration': info.get('duration', 0),
-                                'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                                'platform': 'YouTube (minimal)',
-                                'filename': str(downloaded_file.name)
+                # Try one more time with minimal options (last resort)
+                logger.warning("Trying minimal extraction as last resort...")
+                try:
+                    minimal_opts = {
+                        'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
+                        'outtmpl': str(temp_filepath) + '.%(ext)s',
+                        'quiet': False,  # Show output for debugging
+                        'no_warnings': False,
+                        'user_agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+                        'sleep_interval': 5,
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['web'],
                             }
-                            logger.info("Minimal extraction successful")
-                            return downloaded_file, file_info
-                        else:
-                            logger.error("Minimal extraction failed - no file found")
+                        },
+                    }
 
-                    except Exception as minimal_e:
-                        logger.error(f"Minimal extraction also failed: {minimal_e}")
+                    with yt_dlp.YoutubeDL(minimal_opts) as ydl:
+                        info = await asyncio.wait_for(
+                            asyncio.get_event_loop().run_in_executor(
+                                None, lambda: ydl.extract_info(url, download=True)
+                            ),
+                            timeout=180
+                        )
 
-                    # Store user-friendly error message for the calling function
-                    error_msg = self.get_user_friendly_error_message(str(e))
-                    logger.error(f"Final download failure. User message: {error_msg}")
-                    return None
+                    # Find downloaded file
+                    downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
+                    if downloaded_files:
+                        downloaded_file = downloaded_files[0]
+                        file_info = {
+                            'title': info.get('title', 'Unknown'),
+                            'artist': info.get('uploader', 'Unknown'),
+                            'duration': info.get('duration', 0),
+                            'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
+                            'platform': 'YouTube (minimal)',
+                            'filename': str(downloaded_file.name)
+                        }
+                        logger.info("Minimal extraction successful")
+                        return downloaded_file, file_info
+                    else:
+                        logger.error("Minimal extraction failed - no file found")
+
+                except Exception as minimal_e:
+                    logger.error(f"Minimal extraction also failed: {minimal_e}")
+
+                # Store user-friendly error message for the calling function
+                error_msg = self.get_user_friendly_error_message(str(e))
+                logger.error(f"Final download failure. User message: {error_msg}")
+                return None
 
             # Store user-friendly error message for the calling function
             error_msg = self.get_user_friendly_error_message(str(e))
@@ -1517,7 +1593,7 @@ class AudioDownloader:
                     result = await self.download_youtube_audio(video_url, quality, chat_id=chat_id, download_playlist=False)
 
                     if result is not None:
-                        file_path, file_info = result
+                        _, file_info = result
                         # Add playlist context to file info
                         file_info['playlist_position'] = f"{index}/{total_videos}"
                         file_info['playlist_title'] = playlist_info.get('title', 'Unknown Playlist')
