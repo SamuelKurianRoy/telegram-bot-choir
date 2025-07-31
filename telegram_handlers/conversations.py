@@ -1331,7 +1331,7 @@ async def bible_game_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     user_game_lang = get_user_game_language(user.id)
     default_lang_display = "🇮🇳 Malayalam" if user_game_lang == 'malayalam' else "🇺🇸 English"
 
-    # Show welcome message and language selection
+    # Show welcome message and options
     welcome_text = (
         "📖 *Welcome to the Bible Game!* 🎮\n\n"
         "Test your Bible knowledge! I'll show you a verse, and you need to guess which Bible reference it's from.\n\n"
@@ -1339,20 +1339,25 @@ async def bible_game_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         f"🟢 Easy: {user_best_scores['Easy']}\n"
         f"🟡 Medium: {user_best_scores['Medium']}\n"
         f"🔴 Hard: {user_best_scores['Hard']}\n\n"
-        f"Your default game language is *{user_game_lang.title()}*.\n"
-        "Choose your language for this game:"
+        f"Your default game language is *{user_game_lang.title()}*.\n\n"
+        "🎯 *Start Game* - Begin with your default language\n"
+        "🌐 *Language* - Choose a different language\n"
+        "📊 *View Stats* - See detailed statistics\n"
+        "🏅 *Leaderboard* - Check rankings"
     )
 
-    # Highlight user's default game language
+    # Create keyboard with grouped language options and Start button
     if user_game_lang == 'malayalam':
         keyboard = [
-            ["🇺🇸 English", f"⭐ {default_lang_display} (Default)"],
+            ["🌐 Language: 🇺🇸 English", f"🌐 Language: ⭐ {default_lang_display} (Default)"],
+            ["🎯 Start Game"],
             ["📊 View Stats", "🏅 Leaderboard"],
             ["❌ Cancel"]
         ]
     else:
         keyboard = [
-            [f"⭐ {default_lang_display} (Default)", "🇮🇳 Malayalam"],
+            [f"🌐 Language: ⭐ {default_lang_display} (Default)", "🌐 Language: 🇮🇳 Malayalam"],
+            ["🎯 Start Game"],
             ["📊 View Stats", "🏅 Leaderboard"],
             ["❌ Cancel"]
         ]
@@ -1441,16 +1446,45 @@ async def bible_game_language_handler(update: Update, context: ContextTypes.DEFA
         await update.message.reply_text(leaderboard_text, parse_mode="Markdown", reply_markup=reply_markup)
         return BIBLE_GAME_LANGUAGE
 
-    # Handle language selection (including default language options)
+    # Handle Start Game button - use user's default language
+    if user_input == "🎯 Start Game":
+        # Use user's preferred game language
+        language = get_user_game_language(user.id)
+        context.user_data['current_language'] = language
+        user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) started game with default language: {language}")
+
+        # Skip to difficulty selection
+        difficulty_text = (
+            f"🎯 *Choose Difficulty Level* ({language.title()})\n\n"
+            "🟢 *Easy:* Common verses, basic books\n"
+            "🟡 *Medium:* Mix of familiar and challenging verses\n"
+            "🔴 *Hard:* Difficult verses, less common books\n\n"
+            "Select your difficulty:"
+        )
+
+        keyboard = [
+            ["🟢 Easy", "🟡 Medium", "🔴 Hard"],
+            ["🔙 Back", "❌ Cancel"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+        await update.message.reply_text(difficulty_text, parse_mode="Markdown", reply_markup=reply_markup)
+        return BIBLE_GAME_DIFFICULTY
+
+    # Handle language selection (including new format with "Language:" prefix)
     language_map = {
         "🇺🇸 English": "english",
         "🇮🇳 Malayalam": "malayalam",
         "⭐ 🇺🇸 English (Default)": "english",
-        "⭐ 🇮🇳 Malayalam (Default)": "malayalam"
+        "⭐ 🇮🇳 Malayalam (Default)": "malayalam",
+        "🌐 Language: 🇺🇸 English": "english",
+        "🌐 Language: 🇮🇳 Malayalam": "malayalam",
+        "🌐 Language: ⭐ 🇺🇸 English (Default)": "english",
+        "🌐 Language: ⭐ 🇮🇳 Malayalam (Default)": "malayalam"
     }
 
     if user_input not in language_map:
-        await update.message.reply_text("Please choose a valid language from the keyboard.")
+        await update.message.reply_text("Please choose a valid option from the keyboard.")
         return BIBLE_GAME_LANGUAGE
 
     language = language_map[user_input]
