@@ -1517,6 +1517,21 @@ class AudioDownloader:
                     }
                 },
 
+                # Network and DNS configuration for Streamlit Cloud
+                'socket_timeout': 120,
+                'retries': 10,
+                'fragment_retries': 10,
+                'skip_unavailable_fragments': True,
+                'keep_fragments': False,
+
+                # Force IPv4 to avoid DNS issues
+                'force_ipv4': True,
+
+                # Additional network robustness
+                'http_chunk_size': 10485760,  # 10MB chunks
+                'prefer_insecure': False,
+                'no_check_certificate': False,
+
                 # Additional headers to mimic real browser behavior
                 'http_headers': {
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -1609,8 +1624,24 @@ class AudioDownloader:
                     if attempt == max_retries - 1:
                         raise  # Re-raise on final attempt
 
+                    # Check for DNS resolution issues and try different approach
+                    if "Failed to resolve 'y'" in str(e) or "Name or service not known" in str(e):
+                        logger.info("DNS resolution issue detected, trying alternative configuration")
+                        # Use more basic configuration for next attempt
+                        ydl_opts['force_ipv4'] = True
+                        ydl_opts['socket_timeout'] = 60
+                        ydl_opts['extractor_args'] = {
+                            'youtube': {
+                                'player_client': ['android'],  # Use only Android client
+                            }
+                        }
+                        # Remove complex headers that might cause issues
+                        ydl_opts['http_headers'] = {
+                            'User-Agent': random.choice(user_agents),
+                            'Accept': '*/*',
+                        }
                     # Check if it's a 403 error and adjust strategy
-                    if "403" in str(e) or "Forbidden" in str(e):
+                    elif "403" in str(e) or "Forbidden" in str(e):
                         logger.info("403 error detected, adjusting strategy for next attempt")
                         # Use more conservative settings for next attempt
                         ydl_opts['sleep_interval'] = random.uniform(5, 8)
@@ -1715,6 +1746,64 @@ class AudioDownloader:
             
         except Exception as e:
             logger.error(f"YouTube download failed: {e}")
+
+            # Special handling for DNS resolution issues (Failed to resolve 'y')
+            if "Failed to resolve 'y'" in str(e) or "Name or service not known" in str(e):
+                logger.warning("DNS resolution issue detected - trying URL transformation workaround")
+                try:
+                    # Try converting youtu.be URLs to full youtube.com format
+                    if 'youtu.be/' in url:
+                        video_id = url.split('youtu.be/')[-1].split('?')[0].split('&')[0]
+                        transformed_url = f"https://www.youtube.com/watch?v={video_id}"
+                        logger.info(f"Transforming URL: {url} -> {transformed_url}")
+
+                        # Try with minimal, robust configuration
+                        minimal_opts = {
+                            'format': 'bestaudio/best',
+                            'outtmpl': str(temp_filepath) + '.%(ext)s',
+                            'postprocessors': [{
+                                'key': 'FFmpegExtractAudio',
+                                'preferredcodec': 'mp3',
+                                'preferredquality': bitrate,
+                            }],
+                            'quiet': True,
+                            'force_ipv4': True,
+                            'socket_timeout': 30,
+                            'retries': 3,
+                            'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
+                            'extractor_args': {
+                                'youtube': {
+                                    'player_client': ['android'],
+                                }
+                            },
+                        }
+
+                        with yt_dlp.YoutubeDL(minimal_opts) as ydl:
+                            info = await asyncio.wait_for(
+                                asyncio.get_event_loop().run_in_executor(
+                                    None, lambda: ydl.extract_info(transformed_url, download=True)
+                                ),
+                                timeout=120
+                            )
+
+                        # If successful, find the downloaded file
+                        downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
+                        if downloaded_files:
+                            downloaded_file = downloaded_files[0]
+                            file_info = {
+                                'title': info.get('title', 'Unknown'),
+                                'artist': info.get('uploader', 'Unknown'),
+                                'duration': info.get('duration', 0),
+                                'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
+                                'platform': 'YouTube (DNS workaround)',
+                                'filename': str(downloaded_file.name)
+                            }
+                            logger.info("DNS workaround with URL transformation succeeded!")
+                            return downloaded_file, file_info
+
+                except Exception as transform_e:
+                    logger.warning(f"DNS workaround failed: {transform_e}")
+
             # Enhanced fallback for 403 Forbidden with multiple strategies
             if ("403" in str(e) or "Forbidden" in str(e) or "HTTP Error 403" in str(e)):
                 logger.warning("403 Forbidden detected. Trying multiple fallback strategies...")
