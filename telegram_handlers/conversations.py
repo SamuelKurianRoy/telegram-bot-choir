@@ -19,7 +19,7 @@ from utils.notation import Music_notation_link, getNotation
 from data.datasets import Tunenofinder, Tune_finder_of_known_songs, Datefinder, IndexFinder, Hymn_Tune_no_Finder, get_all_data
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 from data.drive import save_game_score, get_user_best_score, get_user_best_scores_all_difficulties, get_leaderboard, get_combined_leaderboard
-from data.udb import get_user_bible_language, get_user_game_language, get_user_download_preference, track_user_fast
+from data.udb import get_user_bible_language, get_user_game_language, get_user_download_preference, get_user_download_quality, track_user_fast
 import re
 import os
 import random
@@ -985,20 +985,44 @@ async def download_url_input(update: Update, context: CallbackContext) -> int:
             )
             return PLAYLIST_CHOICE
 
-    # No playlist detected - proceed to quality selection
-    # Show quality selection
-    quality_keyboard = [
-        ["🔥 High Quality (320kbps)", "🎵 Medium Quality (192kbps)"],
-        ["💾 Low Quality (128kbps)", "❌ Cancel"]
-    ]
+    # No playlist detected - check quality preference
+    quality_pref = get_user_download_quality(user.id)
 
-    await update.message.reply_text(
-        f"🎯 *{context.user_data['platform']} link detected!*\n\n"
-        "Please select the audio quality:",
-        parse_mode="Markdown",
-        reply_markup=ReplyKeyboardMarkup(quality_keyboard, one_time_keyboard=True, resize_keyboard=True)
-    )
-    return SELECT_QUALITY
+    if quality_pref in ['high', 'medium', 'low']:
+        # User has a quality preference - use it directly
+        context.user_data["download_quality"] = quality_pref
+
+        quality_display = {
+            'high': 'High Quality (320kbps)',
+            'medium': 'Medium Quality (192kbps)',
+            'low': 'Low Quality (128kbps)'
+        }
+
+        await update.message.reply_text(
+            f"🎯 *{context.user_data['platform']} link detected!*\n\n"
+            f"✅ Using your preferred quality: *{quality_display[quality_pref]}*\n\n"
+            "Starting download...\n\n"
+            "💡 You can change your default quality in `/setting` → `🎵 Download Quality`",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardRemove()
+        )
+
+        # Skip quality selection and start download directly
+        return await start_download_process(update, context)
+    else:
+        # User prefers to be asked - show quality selection
+        quality_keyboard = [
+            ["🔥 High Quality (320kbps)", "🎵 Medium Quality (192kbps)"],
+            ["💾 Low Quality (128kbps)", "❌ Cancel"]
+        ]
+
+        await update.message.reply_text(
+            f"🎯 *{context.user_data['platform']} link detected!*\n\n"
+            "Please select the audio quality:",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardMarkup(quality_keyboard, one_time_keyboard=True, resize_keyboard=True)
+        )
+        return SELECT_QUALITY
 
 async def download_playlist_choice(update: Update, context: CallbackContext) -> int:
     """Handle playlist choice selection"""
@@ -1035,54 +1059,63 @@ async def download_playlist_choice(update: Update, context: CallbackContext) -> 
         )
         return PLAYLIST_CHOICE
 
-    # Proceed to quality selection
-    quality_keyboard = [
-        ["🔥 High Quality (320kbps)", "🎵 Medium Quality (192kbps)"],
-        ["💾 Low Quality (128kbps)", "❌ Cancel"]
-    ]
+    # Check quality preference after playlist choice
+    quality_pref = get_user_download_quality(user.id)
 
-    await update.message.reply_text(
-        f"🎯 *{context.user_data['platform']} link ready!*\n\n"
-        "Please select the audio quality:",
-        parse_mode="Markdown",
-        reply_markup=ReplyKeyboardMarkup(quality_keyboard, one_time_keyboard=True, resize_keyboard=True)
-    )
-    return SELECT_QUALITY
+    if quality_pref in ['high', 'medium', 'low']:
+        # User has a quality preference - use it directly
+        context.user_data["download_quality"] = quality_pref
 
-async def download_quality_selection(update: Update, context: CallbackContext) -> int:
-    """Handle quality selection and start download"""
-    quality_text = update.message.text.strip()
-    user = update.effective_user
+        quality_display = {
+            'high': 'High Quality (320kbps)',
+            'medium': 'Medium Quality (192kbps)',
+            'low': 'Low Quality (128kbps)'
+        }
 
-    # Map quality selection
-    quality_map = {
-        "🔥 High Quality (320kbps)": "high",
-        "🎵 Medium Quality (192kbps)": "medium",
-        "💾 Low Quality (128kbps)": "low"
-    }
-
-    if quality_text == "❌ Cancel":
         await update.message.reply_text(
-            "❌ Download cancelled.",
+            f"🎯 *{context.user_data['platform']} link ready!*\n\n"
+            f"✅ Using your preferred quality: *{quality_display[quality_pref]}*\n\n"
+            "Starting download...\n\n"
+            "💡 You can change your default quality in `/setting` → `🎵 Download Quality`",
+            parse_mode="Markdown",
             reply_markup=ReplyKeyboardRemove()
         )
-        return ConversationHandler.END
 
-    if quality_text not in quality_map:
+        # Skip quality selection and start download directly
+        return await start_download_process(update, context)
+    else:
+        # User prefers to be asked - show quality selection
+        quality_keyboard = [
+            ["🔥 High Quality (320kbps)", "🎵 Medium Quality (192kbps)"],
+            ["💾 Low Quality (128kbps)", "❌ Cancel"]
+        ]
+
         await update.message.reply_text(
-            "❌ Invalid selection. Please choose a quality option.",
-            reply_markup=ReplyKeyboardMarkup([
-                ["🔥 High Quality (320kbps)", "🎵 Medium Quality (192kbps)"],
-                ["💾 Low Quality (128kbps)", "❌ Cancel"]
-            ], one_time_keyboard=True, resize_keyboard=True)
+            f"🎯 *{context.user_data['platform']} link ready!*\n\n"
+            "Please select the audio quality:",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardMarkup(quality_keyboard, one_time_keyboard=True, resize_keyboard=True)
         )
         return SELECT_QUALITY
 
-    quality = quality_map[quality_text]
+async def start_download_process(update: Update, context: CallbackContext) -> int:
+    """Start the download process with user's preferred settings"""
+    user = update.effective_user
+
+    # Get download parameters from context
     url = context.user_data.get("download_url")
     platform = context.user_data.get("platform")
+    quality = context.user_data.get("download_quality")
 
-    # Start download process
+    # Map quality to display text
+    quality_display_map = {
+        "high": "🔥 High Quality (320kbps)",
+        "medium": "🎵 Medium Quality (192kbps)",
+        "low": "💾 Low Quality (128kbps)"
+    }
+    quality_text = quality_display_map.get(quality, f"{quality} quality")
+
+    # Start download process (same logic as download_quality_selection)
     await update.message.reply_text(
         f"🎵 Starting download from {platform}...\n"
         f"Quality: {quality_text}\n\n"
@@ -1131,135 +1164,133 @@ async def download_quality_selection(update: Update, context: CallbackContext) -
                 file_path, file_info = result
                 success_count += 1
 
-                # Send each audio file as it's downloaded
                 try:
-                    await update.message.reply_text(
-                        f"✅ **Audio {file_info.get('playlist_position', success_count)} completed!**\n\n"
-                        f"🎵 *{file_info['title']}*\n"
-                        f"👤 *Artist:* {file_info['artist']}\n"
-                        f"📊 *Size:* {file_info['size_mb']:.1f} MB\n\n"
-                        "Sending file...",
-                        parse_mode="Markdown"
-                    )
-
                     # Send the audio file
                     with open(file_path, 'rb') as audio_file:
-                        await update.message.reply_document(
-                            document=audio_file,
-                            filename=file_info.get('filename', f"{file_info['title']}.mp3"),
-                            caption=f"🎵 {file_info['title']} - {file_info['artist']}"
+                        caption = f"🎵 **{file_info.get('title', 'Unknown Title')}**\n" \
+                                f"👤 **Artist:** {file_info.get('artist', 'Unknown Artist')}\n" \
+                                f"🎯 **Quality:** {quality_text}\n" \
+                                f"📊 **Progress:** {success_count}/{success_count + failed_count}"
+
+                        await context.bot.send_audio(
+                            chat_id=chat_id,
+                            audio=audio_file,
+                            caption=caption,
+                            parse_mode="Markdown",
+                            title=file_info.get('title', 'Unknown Title'),
+                            performer=file_info.get('artist', 'Unknown Artist')
                         )
 
-                    await update.message.reply_text("🎉 Audio sent successfully!")
+                    # Clean up the file
+                    file_path.unlink(missing_ok=True)
 
-                    # Clean up the file after sending
-                    try:
-                        file_path.unlink()
-                    except Exception as cleanup_e:
-                        logger.warning(f"Could not delete temporary file {file_path}: {cleanup_e}")
+                except Exception as send_error:
+                    await update.message.reply_text(f"❌ Failed to send audio #{success_count}: {send_error}")
 
-                except Exception as send_e:
-                    await update.message.reply_text(f"❌ Failed to send audio #{success_count}: {str(send_e)}")
-                    logger.error(f"Error sending audio file: {send_e}")
-
-            # Final summary
-            total_processed = success_count + failed_count
-            await update.message.reply_text(
-                f"🎉 **Playlist download completed!**\n\n"
-                f"✅ Successfully downloaded: {success_count} audio files\n"
-                f"❌ Failed: {failed_count} audio files\n"
-                f"📊 Total processed: {total_processed} audio files\n\n"
-                f"Send another link to download more audio, or use /cancel to stop.",
-                parse_mode="Markdown"
-            )
-
-            # Log playlist completion
-            playlist_completion_entry = f"{timestamp} - PLAYLIST COMPLETED for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | Success: {success_count} | Failed: {failed_count} | Total: {total_processed}\nURL: {url}\n\n"
-            if yfile_id:
-                append_download_to_google_doc(yfile_id, playlist_completion_entry)
-
-            return ENTER_URL  # Allow user to download more
-
-        else:
-            # Single video download (existing behavior)
-            result = await downloader.download_audio(url, quality, chat_id=chat_id, download_playlist=download_playlist)
-
-            if result is None:
-                # Log failed download to Google Doc
-                download_failed_entry = f"{timestamp} - DOWNLOAD FAILED for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | URL: {url}\n\n"
-
-                if yfile_id:
-                    append_download_to_google_doc(yfile_id, download_failed_entry)
-
-                # Provide more specific error message based on platform
-                if platform == "YouTube":
-                    error_msg = (
-                        "❌ YouTube download failed. This could be due to:\n"
-                        "• Video restrictions or age-gating\n"
-                        "• Regional blocking\n"
-                        "• Technical issues with the video\n\n"
-                        "Please try a different YouTube video or contact the administrator."
-                    )
-                else:
-                    error_msg = "❌ Download failed. Please try again or contact the administrator."
-
-                await update.message.reply_text(error_msg)
-                return ConversationHandler.END
-
-            file_path, file_info = result
-
-            # Send the audio file
-            await update.message.reply_text(
-                f"✅ Download completed!\n\n"
-                f"🎵 *{file_info['title']}*\n"
-                f"👤 *Artist:* {file_info['artist']}\n"
-                f"📱 *Platform:* {file_info['platform']}\n"
-                f"📊 *Size:* {file_info['size_mb']:.1f} MB\n\n"
-                "Sending file...",
-                parse_mode="Markdown"
-            )
-
-            # Send the audio file
-            with open(file_path, 'rb') as audio_file:
-                await update.message.reply_audio(
-                    audio=audio_file,
-                    title=file_info['title'],
-                    performer=file_info['artist'],
-                    duration=file_info.get('duration', 0)
+            # Send final summary
+            if success_count > 0:
+                await update.message.reply_text(
+                    f"✅ **Playlist download completed!**\n\n"
+                    f"📊 **Summary:**\n"
+                    f"✅ Successfully downloaded: {success_count} files\n"
+                    f"❌ Failed downloads: {failed_count} files\n\n"
+                    f"🎵 All audio files have been sent to you.",
+                    parse_mode="Markdown"
+                )
+            else:
+                await update.message.reply_text(
+                    "❌ **Playlist download failed**\n\n"
+                    "No audio files could be downloaded from the playlist. "
+                    "Please check the URL and try again.",
+                    parse_mode="Markdown"
                 )
 
-        # Log successful download
-        user_logger.info(f"Download completed for {user.full_name} ({user.id}): {file_info['title']}")
+        else:
+            # Single video download
+            result = await downloader.download_audio(url, quality, chat_id=str(chat_id), download_playlist=download_playlist)
 
-        # Log successful download to Google Doc
-        download_success_entry = f"{timestamp} - DOWNLOAD SUCCESS for {user.full_name} (@{user.username}, ID: {user.id}):\nTitle: {file_info['title']} | Artist: {file_info['artist']} | Platform: {file_info['platform']} | Size: {file_info['size_mb']:.1f}MB | Quality: {quality}\nURL: {url}\n\n"
+            if result:
+                file_path, file_info = result
 
-        if yfile_id:
-            append_download_to_google_doc(yfile_id, download_success_entry)
+                # Send the audio file
+                with open(file_path, 'rb') as audio_file:
+                    caption = f"🎵 **{file_info.get('title', 'Unknown Title')}**\n" \
+                            f"👤 **Artist:** {file_info.get('artist', 'Unknown Artist')}\n" \
+                            f"🎯 **Quality:** {quality_text}\n" \
+                            f"🌐 **Platform:** {file_info.get('platform', platform)}"
 
-        # Clean up the file
-        downloader.cleanup_file(file_path)
+                    await context.bot.send_audio(
+                        chat_id=chat_id,
+                        audio=audio_file,
+                        caption=caption,
+                        parse_mode="Markdown",
+                        title=file_info.get('title', 'Unknown Title'),
+                        performer=file_info.get('artist', 'Unknown Artist')
+                    )
 
-        await update.message.reply_text(
-            "🎉 Audio sent successfully!\n\n"
-            "Send another link to download more audio, or use /cancel to stop."
-        )
+                # Clean up the file
+                file_path.unlink(missing_ok=True)
 
-        return ENTER_URL  # Allow user to download another file
+                await update.message.reply_text(
+                    "✅ **Download completed successfully!**\n\n"
+                    "🎵 Your audio file has been sent above.",
+                    parse_mode="Markdown"
+                )
+            else:
+                await update.message.reply_text(
+                    "❌ **Download failed**\n\n"
+                    "Could not download the audio. This might be due to:\n"
+                    "• The video/track is not available\n"
+                    "• Geographic restrictions\n"
+                    "• The link has expired\n\n"
+                    "Please try with a different link.",
+                    parse_mode="Markdown"
+                )
 
     except Exception as e:
-        bot_logger.error(f"Download error for user {user.id}: {e}")
-
-        # Log error to Google Doc
-        download_error_entry = f"{timestamp} - DOWNLOAD ERROR for {user.full_name} (@{user.username}, ID: {user.id}):\nPlatform: {platform} | Quality: {quality} | Error: {str(e)}\nURL: {url}\n\n"
-
-        if yfile_id:
-            append_download_to_google_doc(yfile_id, download_error_entry)
-
         await update.message.reply_text(
-            "❌ An error occurred during download. Please try again later."
+            f"❌ **Download error occurred**\n\n"
+            f"Error: {str(e)}\n\n"
+            "Please try again later or contact support if the problem persists.",
+            parse_mode="Markdown"
+        )
+
+    return ConversationHandler.END
+
+async def download_quality_selection(update: Update, context: CallbackContext) -> int:
+    """Handle quality selection and start download"""
+    quality_text = update.message.text.strip()
+    user = update.effective_user
+
+    # Map quality selection
+    quality_map = {
+        "🔥 High Quality (320kbps)": "high",
+        "🎵 Medium Quality (192kbps)": "medium",
+        "💾 Low Quality (128kbps)": "low"
+    }
+
+    if quality_text == "❌ Cancel":
+        await update.message.reply_text(
+            "❌ Download cancelled.",
+            reply_markup=ReplyKeyboardRemove()
         )
         return ConversationHandler.END
+
+    if quality_text not in quality_map:
+        await update.message.reply_text(
+            "❌ Invalid selection. Please choose a quality option.",
+            reply_markup=ReplyKeyboardMarkup([
+                ["🔥 High Quality (320kbps)", "🎵 Medium Quality (192kbps)"],
+                ["💾 Low Quality (128kbps)", "❌ Cancel"]
+            ], one_time_keyboard=True, resize_keyboard=True)
+        )
+        return SELECT_QUALITY
+
+    quality = quality_map[quality_text]
+    context.user_data["download_quality"] = quality
+
+    # Use the centralized download process
+    return await start_download_process(update, context)
 
 
 # Telegram command handler for /tune command

@@ -87,6 +87,7 @@ def create_empty_user_database():
         'game_language',     # Default Bible game language (malayalam/english)
         'search_results_limit',  # Number of search results to show
         'download_preference',   # Default download behavior (single/ask)
+        'download_quality',  # Default download quality (high/medium/low/ask)
         'theme_preference'   # UI theme preference (if applicable)
     ])
 
@@ -109,6 +110,7 @@ def ensure_user_database_structure(df):
         'game_language': 'object',
         'search_results_limit': 'int64',
         'download_preference': 'object',
+        'download_quality': 'object',
         'theme_preference': 'object'
     }
     
@@ -129,6 +131,8 @@ def ensure_user_database_structure(df):
                     df[col] = 'english'  # Default Bible game language
                 elif col == 'download_preference':
                     df[col] = 'single'  # Default download behavior (single video)
+                elif col == 'download_quality':
+                    df[col] = 'medium'  # Default download quality (medium)
                 elif col == 'theme_preference':
                     df[col] = 'default'
                 else:
@@ -145,6 +149,7 @@ def ensure_user_database_structure(df):
     df['game_language'] = df['game_language'].fillna('english')
     df['search_results_limit'] = df['search_results_limit'].fillna(10).astype('int64')
     df['download_preference'] = df['download_preference'].fillna('single')
+    df['download_quality'] = df['download_quality'].fillna('medium')
     df['theme_preference'] = df['theme_preference'].fillna('default')
     
     return df
@@ -234,6 +239,7 @@ def add_or_update_user(user_data):
                 'game_language': 'english',
                 'search_results_limit': 10,
                 'download_preference': 'single',
+                'download_quality': 'medium',
                 'theme_preference': 'default'
             }
             
@@ -538,6 +544,34 @@ def update_user_download_preference(user_id, preference):
 
     return update_user_preference(user_id, 'download_preference', preference.lower())
 
+def get_user_download_quality(user_id):
+    """
+    Get the user's preferred download quality.
+
+    Args:
+        user_id: Telegram user ID
+
+    Returns:
+        str: 'high', 'medium', 'low', or 'ask' (default: 'medium')
+    """
+    return get_user_preference(user_id, 'download_quality', 'medium')
+
+def update_user_download_quality(user_id, quality):
+    """
+    Update the user's preferred download quality.
+
+    Args:
+        user_id: Telegram user ID
+        quality: 'high', 'medium', 'low', or 'ask'
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    if quality.lower() not in ['high', 'medium', 'low', 'ask']:
+        return False
+
+    return update_user_preference(user_id, 'download_quality', quality.lower())
+
 def update_google_sheet_structure():
     """
     Updates the Google Sheet to include all required columns.
@@ -576,7 +610,7 @@ def update_google_sheet_structure():
         required_headers = [
             'user_id', 'username', 'name', 'last_seen',
             'is_authorized', 'is_admin', 'status', 'notes',
-            'bible_language', 'game_language', 'search_results_limit', 'download_preference', 'theme_preference'
+            'bible_language', 'game_language', 'search_results_limit', 'download_preference', 'download_quality', 'theme_preference'
         ]
         
         # Check which headers are missing

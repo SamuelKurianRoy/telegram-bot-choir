@@ -35,8 +35,8 @@ try:
     )
     from telegram_handlers.preferences import (
         setting_start, setting_menu_handler, bible_language_handler, game_language_handler,
-        search_limit_handler, download_preference_handler, cancel_settings,
-        SETTING_MENU, BIBLE_LANGUAGE_CHOICE, GAME_LANGUAGE_CHOICE, SEARCH_LIMIT_INPUT, DOWNLOAD_PREFERENCE_CHOICE
+        search_limit_handler, download_preference_handler, download_quality_handler, cancel_settings,
+        SETTING_MENU, BIBLE_LANGUAGE_CHOICE, GAME_LANGUAGE_CHOICE, SEARCH_LIMIT_INPUT, DOWNLOAD_PREFERENCE_CHOICE, DOWNLOAD_QUALITY_CHOICE
     )
 except ImportError as e:
     print(f"[DEBUG] ImportError during project imports: {e}")
@@ -212,6 +212,7 @@ settings_conv_handler = ConversationHandler(
         GAME_LANGUAGE_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, game_language_handler)],
         SEARCH_LIMIT_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_limit_handler)],
         DOWNLOAD_PREFERENCE_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, download_preference_handler)],
+        DOWNLOAD_QUALITY_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, download_quality_handler)],
     },
     fallbacks=[CommandHandler("cancel", cancel_settings)],
 )
