@@ -93,6 +93,10 @@ class AudioDownloader:
             logger.info("Configured spotdl to use system FFmpeg on Streamlit Cloud")
             downloader_logger.info("Configured spotdl to use system FFmpeg on Streamlit Cloud")
 
+        # Setup cookie support for bypassing YouTube bot detection
+        self.cookie_file = self._setup_cookies()
+        downloader_logger.info(f"Cookie support initialized: {self.cookie_file}")
+
     def _detect_streamlit_cloud(self) -> bool:
         """Detect if running on Streamlit Cloud"""
         # Check for Streamlit Cloud environment indicators
@@ -382,6 +386,137 @@ class AudioDownloader:
         except Exception as e:
             logger.error(f"Error setting up FFmpeg: {e}")
             downloader_logger.error(f"Error setting up FFmpeg: {e}")
+            return None
+
+    def _setup_cookies(self) -> Optional[str]:
+        """Setup cookie support for bypassing YouTube bot detection"""
+        try:
+            # Look for cookie files in common locations
+            cookie_locations = [
+                # Netscape format cookie files
+                self.temp_dir / "youtube_cookies.txt",
+                Path.cwd() / "youtube_cookies.txt",
+                Path.cwd() / "cookies.txt",
+                # Browser cookie extraction (if available)
+                self._get_browser_cookie_path("chrome"),
+                self._get_browser_cookie_path("firefox"),
+                self._get_browser_cookie_path("brave"),
+                self._get_browser_cookie_path("edge"),
+            ]
+
+            # Check for existing cookie files
+            for cookie_path in cookie_locations:
+                if cookie_path and Path(cookie_path).exists():
+                    logger.info(f"Found cookie file: {cookie_path}")
+                    downloader_logger.info(f"Using cookie file: {cookie_path}")
+                    return str(cookie_path)
+
+            # Try to extract cookies from browsers automatically
+            browser_success = self._try_extract_browser_cookies()
+            if browser_success:
+                return browser_success
+
+            logger.info("No cookie file found - will use cookieless mode")
+            downloader_logger.info("Cookie setup: No cookies available, using enhanced anti-detection instead")
+            return None
+
+        except Exception as e:
+            logger.warning(f"Cookie setup failed: {e}")
+            downloader_logger.warning(f"Cookie setup failed: {e}")
+            return None
+
+    def _get_browser_cookie_path(self, browser: str) -> Optional[str]:
+        """Get the cookie database path for a specific browser"""
+        try:
+            system = platform.system().lower()
+            home = Path.home()
+
+            if browser == "chrome":
+                if system == "windows":
+                    return home / "AppData/Local/Google/Chrome/User Data/Default/Cookies"
+                elif system == "darwin":  # macOS
+                    return home / "Library/Application Support/Google/Chrome/Default/Cookies"
+                else:  # Linux
+                    return home / ".config/google-chrome/Default/Cookies"
+
+            elif browser == "brave":
+                if system == "windows":
+                    return home / "AppData/Local/BraveSoftware/Brave-Browser/User Data/Default/Cookies"
+                elif system == "darwin":  # macOS
+                    return home / "Library/Application Support/BraveSoftware/Brave-Browser/Default/Cookies"
+                else:  # Linux
+                    return home / ".config/BraveSoftware/Brave-Browser/Default/Cookies"
+
+            elif browser == "firefox":
+                if system == "windows":
+                    profiles_dir = home / "AppData/Roaming/Mozilla/Firefox/Profiles"
+                elif system == "darwin":  # macOS
+                    profiles_dir = home / "Library/Application Support/Firefox/Profiles"
+                else:  # Linux
+                    profiles_dir = home / ".mozilla/firefox"
+
+                if profiles_dir.exists():
+                    # Find the default profile
+                    for profile in profiles_dir.iterdir():
+                        if profile.is_dir() and "default" in profile.name.lower():
+                            return profile / "cookies.sqlite"
+
+            elif browser == "edge":
+                if system == "windows":
+                    return home / "AppData/Local/Microsoft/Edge/User Data/Default/Cookies"
+                elif system == "darwin":  # macOS
+                    return home / "Library/Application Support/Microsoft Edge/Default/Cookies"
+                else:  # Linux
+                    return home / ".config/microsoft-edge/Default/Cookies"
+
+        except Exception as e:
+            logger.debug(f"Error getting {browser} cookie path: {e}")
+
+        return None
+
+    def _try_extract_browser_cookies(self) -> Optional[str]:
+        """Try to extract cookies from browsers using yt-dlp's built-in functionality"""
+        try:
+            # Create a temporary cookie file
+            cookie_file = self.temp_dir / "extracted_cookies.txt"
+
+            # Try different browsers in order of preference (Brave first as it's less tracked)
+            browsers = ["brave", "chrome", "firefox", "edge"]
+
+            for browser in browsers:
+                try:
+                    logger.info(f"Attempting to extract cookies from {browser}...")
+
+                    # Use yt-dlp's cookie extraction
+                    import yt_dlp
+
+                    # Test extraction with a simple YouTube URL
+                    test_opts = {
+                        'quiet': True,
+                        'no_warnings': True,
+                        'extract_flat': True,
+                        'cookies_from_browser': (browser, None, None, None),
+                        'cookiefile': str(cookie_file),
+                    }
+
+                    with yt_dlp.YoutubeDL(test_opts) as ydl:
+                        # Try to extract info from YouTube homepage to test cookies
+                        ydl.extract_info("https://www.youtube.com", download=False)
+
+                    if cookie_file.exists() and cookie_file.stat().st_size > 0:
+                        logger.info(f"Successfully extracted cookies from {browser}")
+                        downloader_logger.info(f"Cookie extraction successful: {browser} -> {cookie_file}")
+                        return str(cookie_file)
+
+                except Exception as e:
+                    logger.debug(f"Failed to extract cookies from {browser}: {e}")
+                    continue
+
+            logger.info("Could not extract cookies from any browser")
+            return None
+
+        except Exception as e:
+            logger.warning(f"Browser cookie extraction failed: {e}")
             return None
 
     async def configure_spotdl_ffmpeg(self):
@@ -955,15 +1090,20 @@ class AudioDownloader:
 
         # Check for YouTube bot detection specifically
         if "sign in to confirm you're not a bot" in error_lower or ("cookies" in error_lower and "authentication" in error_lower):
+            cookie_status = "✅ Enabled" if hasattr(self, 'cookie_file') and self.cookie_file else "❌ Not available"
             return (
                 "🤖 **YouTube Bot Detection**\n\n"
                 "YouTube has detected automated access and is blocking downloads.\n\n"
-                "**This is a temporary issue that usually resolves automatically.**\n\n"
+                f"**Cookie Authentication:** {cookie_status}\n\n"
                 "**What you can do:**\n"
                 "• Wait 10-15 minutes and try again\n"
                 "• Try a different video\n"
-                "• The issue typically resolves within an hour\n\n"
-                "*Note: This is due to YouTube's anti-bot measures, not a problem with our bot.*"
+                "• The bot automatically tries multiple bypass strategies\n"
+                "• Issue typically resolves within an hour\n\n"
+                "**For better reliability:**\n"
+                "• Use Brave browser and visit YouTube first\n"
+                "• The bot can extract cookies automatically\n\n"
+                "*Note: This is due to YouTube's anti-bot measures. The bot uses advanced bypass techniques including browser cookies when available.*"
             )
         elif "403" in error_str or "forbidden" in error_lower:
             return (
@@ -1159,13 +1299,18 @@ class AudioDownloader:
             temp_filename = f"audio_youtube_{int(time.time())}"
             temp_filepath = self.temp_dir / temp_filename
             
-            # Enhanced anti-blocking user agents rotation with latest versions
+            # Enhanced anti-blocking user agents with Brave browser (less likely to be blocked)
             user_agents = [
+                # Brave Browser (privacy-focused, less tracked)
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                # Standard browsers as fallback
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0',
                 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:122.0) Gecko/20100101 Firefox/122.0',
+                # Mobile variants
                 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
                 'Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1'
             ]
@@ -1208,23 +1353,41 @@ class AudioDownloader:
 
                 # Additional headers to mimic real browser behavior
                 'http_headers': {
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'en-us,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'DNT': '1',
-                    'Connection': 'keep-alive',
-                    'Upgrade-Insecure-Requests': '1',
-                },
-
-                'http_headers': {
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
                     'DNT': '1',
                     'Connection': 'keep-alive',
                     'Upgrade-Insecure-Requests': '1',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1',
                 },
             }
+
+            # Add cookie support if available (most effective anti-bot measure)
+            if self.cookie_file:
+                if "cookies_from_browser" not in ydl_opts:
+                    ydl_opts['cookiefile'] = self.cookie_file
+                    logger.info(f"Using cookie file for authentication: {self.cookie_file}")
+                    downloader_logger.info(f"Cookie authentication enabled: {self.cookie_file}")
+            else:
+                # Try browser cookie extraction as fallback
+                try:
+                    # Prefer Brave browser cookies (less tracked)
+                    ydl_opts['cookies_from_browser'] = ('brave', None, None, None)
+                    logger.info("Attempting to use Brave browser cookies")
+                    downloader_logger.info("Using Brave browser cookie extraction")
+                except Exception:
+                    try:
+                        # Fallback to Chrome
+                        ydl_opts['cookies_from_browser'] = ('chrome', None, None, None)
+                        logger.info("Attempting to use Chrome browser cookies")
+                        downloader_logger.info("Using Chrome browser cookie extraction")
+                    except Exception:
+                        logger.info("No browser cookies available - using enhanced headers only")
+                        downloader_logger.info("Cookie extraction failed - using cookieless mode")
 
             # Add FFmpeg location if found (using same logic as audio_downloader_bot.py)
             if self.ffmpeg_path == "system":
@@ -1385,7 +1548,29 @@ class AudioDownloader:
 
                 # Enhanced fallback strategies to bypass bot detection
                 fallback_strategies = [
-                    # Strategy 1: iOS mobile client (often bypasses bot detection)
+                    # Strategy 1: Brave browser with cookies (most effective)
+                    {
+                        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                        'referer': 'https://www.youtube.com/',
+                        'cookies_from_browser': ('brave', None, None, None),
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['web'],
+                                'innertube_host': 'youtubei.googleapis.com',
+                            }
+                        },
+                        'sleep_interval': 5,
+                        'max_sleep_interval': 20,
+                        'http_headers': {
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                            'Accept-Language': 'en-US,en;q=0.9',
+                            'Sec-Fetch-Dest': 'document',
+                            'Sec-Fetch-Mode': 'navigate',
+                            'Sec-Fetch-Site': 'none',
+                            'Sec-Fetch-User': '?1',
+                        },
+                    },
+                    # Strategy 2: iOS mobile client (often bypasses bot detection)
                     {
                         'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
                         'referer': 'https://m.youtube.com/',
