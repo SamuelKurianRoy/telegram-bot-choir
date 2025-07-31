@@ -132,7 +132,7 @@ def ensure_user_database_structure(df):
                 elif col == 'download_preference':
                     df[col] = 'single'  # Default download behavior (single video)
                 elif col == 'download_quality':
-                    df[col] = 'medium'  # Default download quality (medium)
+                    df[col] = 'ask'  # Default download quality (ask every time)
                 elif col == 'theme_preference':
                     df[col] = 'default'
                 else:
@@ -149,7 +149,7 @@ def ensure_user_database_structure(df):
     df['game_language'] = df['game_language'].fillna('english')
     df['search_results_limit'] = df['search_results_limit'].fillna(10).astype('int64')
     df['download_preference'] = df['download_preference'].fillna('single')
-    df['download_quality'] = df['download_quality'].fillna('medium')
+    df['download_quality'] = df['download_quality'].fillna('ask')
     df['theme_preference'] = df['theme_preference'].fillna('default')
     
     return df
@@ -239,7 +239,7 @@ def add_or_update_user(user_data):
                 'game_language': 'english',
                 'search_results_limit': 10,
                 'download_preference': 'single',
-                'download_quality': 'medium',
+                'download_quality': 'ask',
                 'theme_preference': 'default'
             }
             
@@ -552,9 +552,9 @@ def get_user_download_quality(user_id):
         user_id: Telegram user ID
 
     Returns:
-        str: 'high', 'medium', 'low', or 'ask' (default: 'medium')
+        str: 'high', 'medium', 'low', or 'ask' (default: 'ask')
     """
-    return get_user_preference(user_id, 'download_quality', 'medium')
+    return get_user_preference(user_id, 'download_quality', 'ask')
 
 def update_user_download_quality(user_id, quality):
     """
