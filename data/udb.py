@@ -124,7 +124,7 @@ def ensure_user_database_structure(df):
                 if col == 'bible_language':
                     df[col] = 'malayalam'  # Default Bible language
                 elif col == 'game_language':
-                    df[col] = 'malayalam'  # Default Bible game language
+                    df[col] = 'english'  # Default Bible game language
                 elif col == 'theme_preference':
                     df[col] = 'default'
                 else:
@@ -138,7 +138,7 @@ def ensure_user_database_structure(df):
 
     # Set default values for preference columns
     df['bible_language'] = df['bible_language'].fillna('malayalam')
-    df['game_language'] = df['game_language'].fillna('malayalam')
+    df['game_language'] = df['game_language'].fillna('english')
     df['search_results_limit'] = df['search_results_limit'].fillna(10).astype('int64')
     df['theme_preference'] = df['theme_preference'].fillna('default')
     
@@ -226,7 +226,7 @@ def add_or_update_user(user_data):
                 'notes': '',
                 # Default preferences for new users
                 'bible_language': 'malayalam',
-                'game_language': 'malayalam',
+                'game_language': 'english',
                 'search_results_limit': 10,
                 'theme_preference': 'default'
             }
@@ -484,9 +484,9 @@ def get_user_game_language(user_id):
         user_id: Telegram user ID
 
     Returns:
-        str: 'malayalam' or 'english' (default: 'malayalam')
+        str: 'malayalam' or 'english' (default: 'english')
     """
-    return get_user_preference(user_id, 'game_language', 'malayalam')
+    return get_user_preference(user_id, 'game_language', 'english')
 
 def update_user_game_language(user_id, language):
     """
