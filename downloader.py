@@ -1752,271 +1752,42 @@ class AudioDownloader:
         except Exception as e:
             logger.error(f"YouTube download failed: {e}")
 
-            # Special handling for DNS resolution issues (Failed to resolve 'y')
+            # Special handling for DNS resolution issues ("Failed to resolve 'y'")
             if "Failed to resolve 'y'" in str(e) or "Name or service not known" in str(e):
-                logger.warning("DNS resolution issue detected - trying URL transformation workaround")
+                logger.warning("DNS resolution issue detected - trying download with a more robust configuration.")
                 try:
-                    # Try converting youtu.be URLs to full youtube.com format
-                    if 'youtu.be/' in url:
-                        video_id = url.split('youtu.be/')[-1].split('?')[0].split('&')[0]
-                        transformed_url = f"https://www.youtube.com/watch?v={video_id}"
-                        logger.info(f"Transforming URL: {url} -> {transformed_url}")
-
-                        # Try with minimal, robust configuration
-                        minimal_opts = {
-                            'format': 'bestaudio/best',
-                            'outtmpl': str(temp_filepath) + '.%(ext)s',
-                            'postprocessors': [{
-                                'key': 'FFmpegExtractAudio',
-                                'preferredcodec': 'mp3',
-                                'preferredquality': bitrate,
-                            }],
-                            'quiet': True,
-                            'force_ipv4': True,
-                            'socket_timeout': 30,
-                            'retries': 3,
-                            'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
-                            'extractor_args': {
-                                'youtube': {
-                                    'player_client': ['android'],
-                                }
-                            },
-                        }
-
-                        with yt_dlp.YoutubeDL(minimal_opts) as ydl:
-                            info = await asyncio.wait_for(
-                                asyncio.get_event_loop().run_in_executor(
-                                    None, lambda: ydl.extract_info(transformed_url, download=True)
-                                ),
-                                timeout=120
-                            )
-
-                        # If successful, find the downloaded file
-                        downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
-                        if downloaded_files:
-                            downloaded_file = downloaded_files[0]
-                            file_info = {
-                                'title': info.get('title', 'Unknown'),
-                                'artist': info.get('uploader', 'Unknown'),
-                                'duration': info.get('duration', 0),
-                                'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                                'platform': 'YouTube (DNS workaround)',
-                                'filename': str(downloaded_file.name)
-                            }
-                            logger.info("DNS workaround with URL transformation succeeded!")
-                            return downloaded_file, file_info
-
-                except Exception as transform_e:
-                    logger.warning(f"DNS workaround failed: {transform_e}")
-
-            # Enhanced fallback for 403 Forbidden with multiple strategies
-            if ("403" in str(e) or "Forbidden" in str(e) or "HTTP Error 403" in str(e)):
-                logger.warning("403 Forbidden detected. Trying multiple fallback strategies...")
-
-                # Enhanced fallback strategies optimized for environment
-                if self.is_streamlit_cloud:
-                    # Streamlit Cloud optimized strategies
-                    fallback_strategies = [
-                        # Strategy 1: Android mobile client (cloud-friendly)
-                        {
-                            'user_agent': 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
-                            'referer': 'https://m.youtube.com/',
-                            'extractor_args': {
-                                'youtube': {
-                                    'player_client': ['android'],
-                                    'innertube_host': 'youtubei.googleapis.com',
-                                }
-                            },
-                            'sleep_interval': 8,
-                            'max_sleep_interval': 30,
-                            'http_headers': {
-                                'Accept': '*/*',
-                                'Accept-Language': 'en-US,en;q=0.9',
-                                'X-YouTube-Client-Name': '3',
-                                'X-YouTube-Client-Version': '18.11.34',
-                            },
-                        },
-                        # Strategy 2: iOS client (often bypasses detection)
-                        {
-                            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-                            'referer': 'https://m.youtube.com/',
-                            'extractor_args': {
-                                'youtube': {
-                                    'player_client': ['ios'],
-                                    'innertube_host': 'youtubei.googleapis.com',
-                                }
-                            },
-                            'sleep_interval': 10,
-                            'max_sleep_interval': 35,
-                            'http_headers': {
-                                'Accept': '*/*',
-                                'Accept-Language': 'en-US,en;q=0.9',
-                                'X-YouTube-Client-Name': '5',
-                                'X-YouTube-Client-Version': '17.31.35',
-                            },
-                        },
-                    ]
-                else:
-                    # Local environment strategies with browser cookie support
-                    fallback_strategies = [
-                        # Strategy 1: Brave browser with cookies (most effective)
-                        {
-                            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
-                            'referer': 'https://www.youtube.com/',
-                            'cookies_from_browser': ('brave', None, None, None),
-                            'extractor_args': {
-                                'youtube': {
-                                    'player_client': ['web'],
-                                    'innertube_host': 'youtubei.googleapis.com',
-                                }
-                            },
-                            'sleep_interval': 5,
-                            'max_sleep_interval': 20,
-                            'http_headers': {
-                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                                'Accept-Language': 'en-US,en;q=0.9',
-                                'Sec-Fetch-Dest': 'document',
-                                'Sec-Fetch-Mode': 'navigate',
-                                'Sec-Fetch-Site': 'none',
-                                'Sec-Fetch-User': '?1',
-                            },
-                        },
-                    # Strategy 2: iOS mobile client (often bypasses bot detection)
-                    {
-                        'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-                        'referer': 'https://m.youtube.com/',
-                        'extractor_args': {
-                            'youtube': {
-                                'player_client': ['ios'],
-                                'innertube_host': 'youtubei.googleapis.com',
-                                'innertube_key': None,
-                            }
-                        },
-                        'sleep_interval': 8,
-                        'max_sleep_interval': 30,
-                        'http_headers': {
-                            'Accept': '*/*',
-                            'Accept-Language': 'en-US,en;q=0.9',
-                            'X-YouTube-Client-Name': '5',
-                            'X-YouTube-Client-Version': '17.31.35',
-                        },
-                    },
-                    # Strategy 2: Android TV client (different API endpoint)
-                    {
-                        'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                        'referer': 'https://www.youtube.com/',
-                        'extractor_args': {
-                            'youtube': {
-                                'player_client': ['android'],
-                                'innertube_host': 'youtubei.googleapis.com',
-                            }
-                        },
-                        'sleep_interval': 10,
-                        'max_sleep_interval': 35,
-                        'http_headers': {
-                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                            'Accept-Language': 'en-US,en;q=0.5',
-                            'X-YouTube-Client-Name': '3',
-                            'X-YouTube-Client-Version': '18.11.34',
-                        },
-                    },
-                    # Strategy 3: Web client with different headers
-                    {
-                        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'referer': 'https://www.google.com/',
-                        'extractor_args': {
-                            'youtube': {
-                                'player_client': ['web'],
-                                'innertube_host': 'youtubei.googleapis.com',
-                            }
-                        },
-                        'sleep_interval': 12,
-                        'max_sleep_interval': 40,
-                        'http_headers': {
-                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                            'Accept-Language': 'en-US,en;q=0.9',
-                            'Cache-Control': 'no-cache',
-                            'Pragma': 'no-cache',
-                        },
-                    },
-                    {
-                        'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'referer': 'https://music.youtube.com/',
-                        'extractor_args': {'youtube': {'player_client': ['web']}},
-                        'sleep_interval': 10,
-                        'max_sleep_interval': 30,
-                    }
-                ]
-
-                for i, strategy in enumerate(fallback_strategies):
-                    logger.info(f"Trying fallback strategy {i + 1}/{len(fallback_strategies)}")
-                    ydl_opts_fallback = ydl_opts.copy()
-                    ydl_opts_fallback.update(strategy)
-                    try:
-                        # Add delay before each fallback strategy
-                        if i > 0:
-                            delay = random.uniform(3, 6)
-                            logger.info(f"Waiting {delay:.1f}s before trying next strategy")
-                            await asyncio.sleep(delay)
-
-                        with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl:
-                            info = await asyncio.wait_for(
-                                asyncio.get_event_loop().run_in_executor(
-                                    None, lambda: ydl.extract_info(url, download=True)
-                                ),
-                                timeout=300
-                            )
-
-                        downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
-                        if not downloaded_files:
-                            raise FileNotFoundError("Download failed - no file found")
-
-                        downloaded_file = downloaded_files[0]
-                        file_info = {
-                            'title': info.get('title', 'Unknown'),
-                            'artist': info.get('uploader', 'Unknown'),
-                            'duration': info.get('duration', 0),
-                            'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                            'platform': f'YouTube (fallback strategy {i + 1})',
-                            'filename': str(downloaded_file.name)
-                        }
-
-                        logger.info(f"Fallback strategy {i + 1} succeeded!")
-                        return downloaded_file, file_info
-
-                    except Exception as fallback_e:
-                        logger.warning(f"Fallback strategy {i + 1} failed: {fallback_e}")
-                        if i == len(fallback_strategies) - 1:
-                            logger.error("All fallback strategies failed")
-                            downloader_logger.error(f"All YouTube fallback strategies failed: {fallback_e}")
-                        continue
-
-                # Try one more time with minimal options (last resort)
-                logger.warning("Trying minimal extraction as last resort...")
-                try:
+                    # Use a minimal, robust configuration for the retry.
+                    # This configuration is more likely to succeed in restricted network environments.
                     minimal_opts = {
-                        'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
+                        'format': 'bestaudio/best',
                         'outtmpl': str(temp_filepath) + '.%(ext)s',
-                        'quiet': False,  # Show output for debugging
-                        'no_warnings': False,
-                        'user_agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-                        'sleep_interval': 5,
+                        'postprocessors': [{
+                            'key': 'FFmpegExtractAudio',
+                            'preferredcodec': 'mp3',
+                            'preferredquality': bitrate,
+                        }],
+                        'quiet': True,
+                        'force_ipv4': True,  # Force IPv4, often helps with DNS issues
+                        'socket_timeout': 60,
+                        'retries': 3,
+                        'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36', # Mobile user agent
                         'extractor_args': {
                             'youtube': {
-                                'player_client': ['web'],
+                                'player_client': ['android'], # Use Android client
                             }
                         },
                     }
 
+                    # We use the original URL for the retry, as the issue is with the network/client config, not the URL itself.
                     with yt_dlp.YoutubeDL(minimal_opts) as ydl:
                         info = await asyncio.wait_for(
                             asyncio.get_event_loop().run_in_executor(
                                 None, lambda: ydl.extract_info(url, download=True)
                             ),
-                            timeout=180
+                            timeout=180 # 3 minute timeout for the retry
                         )
 
-                    # Find downloaded file
+                    # If successful, find the downloaded file and return
                     downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
                     if downloaded_files:
                         downloaded_file = downloaded_files[0]
@@ -2025,25 +1796,19 @@ class AudioDownloader:
                             'artist': info.get('uploader', 'Unknown'),
                             'duration': info.get('duration', 0),
                             'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                            'platform': 'YouTube (minimal)',
+                            'platform': 'YouTube (DNS workaround)',
                             'filename': str(downloaded_file.name)
                         }
-                        logger.info("Minimal extraction successful")
+                        logger.info("DNS workaround with robust configuration succeeded!")
                         return downloaded_file, file_info
-                    else:
-                        logger.error("Minimal extraction failed - no file found")
 
-                except Exception as minimal_e:
-                    logger.error(f"Minimal extraction also failed: {minimal_e}")
-
-                # Store user-friendly error message for the calling function
-                error_msg = self.get_user_friendly_error_message(str(e))
-                logger.error(f"Final download failure. User message: {error_msg}")
-                return None
-
-            # Store user-friendly error message for the calling function
+                except Exception as retry_e:
+                    logger.error(f"The robust retry attempt also failed: {retry_e}")
+                    # Fall through to the generic error message
+            
+            # Fallback for all other errors or if the retry fails
             error_msg = self.get_user_friendly_error_message(str(e))
-            logger.error(f"Download failed completely. User message: {error_msg}")
+            logger.error(f"Final download failure. User message: {error_msg}")
             return None
 
     async def download_playlist_progressive(self, url: str, quality: str, chat_id: str = None):
