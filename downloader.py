@@ -24,15 +24,12 @@ try:
 except ImportError:
     yt_dlp = None
 
+from rapidfuzz import fuzz
+
 try:
     import requests
 except ImportError:
     requests = None
-
-try:
-    from bs4 import BeautifulSoup
-except ImportError:
-    BeautifulSoup = None
 
 try:
     import tempfile
@@ -1752,42 +1749,271 @@ class AudioDownloader:
         except Exception as e:
             logger.error(f"YouTube download failed: {e}")
 
-            # Special handling for DNS resolution issues ("Failed to resolve 'y'")
+            # Special handling for DNS resolution issues (Failed to resolve 'y')
             if "Failed to resolve 'y'" in str(e) or "Name or service not known" in str(e):
-                logger.warning("DNS resolution issue detected - trying download with a more robust configuration.")
+                logger.warning("DNS resolution issue detected - trying URL transformation workaround")
                 try:
-                    # Use a minimal, robust configuration for the retry.
-                    # This configuration is more likely to succeed in restricted network environments.
-                    minimal_opts = {
-                        'format': 'bestaudio/best',
-                        'outtmpl': str(temp_filepath) + '.%(ext)s',
-                        'postprocessors': [{
-                            'key': 'FFmpegExtractAudio',
-                            'preferredcodec': 'mp3',
-                            'preferredquality': bitrate,
-                        }],
-                        'quiet': True,
-                        'force_ipv4': True,  # Force IPv4, often helps with DNS issues
-                        'socket_timeout': 60,
-                        'retries': 3,
-                        'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36', # Mobile user agent
+                    # Try converting youtu.be URLs to full youtube.com format
+                    if 'youtu.be/' in url:
+                        video_id = url.split('youtu.be/')[-1].split('?')[0].split('&')[0]
+                        transformed_url = f"https://www.youtube.com/watch?v={video_id}"
+                        logger.info(f"Transforming URL: {url} -> {transformed_url}")
+
+                        # Try with minimal, robust configuration
+                        minimal_opts = {
+                            'format': 'bestaudio/best',
+                            'outtmpl': str(temp_filepath) + '.%(ext)s',
+                            'postprocessors': [{
+                                'key': 'FFmpegExtractAudio',
+                                'preferredcodec': 'mp3',
+                                'preferredquality': bitrate,
+                            }],
+                            'quiet': True,
+                            'force_ipv4': True,
+                            'socket_timeout': 30,
+                            'retries': 3,
+                            'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
+                            'extractor_args': {
+                                'youtube': {
+                                    'player_client': ['android'],
+                                }
+                            },
+                        }
+
+                        with yt_dlp.YoutubeDL(minimal_opts) as ydl:
+                            info = await asyncio.wait_for(
+                                asyncio.get_event_loop().run_in_executor(
+                                    None, lambda: ydl.extract_info(transformed_url, download=True)
+                                ),
+                                timeout=120
+                            )
+
+                        # If successful, find the downloaded file
+                        downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
+                        if downloaded_files:
+                            downloaded_file = downloaded_files[0]
+                            file_info = {
+                                'title': info.get('title', 'Unknown'),
+                                'artist': info.get('uploader', 'Unknown'),
+                                'duration': info.get('duration', 0),
+                                'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
+                                'platform': 'YouTube (DNS workaround)',
+                                'filename': str(downloaded_file.name)
+                            }
+                            logger.info("DNS workaround with URL transformation succeeded!")
+                            return downloaded_file, file_info
+
+                except Exception as transform_e:
+                    logger.warning(f"DNS workaround failed: {transform_e}")
+
+            # Enhanced fallback for 403 Forbidden with multiple strategies
+            if ("403" in str(e) or "Forbidden" in str(e) or "HTTP Error 403" in str(e)):
+                logger.warning("403 Forbidden detected. Trying multiple fallback strategies...")
+
+                # Enhanced fallback strategies optimized for environment
+                if self.is_streamlit_cloud:
+                    # Streamlit Cloud optimized strategies
+                    fallback_strategies = [
+                        # Strategy 1: Android mobile client (cloud-friendly)
+                        {
+                            'user_agent': 'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
+                            'referer': 'https://m.youtube.com/',
+                            'extractor_args': {
+                                'youtube': {
+                                    'player_client': ['android'],
+                                    'innertube_host': 'youtubei.googleapis.com',
+                                }
+                            },
+                            'sleep_interval': 8,
+                            'max_sleep_interval': 30,
+                            'http_headers': {
+                                'Accept': '*/*',
+                                'Accept-Language': 'en-US,en;q=0.9',
+                                'X-YouTube-Client-Name': '3',
+                                'X-YouTube-Client-Version': '18.11.34',
+                            },
+                        },
+                        # Strategy 2: iOS client (often bypasses detection)
+                        {
+                            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+                            'referer': 'https://m.youtube.com/',
+                            'extractor_args': {
+                                'youtube': {
+                                    'player_client': ['ios'],
+                                    'innertube_host': 'youtubei.googleapis.com',
+                                }
+                            },
+                            'sleep_interval': 10,
+                            'max_sleep_interval': 35,
+                            'http_headers': {
+                                'Accept': '*/*',
+                                'Accept-Language': 'en-US,en;q=0.9',
+                                'X-YouTube-Client-Name': '5',
+                                'X-YouTube-Client-Version': '17.31.35',
+                            },
+                        },
+                    ]
+                else:
+                    # Local environment strategies with browser cookie support
+                    fallback_strategies = [
+                        # Strategy 1: Brave browser with cookies (most effective)
+                        {
+                            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
+                            'referer': 'https://www.youtube.com/',
+                            'cookies_from_browser': ('brave', None, None, None),
+                            'extractor_args': {
+                                'youtube': {
+                                    'player_client': ['web'],
+                                    'innertube_host': 'youtubei.googleapis.com',
+                                }
+                            },
+                            'sleep_interval': 5,
+                            'max_sleep_interval': 20,
+                            'http_headers': {
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                                'Accept-Language': 'en-US,en;q=0.9',
+                                'Sec-Fetch-Dest': 'document',
+                                'Sec-Fetch-Mode': 'navigate',
+                                'Sec-Fetch-Site': 'none',
+                                'Sec-Fetch-User': '?1',
+                            },
+                        },
+                    # Strategy 2: iOS mobile client (often bypasses bot detection)
+                    {
+                        'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+                        'referer': 'https://m.youtube.com/',
                         'extractor_args': {
                             'youtube': {
-                                'player_client': ['android'], # Use Android client
+                                'player_client': ['ios'],
+                                'innertube_host': 'youtubei.googleapis.com',
+                                'innertube_key': None,
+                            }
+                        },
+                        'sleep_interval': 8,
+                        'max_sleep_interval': 30,
+                        'http_headers': {
+                            'Accept': '*/*',
+                            'Accept-Language': 'en-US,en;q=0.9',
+                            'X-YouTube-Client-Name': '5',
+                            'X-YouTube-Client-Version': '17.31.35',
+                        },
+                    },
+                    # Strategy 2: Android TV client (different API endpoint)
+                    {
+                        'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                        'referer': 'https://www.youtube.com/',
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['android'],
+                                'innertube_host': 'youtubei.googleapis.com',
+                            }
+                        },
+                        'sleep_interval': 10,
+                        'max_sleep_interval': 35,
+                        'http_headers': {
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                            'Accept-Language': 'en-US,en;q=0.5',
+                            'X-YouTube-Client-Name': '3',
+                            'X-YouTube-Client-Version': '18.11.34',
+                        },
+                    },
+                    # Strategy 3: Web client with different headers
+                    {
+                        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'referer': 'https://www.google.com/',
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['web'],
+                                'innertube_host': 'youtubei.googleapis.com',
+                            }
+                        },
+                        'sleep_interval': 12,
+                        'max_sleep_interval': 40,
+                        'http_headers': {
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                            'Accept-Language': 'en-US,en;q=0.9',
+                            'Cache-Control': 'no-cache',
+                            'Pragma': 'no-cache',
+                        },
+                    },
+                    {
+                        'user_agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'referer': 'https://music.youtube.com/',
+                        'extractor_args': {'youtube': {'player_client': ['web']}},
+                        'sleep_interval': 10,
+                        'max_sleep_interval': 30,
+                    }
+                ]
+
+                for i, strategy in enumerate(fallback_strategies):
+                    logger.info(f"Trying fallback strategy {i + 1}/{len(fallback_strategies)}")
+                    ydl_opts_fallback = ydl_opts.copy()
+                    ydl_opts_fallback.update(strategy)
+                    try:
+                        # Add delay before each fallback strategy
+                        if i > 0:
+                            delay = random.uniform(3, 6)
+                            logger.info(f"Waiting {delay:.1f}s before trying next strategy")
+                            await asyncio.sleep(delay)
+
+                        with yt_dlp.YoutubeDL(ydl_opts_fallback) as ydl:
+                            info = await asyncio.wait_for(
+                                asyncio.get_event_loop().run_in_executor(
+                                    None, lambda: ydl.extract_info(url, download=True)
+                                ),
+                                timeout=300
+                            )
+
+                        downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
+                        if not downloaded_files:
+                            raise FileNotFoundError("Download failed - no file found")
+
+                        downloaded_file = downloaded_files[0]
+                        file_info = {
+                            'title': info.get('title', 'Unknown'),
+                            'artist': info.get('uploader', 'Unknown'),
+                            'duration': info.get('duration', 0),
+                            'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
+                            'platform': f'YouTube (fallback strategy {i + 1})',
+                            'filename': str(downloaded_file.name)
+                        }
+
+                        logger.info(f"Fallback strategy {i + 1} succeeded!")
+                        return downloaded_file, file_info
+
+                    except Exception as fallback_e:
+                        logger.warning(f"Fallback strategy {i + 1} failed: {fallback_e}")
+                        if i == len(fallback_strategies) - 1:
+                            logger.error("All fallback strategies failed")
+                            downloader_logger.error(f"All YouTube fallback strategies failed: {fallback_e}")
+                        continue
+
+                # Try one more time with minimal options (last resort)
+                logger.warning("Trying minimal extraction as last resort...")
+                try:
+                    minimal_opts = {
+                        'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
+                        'outtmpl': str(temp_filepath) + '.%(ext)s',
+                        'quiet': False,  # Show output for debugging
+                        'no_warnings': False,
+                        'user_agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+                        'sleep_interval': 5,
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['web'],
                             }
                         },
                     }
 
-                    # We use the original URL for the retry, as the issue is with the network/client config, not the URL itself.
                     with yt_dlp.YoutubeDL(minimal_opts) as ydl:
                         info = await asyncio.wait_for(
                             asyncio.get_event_loop().run_in_executor(
                                 None, lambda: ydl.extract_info(url, download=True)
                             ),
-                            timeout=180 # 3 minute timeout for the retry
+                            timeout=180
                         )
 
-                    # If successful, find the downloaded file and return
+                    # Find downloaded file
                     downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
                     if downloaded_files:
                         downloaded_file = downloaded_files[0]
@@ -1796,19 +2022,25 @@ class AudioDownloader:
                             'artist': info.get('uploader', 'Unknown'),
                             'duration': info.get('duration', 0),
                             'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
-                            'platform': 'YouTube (DNS workaround)',
+                            'platform': 'YouTube (minimal)',
                             'filename': str(downloaded_file.name)
                         }
-                        logger.info("DNS workaround with robust configuration succeeded!")
+                        logger.info("Minimal extraction successful")
                         return downloaded_file, file_info
+                    else:
+                        logger.error("Minimal extraction failed - no file found")
 
-                except Exception as retry_e:
-                    logger.error(f"The robust retry attempt also failed: {retry_e}")
-                    # Fall through to the generic error message
-            
-            # Fallback for all other errors or if the retry fails
+                except Exception as minimal_e:
+                    logger.error(f"Minimal extraction also failed: {minimal_e}")
+
+                # Store user-friendly error message for the calling function
+                error_msg = self.get_user_friendly_error_message(str(e))
+                logger.error(f"Final download failure. User message: {error_msg}")
+                return None
+
+            # Store user-friendly error message for the calling function
             error_msg = self.get_user_friendly_error_message(str(e))
-            logger.error(f"Final download failure. User message: {error_msg}")
+            logger.error(f"Download failed completely. User message: {error_msg}")
             return None
 
     async def download_playlist_progressive(self, url: str, quality: str, chat_id: str = None):
@@ -1970,24 +2202,14 @@ class AudioDownloader:
                 logger.warning(f"Failed to resume from temp files: {e}")
                 # If resume fails, fall through to fresh download
 
-        # Get metadata first to create a precise search query
-        metadata = await self.get_spotify_search_query(url)
-        
-        if not metadata or not metadata.get('title'):
-            logger.error(f"Could not extract metadata from Spotify URL: {url}. Aborting download.")
-            downloader_logger.error(f"Metadata extraction failed for {url}. Cannot proceed with spotdl.")
-            # Fallback to the manual YouTube search if metadata extraction fails
-            return await self.download_spotify_fallback(url, quality)
+        # Log the Spotify URL being processed
+        downloader_logger.info(f"Processing Spotify URL: {url}")
 
-        # Construct a precise search query
-        title = metadata['title']
-        artist = metadata.get('artist')
-        if artist:
-            search_query = f"{title} by {artist}"
-        else:
-            search_query = title
-            
-        downloader_logger.info(f"Using precise search query for spotdl: '{search_query}'")
+        # Extract and log track ID for reference
+        track_id_match = re.search(r'track/([a-zA-Z0-9]+)', url)
+        if track_id_match:
+            track_id = track_id_match.group(1)
+            downloader_logger.info(f"Spotify track ID: {track_id}")
 
         # Otherwise, proceed with fresh download
         try:
@@ -2004,22 +2226,23 @@ class AudioDownloader:
             output_dir = self.temp_dir / f"spotify_{int(time.time())}"
             output_dir.mkdir(exist_ok=True)
             
-            # Prepare spotdl command with the precise search query instead of the URL
+            # Prepare spotdl command with better output handling for Streamlit Cloud
             if self.is_streamlit_cloud:
+                # Use a simpler output pattern for Streamlit Cloud
                 spotdl_cmd = [
-                    "spotdl",
+                    "spotdl",  # Use direct command like the working version
                     "download",
-                    search_query,
+                    url,
                     "--bitrate", f"{bitrate}k",
                     "--format", "mp3",
                     "--output", str(output_dir),
-                    "--print-errors"
+                    "--print-errors"  # Show more detailed errors
                 ]
             else:
                 spotdl_cmd = [
-                    "spotdl",
+                    "spotdl",  # Use direct command like the working version
                     "download",
-                    search_query,
+                    url,
                     "--bitrate", f"{bitrate}k",
                     "--format", "mp3",
                     "--output", str(output_dir)
@@ -2254,8 +2477,8 @@ class AudioDownloader:
             logger.info(f"Searching YouTube for: {search_query}")
             downloader_logger.info(f"YouTube search query for Spotify fallback: {search_query}")
 
-            # Search YouTube for the track
-            youtube_url = await self.search_youtube(search_query)
+            # Search YouTube for the track, passing the artist name for stricter matching
+            youtube_url = await self.search_youtube(search_query, artist=artist)
             if youtube_url:
                 logger.info(f"Found YouTube alternative: {youtube_url}")
                 result = await self.download_youtube_audio(youtube_url, quality, download_playlist=False)
@@ -2349,16 +2572,15 @@ class AudioDownloader:
             logger.warning(f"Error getting Spotify metadata: {e}")
             return None
     
-    async def search_youtube(self, query: str) -> Optional[str]:
-        """Search YouTube for a track"""
+    async def search_youtube(self, query: str, artist: Optional[str] = None) -> Optional[str]:
+        """Search YouTube for a track, with stricter matching if artist is provided."""
         if not yt_dlp:
             downloader_logger.error("yt-dlp not available for YouTube search")
             return None
 
         try:
-            downloader_logger.info(f"Searching YouTube for: '{query}'")
+            downloader_logger.info(f"Searching YouTube for: '{query}' with artist context: '{artist}'")
 
-            # Enhanced search for music content with anti-blocking
             user_agents = [
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -2367,13 +2589,9 @@ class AudioDownloader:
             ydl_opts = {
                 'quiet': True,
                 'no_warnings': True,
-                'default_search': 'ytsearch5:',  # Get top 5 results for better matching
+                'default_search': 'ytsearch10:',  # Get top 10 results for better matching
                 'user_agent': random.choice(user_agents),
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': ['android', 'web'],
-                    }
-                },
+                'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -2381,55 +2599,54 @@ class AudioDownloader:
                     asyncio.get_event_loop().run_in_executor(
                         None, lambda: ydl.extract_info(query, download=False)
                     ),
-                    timeout=30
+                    timeout=45
                 )
 
-                if search_results and 'entries' in search_results and search_results['entries']:
-                    # Log all found results for debugging
-                    downloader_logger.info(f"Found {len(search_results['entries'])} YouTube results:")
-                    for i, entry in enumerate(search_results['entries'][:5]):
-                        title = entry.get('title', 'Unknown')
-                        uploader = entry.get('uploader', 'Unknown')
-                        duration = entry.get('duration', 0)
-                        url = entry.get('webpage_url', 'No URL')
-                        downloader_logger.info(f"  {i+1}. {title} by {uploader} ({duration}s) - {url}")
+            if search_results and 'entries' in search_results and search_results['entries']:
+                entries = search_results['entries']
+                downloader_logger.info(f"Found {len(entries)} YouTube results.")
 
-                    # Try to select the best music-related result
-                    selected_result = None
+                best_match = None
+                highest_score = -1
 
-                    # Look for music-related keywords in titles and uploaders
-                    music_keywords = ['official', 'music', 'audio', 'song', 'track', 'album', 'artist', 'band']
-                    non_music_keywords = ['tutorial', 'how to', 'fix', 'browser', 'chrome', 'guide', 'review', 'unboxing']
+                for entry in entries:
+                    title = entry.get('title', '').lower()
+                    uploader = entry.get('uploader', '').lower()
 
-                    for entry in search_results['entries'][:5]:
-                        title = entry.get('title', '').lower()
-                        uploader = entry.get('uploader', '').lower()
+                    # Skip clearly non-music content
+                    non_music_keywords = ['tutorial', 'how to', 'fix', 'browser', 'chrome', 'guide', 'review', 'unboxing', 'live', 'cover']
+                    if any(keyword in title for keyword in non_music_keywords):
+                        continue
 
-                        # Skip clearly non-music content
-                        if any(keyword in title for keyword in non_music_keywords):
-                            downloader_logger.info(f"Skipping non-music result: {entry.get('title', 'Unknown')}")
-                            continue
+                    score = 0
+                    if artist:
+                        # Compare uploader/channel name with the provided artist
+                        # This is a strong signal for official channels
+                        artist_score = fuzz.partial_ratio(artist.lower(), uploader)
+                        if "topic" in uploader or "records" in uploader:
+                            artist_score = max(artist_score, 85) # Boost score for "Topic" or "Records" channels
+                        
+                        # Compare title with the query
+                        title_score = fuzz.partial_ratio(query.lower(), title)
 
-                        # Prefer music-related content
-                        if any(keyword in title or keyword in uploader for keyword in music_keywords):
-                            selected_result = entry
-                            downloader_logger.info(f"Selected music-related result: {entry.get('title', 'Unknown')}")
-                            break
+                        score = (artist_score * 0.6) + (title_score * 0.4)
+                        downloader_logger.info(f"Match '{title}' by '{uploader}' - Artist Score: {artist_score}, Title Score: {title_score}, Final Score: {score}")
+                    
+                    if score > highest_score:
+                        highest_score = score
+                        best_match = entry
 
-                    # If no music-specific result found, use the first one
-                    if not selected_result:
-                        selected_result = search_results['entries'][0]
-                        downloader_logger.info(f"No music-specific result found, using first result: {selected_result.get('title', 'Unknown')}")
-
-                    selected_url = selected_result['webpage_url']
-                    selected_title = selected_result.get('title', 'Unknown')
-
-                    downloader_logger.info(f"Final selected YouTube result: {selected_title} - {selected_url}")
+                # Check if the best match is good enough
+                if best_match and highest_score > 75:
+                    selected_url = best_match['webpage_url']
+                    selected_title = best_match.get('title', 'Unknown')
+                    downloader_logger.info(f"Final selected YouTube result: '{selected_title}' with score {highest_score} - {selected_url}")
                     logger.info(f"Found YouTube alternative: {selected_title}")
-
                     return selected_url
                 else:
-                    downloader_logger.warning("No YouTube search results found")
+                    downloader_logger.warning(f"No suitable YouTube video found for '{query}' with a high enough match score. Highest score was {highest_score}.")
+            else:
+                downloader_logger.warning("No YouTube search results found")
 
             return None
 
