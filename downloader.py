@@ -30,6 +30,11 @@ except ImportError:
     requests = None
 
 try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
+
+try:
     import tempfile
     import tarfile
 except ImportError:
@@ -2200,14 +2205,24 @@ class AudioDownloader:
                 logger.warning(f"Failed to resume from temp files: {e}")
                 # If resume fails, fall through to fresh download
 
-        # Log the Spotify URL being processed
-        downloader_logger.info(f"Processing Spotify URL: {url}")
+        # Get metadata first to create a precise search query
+        metadata = await self.get_spotify_search_query(url)
+        
+        if not metadata or not metadata.get('title'):
+            logger.error(f"Could not extract metadata from Spotify URL: {url}. Aborting download.")
+            downloader_logger.error(f"Metadata extraction failed for {url}. Cannot proceed with spotdl.")
+            # Fallback to the manual YouTube search if metadata extraction fails
+            return await self.download_spotify_fallback(url, quality)
 
-        # Extract and log track ID for reference
-        track_id_match = re.search(r'track/([a-zA-Z0-9]+)', url)
-        if track_id_match:
-            track_id = track_id_match.group(1)
-            downloader_logger.info(f"Spotify track ID: {track_id}")
+        # Construct a precise search query
+        title = metadata['title']
+        artist = metadata.get('artist')
+        if artist:
+            search_query = f"{title} by {artist}"
+        else:
+            search_query = title
+            
+        downloader_logger.info(f"Using precise search query for spotdl: '{search_query}'")
 
         # Otherwise, proceed with fresh download
         try:
@@ -2224,23 +2239,22 @@ class AudioDownloader:
             output_dir = self.temp_dir / f"spotify_{int(time.time())}"
             output_dir.mkdir(exist_ok=True)
             
-            # Prepare spotdl command with better output handling for Streamlit Cloud
+            # Prepare spotdl command with the precise search query instead of the URL
             if self.is_streamlit_cloud:
-                # Use a simpler output pattern for Streamlit Cloud
                 spotdl_cmd = [
-                    "spotdl",  # Use direct command like the working version
+                    "spotdl",
                     "download",
-                    url,
+                    search_query,
                     "--bitrate", f"{bitrate}k",
                     "--format", "mp3",
                     "--output", str(output_dir),
-                    "--print-errors"  # Show more detailed errors
+                    "--print-errors"
                 ]
             else:
                 spotdl_cmd = [
-                    "spotdl",  # Use direct command like the working version
+                    "spotdl",
                     "download",
-                    url,
+                    search_query,
                     "--bitrate", f"{bitrate}k",
                     "--format", "mp3",
                     "--output", str(output_dir)
@@ -2454,26 +2468,23 @@ class AudioDownloader:
             return fallback_result
     
     async def download_spotify_fallback(self, url: str, quality: str) -> Optional[Tuple[Path, Dict]]:
-        """Fallback: search for Spotify track on YouTube using simplified approach"""
+        """Fallback: search for Spotify track on YouTube using yt-dlp."""
         try:
-            logger.info(f"Attempting Spotify fallback for URL: {url}")
+            logger.info(f"Attempting Spotify fallback for URL: {url} using manual YouTube search.")
 
-            # Extract track ID for basic search
-            track_id_match = re.search(r'track/([a-zA-Z0-9]+)', url)
-            if not track_id_match:
-                logger.error("Could not extract track ID for fallback search")
+            # Get structured metadata
+            metadata = await self.get_spotify_search_query(url)
+            if not metadata or not metadata.get('title'):
+                logger.error("Could not extract metadata for fallback search.")
                 return None
 
-            track_id = track_id_match.group(1)
-
-            # Try to get basic track info from Spotify page title
-            search_query = await self.get_spotify_search_query(url)
-            if not search_query:
-                # Fallback to generic search using track ID
-                search_query = f"spotify track {track_id[:8]}"
-                logger.warning(f"Could not extract song info from Spotify page, using generic search: {search_query}")
+            # Construct search query from metadata
+            title = metadata['title']
+            artist = metadata.get('artist')
+            if artist:
+                search_query = f"{title} {artist}"
             else:
-                logger.info(f"Extracted search query from Spotify: {search_query}")
+                search_query = title
 
             logger.info(f"Searching YouTube for: {search_query}")
             downloader_logger.info(f"YouTube search query for Spotify fallback: {search_query}")
@@ -2491,7 +2502,7 @@ class AudioDownloader:
                     file_info['original_url'] = url
                     return file_path, file_info
 
-            logger.warning("No suitable YouTube alternative found")
+            logger.warning("No suitable YouTube alternative found in fallback.")
             return None
 
         except Exception as e:
@@ -2501,13 +2512,13 @@ class AudioDownloader:
             downloader_logger.error(f"Fallback error details: {str(e)}")
             return None
 
-    async def get_spotify_search_query(self, url: str) -> Optional[str]:
-        """Get a search query from Spotify URL by fetching page title"""
+    async def get_spotify_search_query(self, url: str) -> Optional[Dict[str, str]]:
+        """Get a search query from Spotify URL by fetching page metadata."""
         try:
-            downloader_logger.info(f"Attempting to extract search query from Spotify URL: {url}")
+            downloader_logger.info(f"Attempting to extract metadata from Spotify URL: {url}")
 
-            if not requests:
-                downloader_logger.error("Requests library not available")
+            if not requests or not BeautifulSoup:
+                downloader_logger.error("Required libraries (requests or BeautifulSoup) not available")
                 return None
 
             headers = {
@@ -2525,57 +2536,52 @@ class AudioDownloader:
             downloader_logger.info(f"Spotify page response status: {response.status_code}")
 
             if response.status_code == 200:
-                html = response.text
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                og_title_tag = soup.find('meta', property='og:title')
+                
+                if og_title_tag and og_title_tag.get('content'):
+                    og_title = og_title_tag.get('content')
+                    downloader_logger.info(f"Found og:title: '{og_title}'")
+                    
+                    # Parsing logic for "Song Title - song by Artist Name" or "Song Title - by Artist Name"
+                    parts = og_title.split(' - ')
+                    if len(parts) >= 2:
+                        title = parts[0].strip()
+                        # The rest of the string is likely the artist part
+                        artist_part = ' - '.join(parts[1:]).strip()
+                        
+                        # Clean up common patterns like "- song by Artist" or "- by Artist"
+                        artist_part = re.sub(r'^(song by|by)\s+', '', artist_part, flags=re.IGNORECASE)
+                        
+                        artist = artist_part.strip()
 
-                # Try multiple methods to extract song information
-                search_query = None
+                        if title and artist:
+                            logger.info(f"Successfully extracted metadata: title='{title}', artist='{artist}'")
+                            downloader_logger.info(f"Cleaned metadata: title='{title}', artist='{artist}'")
+                            return {'title': title, 'artist': artist}
 
-                # Method 1: Extract from meta tags (more reliable)
-                meta_patterns = [
-                    r'<meta property="og:title" content="([^"]+)"',
-                    r'<meta name="twitter:title" content="([^"]+)"',
-                    r'<meta property="music:song" content="([^"]+)"',
-                ]
+                # Fallback to just using the page title if og:title fails
+                if soup.title and soup.title.string:
+                    page_title = soup.title.string
+                    search_query = re.sub(r'\s*[\|\-]\s*Spotify.*$', '', page_title, flags=re.IGNORECASE).strip()
+                    logger.info(f"Fallback to page title, attempting to parse: {search_query}")
+                    
+                    parts = search_query.split(' - ')
+                    if len(parts) >= 2:
+                        title = parts[0].strip()
+                        artist = parts[1].strip()
+                        return {'title': title, 'artist': artist}
+                    else:
+                        # Cannot reliably determine artist and title from this fallback
+                        return {'title': search_query, 'artist': None}
 
-                for pattern in meta_patterns:
-                    meta_match = re.search(pattern, html, re.IGNORECASE)
-                    if meta_match:
-                        search_query = meta_match.group(1)
-                        downloader_logger.info(f"Found song info in meta tags: {search_query}")
-                        break
-
-                # Method 2: Extract from page title (fallback)
-                if not search_query:
-                    title_match = re.search(r'<title[^>]*>([^<]+)</title>', html)
-                    if title_match:
-                        search_query = title_match.group(1)
-                        downloader_logger.info(f"Found song info in page title: {search_query}")
-
-                if search_query:
-                    # Clean up the extracted text
-                    # Remove " | Spotify", " - Spotify", etc.
-                    search_query = re.sub(r'\s*[\|\-]\s*Spotify.*$', '', search_query, flags=re.IGNORECASE)
-
-                    # Remove common unwanted patterns
-                    search_query = re.sub(r'\([^)]*(?:official|video|lyrics|audio|music|mv|explicit)\)', '', search_query, flags=re.IGNORECASE)
-                    search_query = re.sub(r'\[[^\]]*(?:official|video|lyrics|audio|music|mv|explicit)\]', '', search_query, flags=re.IGNORECASE)
-
-                    # Clean up extra spaces and special characters
-                    search_query = ' '.join(search_query.split())
-                    search_query = search_query.strip()
-
-                    downloader_logger.info(f"Cleaned search query: {search_query}")
-
-                    if search_query and search_query.lower() not in ['spotify', 'music', 'song']:
-                        logger.info(f"Successfully extracted search query: {search_query}")
-                        return search_query
-
-            downloader_logger.warning("Could not extract title from Spotify page")
+            downloader_logger.warning("Could not extract metadata from Spotify page")
             return None
 
         except Exception as e:
-            downloader_logger.error(f"Error getting Spotify search query: {e}")
-            logger.warning(f"Error getting Spotify search query: {e}")
+            downloader_logger.error(f"Error getting Spotify metadata: {e}")
+            logger.warning(f"Error getting Spotify metadata: {e}")
             return None
     
     async def search_youtube(self, query: str) -> Optional[str]:
