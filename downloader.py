@@ -24,14 +24,10 @@ try:
 except ImportError:
     yt_dlp = None
 
-from rapidfuzz import fuzz
-
 try:
     import requests
-    from bs4 import BeautifulSoup
 except ImportError:
     requests = None
-    BeautifulSoup = None
 
 try:
     import tempfile
@@ -2106,55 +2102,384 @@ class AudioDownloader:
             downloader_logger.error(f"Progressive playlist download failed: {e}")
 
     async def download_spotify_audio(self, url: str, quality: str, chat_id: str = None) -> Optional[Tuple[Path, Dict]]:
-        """
-        Download Spotify audio by scraping metadata, searching on YouTube, and then downloading.
-        This avoids using `spotdl` for the download process itself.
-        """
-        try:
-            logger.info(f"Starting Spotify download process for URL: {url}")
-            downloader_logger.info(f"Processing Spotify URL with new method: {url}")
+        """Download Spotify audio using spotdl with Streamlit Cloud optimizations and checkpoint/resume support."""
+        import hashlib
+        import json
+        from datetime import datetime, timedelta
+        import shutil
 
-            # Use the robust fallback method as the primary logic
+        def get_track_id(url):
+            return hashlib.md5(url.encode()).hexdigest()[:12]
+
+        def get_temp_paths(chat_id, track_id):
+            base = Path(self.temp_dir)
+            audio = base / f"{chat_id}_{track_id}.mp3"
+            meta = base / f"{chat_id}_{track_id}.json"
+            return audio, meta
+
+        def cleanup_old_temp_files():
+            now = datetime.now()
+            for f in Path(self.temp_dir).glob("*"):
+                if f.is_file() and f.suffix in {'.mp3', '.json'}:
+                    mtime = datetime.fromtimestamp(f.stat().st_mtime)
+                    if now - mtime > timedelta(hours=24):
+                        try:
+                            f.unlink()
+                        except Exception as e:
+                            logger.warning(f"Failed to delete old temp file {f}: {e}")
+
+        # Clean up old temp files
+        cleanup_old_temp_files()
+
+        track_id = get_track_id(url)
+        if not chat_id:
+            chat_id = 'default'
+        audio_path, meta_path = get_temp_paths(chat_id, track_id)
+
+        # Check for existing audio and metadata
+        if audio_path.exists() and meta_path.exists():
+            try:
+                with open(meta_path, 'r', encoding='utf-8') as f:
+                    info = json.load(f)
+                logger.info(f"Resuming: found audio and metadata for {audio_path}")
+                # Try to embed metadata if not already present
+                try:
+                    from mutagen.id3 import ID3, TIT2, TPE1, TALB, APIC, error
+                    from mutagen.mp3 import MP3
+                    import requests
+                    audio = MP3(audio_path, ID3=ID3)
+                    try:
+                        audio.add_tags()
+                    except error:
+                        pass
+                    tags = audio.tags
+                    tags.delall('TIT2')
+                    tags.add(TIT2(encoding=3, text=info.get('title', 'Unknown')))
+                    tags.delall('TPE1')
+                    tags.add(TPE1(encoding=3, text=info.get('artist', 'Unknown')))
+                    tags.delall('TALB')
+                    tags.add(TALB(encoding=3, text=info.get('album', 'Spotify')))
+                    thumbnail_url = info.get('thumbnail')
+                    if thumbnail_url:
+                        try:
+                            response = requests.get(thumbnail_url)
+                            if response.status_code == 200:
+                                tags.delall('APIC')
+                                tags.add(
+                                    APIC(
+                                        encoding=3,
+                                        mime='image/jpeg',
+                                        type=3,
+                                        desc='Cover',
+                                        data=response.content
+                                    )
+                                )
+                                logger.info(f"Embedded cover art from {thumbnail_url}")
+                        except Exception as thumb_e:
+                            logger.warning(f"Exception downloading or embedding thumbnail: {thumb_e}")
+                    audio.save()
+                    logger.info(f"Metadata and cover art embedded for {audio_path}")
+                except Exception as meta_e:
+                    logger.warning(f"Failed to robustly embed metadata or cover art: {meta_e}")
+                file_info = {
+                    'title': info.get('title', 'Unknown'),
+                    'artist': info.get('artist', 'Unknown'),
+                    'duration': info.get('duration', 0),
+                    'size_mb': audio_path.stat().st_size / (1024 * 1024),
+                    'platform': 'Spotify',
+                    'filename': str(audio_path.name)
+                }
+                # Delete temp files after successful resume
+                try:
+                    audio_path.unlink()
+                    meta_path.unlink()
+                except Exception as cleanup_e:
+                    logger.warning(f"Failed to delete temp files after resume: {cleanup_e}")
+                return audio_path, file_info
+            except Exception as e:
+                logger.warning(f"Failed to resume from temp files: {e}")
+                # If resume fails, fall through to fresh download
+
+        # Log the Spotify URL being processed
+        downloader_logger.info(f"Processing Spotify URL: {url}")
+
+        # Extract and log track ID for reference
+        track_id_match = re.search(r'track/([a-zA-Z0-9]+)', url)
+        if track_id_match:
+            track_id = track_id_match.group(1)
+            downloader_logger.info(f"Spotify track ID: {track_id}")
+
+        # Otherwise, proceed with fresh download
+        try:
+            # Quality mapping
+            quality_map = {
+                "high": "320",
+                "medium": "192",
+                "low": "128"
+            }
+
+            bitrate = quality_map.get(quality, "192")
+
+            # Generate unique output directory
+            output_dir = self.temp_dir / f"spotify_{int(time.time())}"
+            output_dir.mkdir(exist_ok=True)
+            
+            # Prepare spotdl command with better output handling for Streamlit Cloud
+            if self.is_streamlit_cloud:
+                # Use a simpler output pattern for Streamlit Cloud
+                spotdl_cmd = [
+                    "spotdl",  # Use direct command like the working version
+                    "download",
+                    url,
+                    "--bitrate", f"{bitrate}k",
+                    "--format", "mp3",
+                    "--output", str(output_dir),
+                    "--print-errors"  # Show more detailed errors
+                ]
+            else:
+                spotdl_cmd = [
+                    "spotdl",  # Use direct command like the working version
+                    "download",
+                    url,
+                    "--bitrate", f"{bitrate}k",
+                    "--format", "mp3",
+                    "--output", str(output_dir)
+                ]
+
+            # Add FFmpeg path explicitly for spotdl (using same logic as audio_downloader_bot.py)
+            if self.ffmpeg_path == "system":
+                # For system FFmpeg, let spotdl find it automatically
+                logger.info("Using system FFmpeg for spotdl")
+            elif self.ffmpeg_path:
+                # For local FFmpeg, specify the path explicitly
+                system = platform.system().lower()
+                if system == "windows":
+                    ffmpeg_exe = Path(self.ffmpeg_path) / "ffmpeg.exe"
+                else:
+                    ffmpeg_exe = Path(self.ffmpeg_path) / "ffmpeg"
+
+                if ffmpeg_exe.exists():
+                    spotdl_cmd.extend(["--ffmpeg", str(ffmpeg_exe)])
+                    logger.info(f"Using local FFmpeg for spotdl: {ffmpeg_exe}")
+                else:
+                    logger.warning(f"FFmpeg not found at expected path: {ffmpeg_exe}")
+            else:
+                logger.warning("No FFmpeg configured - spotdl may fail")
+            
+            # Run spotdl with timeout (shorter timeout for Streamlit Cloud)
+            logger.info(f"Running spotdl command: {' '.join(spotdl_cmd)}")
+            logger.info(f"Working directory: {output_dir}")
+            logger.info(f"FFmpeg path configured: {self.ffmpeg_path}")
+            logger.info(f"Streamlit Cloud mode: {self.is_streamlit_cloud}")
+
+            downloader_logger.info(f"Starting spotdl download for URL: {url}")
+            downloader_logger.info(f"Command: {' '.join(spotdl_cmd)}")
+            downloader_logger.info(f"Quality: {bitrate}k, Format: mp3")
+
+            # Check if output directory exists and is writable
+            if not output_dir.exists():
+                logger.error(f"Output directory does not exist: {output_dir}")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Created output directory: {output_dir}")
+
+            # Adjust timeouts for Streamlit Cloud
+            if self.is_streamlit_cloud:
+                process_timeout = 180  # 3 minutes for Streamlit Cloud
+                async_timeout = 200    # 3.3 minutes
+            else:
+                process_timeout = 300  # 5 minutes for local
+                async_timeout = 320    # 5.3 minutes
+
+            result = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: sp.run(
+                        spotdl_cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=process_timeout,
+                        cwd=str(output_dir)
+                    )
+                ),
+                timeout=async_timeout
+            )
+
+            # Log detailed output for debugging
+            logger.info(f"spotdl exit code: {result.returncode}")
+            downloader_logger.info(f"spotdl command completed with exit code: {result.returncode}")
+
+            if result.stdout:
+                logger.info(f"spotdl stdout: {result.stdout}")
+                downloader_logger.info(f"spotdl stdout: {result.stdout}")
+
+                # Try to extract track info from spotdl output
+                if "Found" in result.stdout and "by" in result.stdout:
+                    downloader_logger.info(f"spotdl found track info in output: {result.stdout}")
+
+            if result.stderr:
+                logger.error(f"spotdl stderr: {result.stderr}")
+                downloader_logger.error(f"spotdl stderr: {result.stderr}")
+
+            # Check what files were created in the output directory
+            created_files = list(output_dir.glob("*"))
+            logger.info(f"Files in output directory after spotdl: {[f.name for f in created_files]}")
+
+            if result.returncode != 0:
+                logger.error(f"spotdl failed with exit code {result.returncode}")
+                downloader_logger.error(f"spotdl FAILED - Exit code: {result.returncode}")
+                downloader_logger.error(f"Command: {' '.join(spotdl_cmd)}")
+                downloader_logger.error(f"Working directory: {output_dir}")
+                downloader_logger.error(f"stdout: {result.stdout}")
+                downloader_logger.error(f"stderr: {result.stderr}")
+
+                logger.error(f"Command: {' '.join(spotdl_cmd)}")
+                logger.error(f"Working directory: {output_dir}")
+
+                # Check if it's an FFmpeg-related error
+                if result.stderr and ("ffmpeg" in result.stderr.lower() or "code -11" in result.stderr):
+                    logger.error("FFmpeg-related error detected. Running diagnostics...")
+                    downloader_logger.error("FFmpeg-related error detected in spotdl output")
+
+                    # Run FFmpeg diagnostics
+                    diagnosis = await self.diagnose_ffmpeg_issue()
+                    logger.error(f"FFmpeg diagnosis: {diagnosis['status']} - {diagnosis['issue']}")
+                    logger.error(f"Recommendation: {diagnosis['recommendation']}")
+                    downloader_logger.error(f"FFmpeg diagnosis: {diagnosis}")
+
+                    for detail in diagnosis['details']:
+                        logger.info(f"Diagnosis detail: {detail}")
+
+                # Try fallback to YouTube search
+                logger.info("Attempting fallback to YouTube search")
+                downloader_logger.info(f"STARTING FALLBACK - Spotify URL: {url}")
+                return await self.download_spotify_fallback(url, quality)
+            
+            # Find downloaded file - check for various audio formats recursively
+            audio_extensions = ["*.mp3", "*.m4a", "*.webm", "*.ogg", "*.wav"]
+            downloaded_files = []
+
+            # First check the main directory
+            for ext in audio_extensions:
+                files = list(output_dir.glob(ext))
+                downloaded_files.extend(files)
+                logger.info(f"Found {len(files)} files with extension {ext} in main directory")
+
+            # Then check ALL subdirectories recursively (spotdl creates nested dirs)
+            for ext in audio_extensions:
+                recursive_files = list(output_dir.rglob(ext))  # rglob searches recursively
+                # Filter out files already found in main directory
+                new_files = [f for f in recursive_files if f not in downloaded_files]
+                downloaded_files.extend(new_files)
+                logger.info(f"Found {len(new_files)} additional files with extension {ext} in subdirectories")
+
+            logger.info(f"Total downloaded files found: {len(downloaded_files)}")
+            for file in downloaded_files:
+                logger.info(f"Downloaded file: {file} (size: {file.stat().st_size} bytes)")
+                downloader_logger.info(f"Downloaded file: {file} (size: {file.stat().st_size} bytes)")
+
+            if not downloaded_files:
+                # List all files in output directory for debugging
+                all_files = list(output_dir.rglob("*"))
+                logger.error(f"No audio files found. All files in output directory:")
+                downloader_logger.error(f"No audio files found. All files in output directory:")
+                for file in all_files:
+                    if file.is_file():
+                        logger.error(f"  {file} (size: {file.stat().st_size} bytes)")
+                        downloader_logger.error(f"  {file} (size: {file.stat().st_size} bytes)")
+                raise FileNotFoundError("Download failed - no audio file found")
+            
+            # Use the first (and hopefully only) downloaded file
+            downloaded_file = downloaded_files[0]
+            filename = downloaded_file.stem
+            file_extension = downloaded_file.suffix
+
+            logger.info(f"Processing downloaded file: {downloaded_file}")
+            logger.info(f"File extension: {file_extension}")
+
+            # If the file is not MP3, we might need to convert it or just use it as-is
+            if file_extension.lower() != '.mp3':
+                logger.warning(f"Downloaded file is {file_extension}, not MP3. Using as-is.")
+
+            # Parse artist and title from filename
+            if " - " in filename:
+                parts = filename.split(" - ", 1)
+                artist = parts[0].strip()
+                title = parts[1].strip()
+            else:
+                title = filename
+                artist = "Unknown Artist"
+
+            # After finding and processing the downloaded file:
+            # Save metadata
+            info = {
+                'title': title,
+                'artist': artist,
+                'duration': 0,
+                'album': 'Spotify',
+                'thumbnail': None,  # You can add thumbnail extraction if available
+            }
+            with open(meta_path, 'w', encoding='utf-8') as f:
+                json.dump(info, f)
+            # Copy audio to temp path
+            shutil.copy(str(downloaded_file), str(audio_path))
+            # Delete temp files after successful download
+            try:
+                audio_path.unlink()
+                meta_path.unlink()
+            except Exception as cleanup_e:
+                logger.warning(f"Failed to delete temp files after download: {cleanup_e}")
+            file_info = {
+                'title': title,
+                'artist': artist,
+                'duration': 0,
+                'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
+                'platform': 'Spotify',
+                'filename': str(downloaded_file.name)
+            }
+            return downloaded_file, file_info
+        except Exception as e:
+            logger.error(f"Spotify download failed: {e}")
+            downloader_logger.error(f"Spotify download failed for URL {url}: {e}")
+            downloader_logger.error(f"Error type: {type(e).__name__}")
+            downloader_logger.error(f"Error details: {str(e)}")
+
+            # Try fallback
+            logger.info("Attempting Spotify fallback via YouTube search...")
             fallback_result = await self.download_spotify_fallback(url, quality)
 
-            if fallback_result:
-                logger.info("Spotify download successful via YouTube fallback.")
-                downloader_logger.info("Spotify download successful via YouTube fallback.")
-                return fallback_result
-            else:
-                logger.error("Spotify download failed using the new method.")
-                downloader_logger.error("The primary Spotify download method (via YouTube fallback) failed.")
-                return None
+            if fallback_result is None:
+                logger.error("Both Spotify direct download and YouTube fallback failed")
+                downloader_logger.error("Both Spotify direct download and YouTube fallback failed")
 
-        except Exception as e:
-            logger.error(f"An unexpected error occurred in download_spotify_audio: {e}")
-            downloader_logger.error(f"Critical error in download_spotify_audio for URL {url}: {e}")
-            return None
+            return fallback_result
     
     async def download_spotify_fallback(self, url: str, quality: str) -> Optional[Tuple[Path, Dict]]:
-        """Fallback: search for Spotify track on YouTube using yt-dlp."""
+        """Fallback: search for Spotify track on YouTube using simplified approach"""
         try:
-            logger.info(f"Attempting Spotify fallback for URL: {url} using manual YouTube search.")
+            logger.info(f"Attempting Spotify fallback for URL: {url}")
 
-            # Get structured metadata
-            metadata = await self.get_spotify_search_query(url)
-            if not metadata or not metadata.get('title'):
-                logger.error("Could not extract metadata for fallback search.")
+            # Extract track ID for basic search
+            track_id_match = re.search(r'track/([a-zA-Z0-9]+)', url)
+            if not track_id_match:
+                logger.error("Could not extract track ID for fallback search")
                 return None
 
-            # Construct search query from metadata
-            title = metadata['title']
-            artist = metadata.get('artist')
-            if artist:
-                search_query = f"{title} {artist}"
+            track_id = track_id_match.group(1)
+
+            # Try to get basic track info from Spotify page title
+            search_query = await self.get_spotify_search_query(url)
+            if not search_query:
+                # Fallback to generic search using track ID
+                search_query = f"spotify track {track_id[:8]}"
+                logger.warning(f"Could not extract song info from Spotify page, using generic search: {search_query}")
             else:
-                search_query = title
+                logger.info(f"Extracted search query from Spotify: {search_query}")
 
             logger.info(f"Searching YouTube for: {search_query}")
             downloader_logger.info(f"YouTube search query for Spotify fallback: {search_query}")
 
-            # Search YouTube for the track, passing the artist name for stricter matching
-            youtube_url = await self.search_youtube(search_query, artist=artist)
+            # Search YouTube for the track
+            youtube_url = await self.search_youtube(search_query)
             if youtube_url:
                 logger.info(f"Found YouTube alternative: {youtube_url}")
                 result = await self.download_youtube_audio(youtube_url, quality, download_playlist=False)
@@ -2166,7 +2491,7 @@ class AudioDownloader:
                     file_info['original_url'] = url
                     return file_path, file_info
 
-            logger.warning("No suitable YouTube alternative found in fallback.")
+            logger.warning("No suitable YouTube alternative found")
             return None
 
         except Exception as e:
@@ -2176,13 +2501,13 @@ class AudioDownloader:
             downloader_logger.error(f"Fallback error details: {str(e)}")
             return None
 
-    async def get_spotify_search_query(self, url: str) -> Optional[Dict[str, str]]:
-        """Get a search query from Spotify URL by fetching page metadata."""
+    async def get_spotify_search_query(self, url: str) -> Optional[str]:
+        """Get a search query from Spotify URL by fetching page title"""
         try:
-            downloader_logger.info(f"Attempting to extract metadata from Spotify URL: {url}")
+            downloader_logger.info(f"Attempting to extract search query from Spotify URL: {url}")
 
-            if not requests or not BeautifulSoup:
-                downloader_logger.error("Required libraries (requests or BeautifulSoup) not available")
+            if not requests:
+                downloader_logger.error("Requests library not available")
                 return None
 
             headers = {
@@ -2200,64 +2525,69 @@ class AudioDownloader:
             downloader_logger.info(f"Spotify page response status: {response.status_code}")
 
             if response.status_code == 200:
-                downloader_logger.info(f"Spotify page content: {response.text}")
-                soup = BeautifulSoup(response.text, 'html.parser')
-                
-                og_title_tag = soup.find('meta', property='og:title')
-                
-                if og_title_tag and og_title_tag.get('content'):
-                    og_title = og_title_tag.get('content')
-                    downloader_logger.info(f"Found og:title: '{og_title}'")
-                    
-                    # Parsing logic for "Song Title - song by Artist Name" or "Song Title - by Artist Name"
-                    parts = og_title.split(' - ')
-                    if len(parts) >= 2:
-                        title = parts[0].strip()
-                        # The rest of the string is likely the artist part
-                        artist_part = ' - '.join(parts[1:]).strip()
-                        
-                        # Clean up common patterns like "- song by Artist" or "- by Artist"
-                        artist_part = re.sub(r'^(song by|by)\s+', '', artist_part, flags=re.IGNORECASE)
-                        
-                        artist = artist_part.strip()
+                html = response.text
 
-                        if title and artist:
-                            logger.info(f"Successfully extracted metadata: title='{title}', artist='{artist}'")
-                            downloader_logger.info(f"Cleaned metadata: title='{title}', artist='{artist}'")
-                            return {'title': title, 'artist': artist}
+                # Try multiple methods to extract song information
+                search_query = None
 
-                # Fallback to just using the page title if og:title fails
-                if soup.title and soup.title.string:
-                    page_title = soup.title.string
-                    search_query = re.sub(r'\s*[\|\-]\s*Spotify.*$', '', page_title, flags=re.IGNORECASE).strip()
-                    logger.info(f"Fallback to page title, attempting to parse: {search_query}")
-                    
-                    parts = search_query.split(' - ')
-                    if len(parts) >= 2:
-                        title = parts[0].strip()
-                        artist = parts[1].strip()
-                        return {'title': title, 'artist': artist}
-                    else:
-                        # Cannot reliably determine artist and title from this fallback
-                        return {'title': search_query, 'artist': None}
+                # Method 1: Extract from meta tags (more reliable)
+                meta_patterns = [
+                    r'<meta property="og:title" content="([^"]+)"',
+                    r'<meta name="twitter:title" content="([^"]+)"',
+                    r'<meta property="music:song" content="([^"]+)"',
+                ]
 
-            downloader_logger.warning("Could not extract metadata from Spotify page")
+                for pattern in meta_patterns:
+                    meta_match = re.search(pattern, html, re.IGNORECASE)
+                    if meta_match:
+                        search_query = meta_match.group(1)
+                        downloader_logger.info(f"Found song info in meta tags: {search_query}")
+                        break
+
+                # Method 2: Extract from page title (fallback)
+                if not search_query:
+                    title_match = re.search(r'<title[^>]*>([^<]+)</title>', html)
+                    if title_match:
+                        search_query = title_match.group(1)
+                        downloader_logger.info(f"Found song info in page title: {search_query}")
+
+                if search_query:
+                    # Clean up the extracted text
+                    # Remove " | Spotify", " - Spotify", etc.
+                    search_query = re.sub(r'\s*[\|\-]\s*Spotify.*$', '', search_query, flags=re.IGNORECASE)
+
+                    # Remove common unwanted patterns
+                    search_query = re.sub(r'\([^)]*(?:official|video|lyrics|audio|music|mv|explicit)\)', '', search_query, flags=re.IGNORECASE)
+                    search_query = re.sub(r'\[[^\]]*(?:official|video|lyrics|audio|music|mv|explicit)\]', '', search_query, flags=re.IGNORECASE)
+
+                    # Clean up extra spaces and special characters
+                    search_query = ' '.join(search_query.split())
+                    search_query = search_query.strip()
+
+                    downloader_logger.info(f"Cleaned search query: {search_query}")
+
+                    if search_query and search_query.lower() not in ['spotify', 'music', 'song']:
+                        logger.info(f"Successfully extracted search query: {search_query}")
+                        return search_query
+
+            downloader_logger.warning("Could not extract title from Spotify page")
             return None
 
         except Exception as e:
-            downloader_logger.error(f"Error getting Spotify metadata: {e}")
-            logger.warning(f"Error getting Spotify metadata: {e}")
+            downloader_logger.error(f"Error getting Spotify search query: {e}")
+            logger.warning(f"Error getting Spotify search query: {e}")
             return None
     
-    async def search_youtube(self, query: str, artist: Optional[str] = None) -> Optional[str]:
-        """Search YouTube for a track, with stricter matching if artist is provided."""
+    async def search_youtube(self, query: str) -> Optional[str]:
+        """Search YouTube for a track"""
         if not yt_dlp:
             downloader_logger.error("yt-dlp not available for YouTube search")
             return None
 
         try:
-            downloader_logger.info(f"Searching YouTube for: '{query}' with artist context: '{artist}'")
+            downloader_logger.info(f"Searching YouTube for: '{query}'")
 
+            # Enhanced search for music content with anti-blocking
             user_agents = [
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -2266,9 +2596,13 @@ class AudioDownloader:
             ydl_opts = {
                 'quiet': True,
                 'no_warnings': True,
-                'default_search': 'ytsearch10:',  # Get top 10 results for better matching
+                'default_search': 'ytsearch5:',  # Get top 5 results for better matching
                 'user_agent': random.choice(user_agents),
-                'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android', 'web'],
+                    }
+                },
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -2276,55 +2610,55 @@ class AudioDownloader:
                     asyncio.get_event_loop().run_in_executor(
                         None, lambda: ydl.extract_info(query, download=False)
                     ),
-                    timeout=45
+                    timeout=30
                 )
 
-            if search_results and 'entries' in search_results and search_results['entries']:
-                entries = search_results['entries']
-                downloader_logger.info(f"Found {len(entries)} YouTube results.")
-                downloader_logger.info(f"YouTube search results: {entries}")
+                if search_results and 'entries' in search_results and search_results['entries']:
+                    # Log all found results for debugging
+                    downloader_logger.info(f"Found {len(search_results['entries'])} YouTube results:")
+                    for i, entry in enumerate(search_results['entries'][:5]):
+                        title = entry.get('title', 'Unknown')
+                        uploader = entry.get('uploader', 'Unknown')
+                        duration = entry.get('duration', 0)
+                        url = entry.get('webpage_url', 'No URL')
+                        downloader_logger.info(f"  {i+1}. {title} by {uploader} ({duration}s) - {url}")
 
-                best_match = None
-                highest_score = -1
+                    # Try to select the best music-related result
+                    selected_result = None
 
-                for entry in entries:
-                    title = entry.get('title', '').lower()
-                    uploader = entry.get('uploader', '').lower()
+                    # Look for music-related keywords in titles and uploaders
+                    music_keywords = ['official', 'music', 'audio', 'song', 'track', 'album', 'artist', 'band']
+                    non_music_keywords = ['tutorial', 'how to', 'fix', 'browser', 'chrome', 'guide', 'review', 'unboxing']
 
-                    # Skip clearly non-music content
-                    non_music_keywords = ['tutorial', 'how to', 'fix', 'browser', 'chrome', 'guide', 'review', 'unboxing', 'live', 'cover']
-                    if any(keyword in title for keyword in non_music_keywords):
-                        continue
+                    for entry in search_results['entries'][:5]:
+                        title = entry.get('title', '').lower()
+                        uploader = entry.get('uploader', '').lower()
 
-                    score = 0
-                    if artist:
-                        # Compare uploader/channel name with the provided artist
-                        # This is a strong signal for official channels
-                        artist_score = fuzz.partial_ratio(artist.lower(), uploader)
-                        if "topic" in uploader or "records" in uploader:
-                            artist_score = max(artist_score, 85) # Boost score for "Topic" or "Records" channels
-                        
-                        # Compare title with the query
-                        title_score = fuzz.partial_ratio(query.lower(), title)
+                        # Skip clearly non-music content
+                        if any(keyword in title for keyword in non_music_keywords):
+                            downloader_logger.info(f"Skipping non-music result: {entry.get('title', 'Unknown')}")
+                            continue
 
-                        score = (artist_score * 0.6) + (title_score * 0.4)
-                        downloader_logger.info(f"Match '{title}' by '{uploader}' - Artist Score: {artist_score}, Title Score: {title_score}, Final Score: {score}")
-                    
-                    if score > highest_score:
-                        highest_score = score
-                        best_match = entry
+                        # Prefer music-related content
+                        if any(keyword in title or keyword in uploader for keyword in music_keywords):
+                            selected_result = entry
+                            downloader_logger.info(f"Selected music-related result: {entry.get('title', 'Unknown')}")
+                            break
 
-                # Check if the best match is good enough
-                if best_match and highest_score > 75:
-                    selected_url = best_match['webpage_url']
-                    selected_title = best_match.get('title', 'Unknown')
-                    downloader_logger.info(f"Final selected YouTube result: '{selected_title}' with score {highest_score} - {selected_url}")
+                    # If no music-specific result found, use the first one
+                    if not selected_result:
+                        selected_result = search_results['entries'][0]
+                        downloader_logger.info(f"No music-specific result found, using first result: {selected_result.get('title', 'Unknown')}")
+
+                    selected_url = selected_result['webpage_url']
+                    selected_title = selected_result.get('title', 'Unknown')
+
+                    downloader_logger.info(f"Final selected YouTube result: {selected_title} - {selected_url}")
                     logger.info(f"Found YouTube alternative: {selected_title}")
+
                     return selected_url
                 else:
-                    downloader_logger.warning(f"No suitable YouTube video found for '{query}' with a high enough match score. Highest score was {highest_score}.")
-            else:
-                downloader_logger.warning("No YouTube search results found")
+                    downloader_logger.warning("No YouTube search results found")
 
             return None
 
