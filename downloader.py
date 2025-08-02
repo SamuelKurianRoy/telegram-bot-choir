@@ -2200,6 +2200,7 @@ class AudioDownloader:
             downloader_logger.info(f"Spotify page response status: {response.status_code}")
 
             if response.status_code == 200:
+                downloader_logger.info(f"Spotify page content: {response.text}")
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
                 og_title_tag = soup.find('meta', property='og:title')
@@ -2281,6 +2282,7 @@ class AudioDownloader:
             if search_results and 'entries' in search_results and search_results['entries']:
                 entries = search_results['entries']
                 downloader_logger.info(f"Found {len(entries)} YouTube results.")
+                downloader_logger.info(f"YouTube search results: {entries}")
 
                 best_match = None
                 highest_score = -1
