@@ -126,7 +126,7 @@ def ensure_user_database_structure(df):
                     df[col] = 0
             elif dtype == 'bool':
                 if col == 'show_tunes_in_date':
-                    df[col] = True  # Default to showing tunes
+                    df[col] = False  # Default to hiding tunes
                 else:
                     df[col] = False
             else:
@@ -156,7 +156,7 @@ def ensure_user_database_structure(df):
     df['download_preference'] = df['download_preference'].fillna('single')
     df['download_quality'] = df['download_quality'].fillna('ask')
     df['theme_preference'] = df['theme_preference'].fillna('default')
-    df['show_tunes_in_date'] = df['show_tunes_in_date'].fillna(True).astype('bool')
+    df['show_tunes_in_date'] = df['show_tunes_in_date'].fillna(False).astype('bool')
     
     return df
 
@@ -586,9 +586,9 @@ def get_user_show_tunes_in_date(user_id):
         user_id: Telegram user ID
 
     Returns:
-        bool: True to show tunes, False to hide them (default: True)
+        bool: True to show tunes, False to hide them (default: False)
     """
-    return get_user_preference(user_id, 'show_tunes_in_date', True)
+    return get_user_preference(user_id, 'show_tunes_in_date', False)
 
 def update_user_show_tunes_in_date(user_id, show_tunes):
     """
