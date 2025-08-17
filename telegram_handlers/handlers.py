@@ -9,7 +9,7 @@ from logging_utils import setup_loggers
 from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
 from data.drive import upload_log_to_google_doc
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
-from data.udb import track_user_interaction, user_exists, get_user_by_id, get_user_stats, get_user_summary, save_user_database, track_user_fast, save_if_pending, get_user_bible_language
+from data.udb import track_user_interaction, user_exists, get_user_by_id, get_user_stats, get_user_summary, save_user_database, track_user_fast, save_if_pending, get_user_bible_language, get_user_show_tunes_in_date
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import pandas as pd
 from datetime import date
@@ -530,18 +530,31 @@ async def date_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ASK_DATE
 
 async def date_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
     input_date = update.message.text.strip()
     result = get_songs_by_date(input_date)
+
     if isinstance(result, dict):
+        # Check user's preference for showing tunes
+        show_tunes = get_user_show_tunes_in_date(user.id)
+
         # Split into two messages as requested
         # First message: Just the status message without the colon
         first_message = result['message'].rstrip(':')
         await update.message.reply_text(first_message, parse_mode='Markdown')
 
         # Second message: Date and songs list
-        songs_text = "\n".join(
-            f"{i + 1}. {s} - {IndexFinder(s)}" for i, s in enumerate(result["songs"])
-        )
+        if show_tunes:
+            # Show tunes for hymns
+            songs_text = "\n".join(
+                f"{i + 1}. {s} - {IndexFinder(s)}{get_tune_info(s)}" for i, s in enumerate(result["songs"])
+            )
+        else:
+            # Don't show tunes
+            songs_text = "\n".join(
+                f"{i + 1}. {s} - {IndexFinder(s)}" for i, s in enumerate(result["songs"])
+            )
+
         second_message = f"{result['date']}:\n\n{songs_text}"
         await update.message.reply_text(second_message, parse_mode='Markdown')
     else:
@@ -679,6 +692,24 @@ async def last_show_all_dates_callback(update: Update, context: CallbackContext)
     await context.bot.send_message(chat_id=query.message.chat_id, text="Enter another song code, or type /cancel to stop.")
 
 # TODO: Add more command handlers (check, last, search, tune, notation, theme, vocabulary, download, comment, refresh, reply, cancel, etc.) 
+
+def get_tune_info(song_code):
+    """
+    Get tune information for a song code.
+    Returns tune string for hymns, empty string for lyrics/conventions.
+    """
+    try:
+        from data.datasets import Tune_finder_of_known_songs
+        song_code = song_code.strip().upper()
+
+        if song_code.startswith('H'):
+            tune = Tune_finder_of_known_songs(song_code)
+            if tune and tune != "Invalid Number":
+                return f" - {tune}"
+
+        return ""  # No tune info for lyrics/conventions or invalid hymns
+    except Exception:
+        return ""
 
 def get_songs_by_date(input_date):
     """

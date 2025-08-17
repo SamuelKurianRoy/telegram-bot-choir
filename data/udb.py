@@ -88,7 +88,8 @@ def create_empty_user_database():
         'search_results_limit',  # Number of search results to show
         'download_preference',   # Default download behavior (single/ask)
         'download_quality',  # Default download quality (high/medium/low/ask)
-        'theme_preference'   # UI theme preference (if applicable)
+        'theme_preference',  # UI theme preference (if applicable)
+        'show_tunes_in_date' # Whether to show tunes in /date command results (true/false)
     ])
 
 def ensure_user_database_structure(df):
@@ -111,7 +112,8 @@ def ensure_user_database_structure(df):
         'search_results_limit': 'int64',
         'download_preference': 'object',
         'download_quality': 'object',
-        'theme_preference': 'object'
+        'theme_preference': 'object',
+        'show_tunes_in_date': 'bool'
     }
     
     # Add missing columns with default values
@@ -123,7 +125,10 @@ def ensure_user_database_structure(df):
                 else:
                     df[col] = 0
             elif dtype == 'bool':
-                df[col] = False
+                if col == 'show_tunes_in_date':
+                    df[col] = True  # Default to showing tunes
+                else:
+                    df[col] = False
             else:
                 if col == 'bible_language':
                     df[col] = 'malayalam'  # Default Bible language
@@ -151,6 +156,7 @@ def ensure_user_database_structure(df):
     df['download_preference'] = df['download_preference'].fillna('single')
     df['download_quality'] = df['download_quality'].fillna('ask')
     df['theme_preference'] = df['theme_preference'].fillna('default')
+    df['show_tunes_in_date'] = df['show_tunes_in_date'].fillna(True).astype('bool')
     
     return df
 
@@ -572,6 +578,34 @@ def update_user_download_quality(user_id, quality):
 
     return update_user_preference(user_id, 'download_quality', quality.lower())
 
+def get_user_show_tunes_in_date(user_id):
+    """
+    Get the user's preference for showing tunes in /date command results.
+
+    Args:
+        user_id: Telegram user ID
+
+    Returns:
+        bool: True to show tunes, False to hide them (default: True)
+    """
+    return get_user_preference(user_id, 'show_tunes_in_date', True)
+
+def update_user_show_tunes_in_date(user_id, show_tunes):
+    """
+    Update the user's preference for showing tunes in /date command results.
+
+    Args:
+        user_id: Telegram user ID
+        show_tunes: True to show tunes, False to hide them
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    if not isinstance(show_tunes, bool):
+        return False
+
+    return update_user_preference(user_id, 'show_tunes_in_date', show_tunes)
+
 def update_google_sheet_structure():
     """
     Updates the Google Sheet to include all required columns.
@@ -610,7 +644,7 @@ def update_google_sheet_structure():
         required_headers = [
             'user_id', 'username', 'name', 'last_seen',
             'is_authorized', 'is_admin', 'status', 'notes',
-            'bible_language', 'game_language', 'search_results_limit', 'download_preference', 'download_quality', 'theme_preference'
+            'bible_language', 'game_language', 'search_results_limit', 'download_preference', 'download_quality', 'theme_preference', 'show_tunes_in_date'
         ]
         
         # Check which headers are missing

@@ -9,6 +9,7 @@ from data.udb import (
     get_user_game_language, update_user_game_language,
     get_user_download_preference, update_user_download_preference,
     get_user_download_quality, update_user_download_quality,
+    get_user_show_tunes_in_date, update_user_show_tunes_in_date,
     track_user_fast, save_if_pending
 )
 from config import get_config
@@ -18,7 +19,7 @@ from logging_utils import setup_loggers
 bot_logger, user_logger = setup_loggers()
 
 # Conversation states
-SETTING_MENU, BIBLE_LANGUAGE_CHOICE, GAME_LANGUAGE_CHOICE, SEARCH_LIMIT_INPUT, DOWNLOAD_PREFERENCE_CHOICE, DOWNLOAD_QUALITY_CHOICE = range(6)
+SETTING_MENU, BIBLE_LANGUAGE_CHOICE, GAME_LANGUAGE_CHOICE, SEARCH_LIMIT_INPUT, DOWNLOAD_PREFERENCE_CHOICE, DOWNLOAD_QUALITY_CHOICE, TUNE_DISPLAY_CHOICE = range(7)
 
 async def setting_start(update: Update, context: CallbackContext) -> int:
     """Start the settings management conversation"""
@@ -34,6 +35,7 @@ async def setting_start(update: Update, context: CallbackContext) -> int:
     search_limit = get_user_preference(user.id, 'search_results_limit', 10)
     download_pref = get_user_download_preference(user.id)
     download_quality = get_user_download_quality(user.id)
+    show_tunes = get_user_show_tunes_in_date(user.id)
 
     # Create settings menu
     welcome_text = (
@@ -43,15 +45,16 @@ async def setting_start(update: Update, context: CallbackContext) -> int:
         f"🎮 Game Language: *{game_lang.title()}*\n"
         f"🔍 Search Results Limit: *{search_limit}*\n"
         f"📥 Download Behavior: *{download_pref.title()}*\n"
-        f"🎵 Download Quality: *{download_quality.title()}*\n\n"
+        f"🎵 Download Quality: *{download_quality.title()}*\n"
+        f"🎼 Show Tunes in Date: *{'Yes' if show_tunes else 'No'}*\n\n"
         "What would you like to change?"
     )
     
     keyboard = [
         ["📖 Bible Language", "🎮 Game Language"],
         ["🔍 Search Results Limit", "📥 Download Behavior"],
-        ["🎵 Download Quality", "📊 View All Settings"],
-        ["❌ Cancel"]
+        ["🎵 Download Quality", "🎼 Show Tunes in Date"],
+        ["📊 View All Settings", "❌ Cancel"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     
@@ -154,6 +157,26 @@ async def setting_menu_handler(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text(quality_text, parse_mode="Markdown", reply_markup=reply_markup)
         return DOWNLOAD_QUALITY_CHOICE
 
+    elif user_input == "🎼 Show Tunes in Date":
+        current_setting = get_user_show_tunes_in_date(user.id)
+
+        tune_display_text = (
+            "🎼 *Show Tunes in Date Command*\n\n"
+            f"Current setting: *{'Yes' if current_setting else 'No'}*\n\n"
+            "Choose whether to show tune names when using the `/date` command:\n\n"
+            "✅ *Show Tunes* - Display tune names along with song information\n"
+            "❌ *Hide Tunes* - Show only song codes and titles"
+        )
+
+        keyboard = [
+            ["✅ Show Tunes", "❌ Hide Tunes"],
+            ["🔙 Back to Menu", "❌ Cancel"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+
+        await update.message.reply_text(tune_display_text, parse_mode="Markdown", reply_markup=reply_markup)
+        return TUNE_DISPLAY_CHOICE
+
     elif user_input == "📊 View All Settings":
         # Get all current settings
         bible_lang = get_user_bible_language(user.id)
@@ -161,6 +184,7 @@ async def setting_menu_handler(update: Update, context: CallbackContext) -> int:
         search_limit = get_user_preference(user.id, 'search_results_limit', 10)
         download_pref = get_user_download_preference(user.id)
         download_quality = get_user_download_quality(user.id)
+        show_tunes = get_user_show_tunes_in_date(user.id)
         theme = get_user_preference(user.id, 'theme_preference', 'default')
 
         all_settings_text = (
@@ -170,6 +194,7 @@ async def setting_menu_handler(update: Update, context: CallbackContext) -> int:
             f"🔍 *Search Results Limit:* {search_limit}\n"
             f"📥 *Download Behavior:* {download_pref.title()}\n"
             f"🎵 *Download Quality:* {download_quality.title()}\n"
+            f"🎼 *Show Tunes in Date:* {'Yes' if show_tunes else 'No'}\n"
             f"🎨 *Theme Setting:* {theme.title()}\n\n"
             "Use the menu to change any setting."
         )
@@ -177,7 +202,8 @@ async def setting_menu_handler(update: Update, context: CallbackContext) -> int:
         keyboard = [
             ["📖 Bible Language", "🎮 Game Language"],
             ["🔍 Search Results Limit", "📥 Download Behavior"],
-            ["🎵 Download Quality", "❌ Cancel"]
+            ["🎵 Download Quality", "🎼 Show Tunes in Date"],
+            ["❌ Cancel"]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         
@@ -513,7 +539,63 @@ async def search_limit_handler(update: Update, context: CallbackContext) -> int:
         )
         return SEARCH_LIMIT_INPUT
 
+async def tune_display_handler(update: Update, context: CallbackContext) -> int:
+    """Handle tune display setting selection"""
+    user = update.effective_user
+    user_input = update.message.text.strip()
 
+    if user_input == "✅ Show Tunes":
+        success = update_user_show_tunes_in_date(user.id, True)
+        if success:
+            save_if_pending()  # Save changes immediately
+            await update.message.reply_text(
+                "✅ Tune display set to *Show Tunes*.\n\n"
+                "When you use the `/date` command, tune names will be displayed along with song information.",
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) enabled tune display in date command")
+        else:
+            await update.message.reply_text(
+                "❌ Failed to update tune display setting. Please try again.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        return ConversationHandler.END
+
+    elif user_input == "❌ Hide Tunes":
+        success = update_user_show_tunes_in_date(user.id, False)
+        if success:
+            save_if_pending()  # Save changes immediately
+            await update.message.reply_text(
+                "✅ Tune display set to *Hide Tunes*.\n\n"
+                "When you use the `/date` command, only song codes and titles will be displayed.",
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) disabled tune display in date command")
+        else:
+            await update.message.reply_text(
+                "❌ Failed to update tune display setting. Please try again.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+        return ConversationHandler.END
+
+    elif user_input == "🔙 Back to Menu":
+        return await setting_start(update, context)
+
+    elif user_input == "❌ Cancel":
+        await update.message.reply_text(
+            "✅ Settings cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
+    else:
+        await update.message.reply_text(
+            "Please select a valid option from the menu.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return await setting_start(update, context)
 
 async def cancel_settings(update: Update, context: CallbackContext) -> int:
     """Cancel the settings conversation"""
