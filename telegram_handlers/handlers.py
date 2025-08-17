@@ -544,15 +544,18 @@ async def date_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(first_message, parse_mode='Markdown')
 
         # Second message: Date and songs list
+        # Filter out any empty or invalid songs
+        valid_songs = [s for s in result["songs"] if s and str(s).strip()]
+
         if show_tunes:
             # Show tunes for hymns
             songs_text = "\n".join(
-                f"{i + 1}. {s} - {IndexFinder(s)}{get_tune_info(s)}" for i, s in enumerate(result["songs"])
+                f"{i + 1}. {s} - {IndexFinder(s)}{get_tune_info(s)}" for i, s in enumerate(valid_songs)
             )
         else:
             # Don't show tunes
             songs_text = "\n".join(
-                f"{i + 1}. {s} - {IndexFinder(s)}" for i, s in enumerate(result["songs"])
+                f"{i + 1}. {s} - {IndexFinder(s)}" for i, s in enumerate(valid_songs)
             )
 
         second_message = f"{result['date']}:\n\n{songs_text}"
@@ -700,11 +703,17 @@ def get_tune_info(song_code):
     """
     try:
         from data.datasets import Tune_finder_of_known_songs
-        song_code = song_code.strip().upper()
 
-        if song_code.startswith('H'):
+        # Handle empty or None input
+        if not song_code:
+            return ""
+
+        song_code = str(song_code).strip().upper()
+
+        # Check if it's a valid hymn code
+        if song_code.startswith('H') and len(song_code) > 1:
             tune = Tune_finder_of_known_songs(song_code)
-            if tune and tune != "Invalid Number":
+            if tune and tune != "Invalid Number" and str(tune).strip():
                 return f" - {tune}"
 
         return ""  # No tune info for lyrics/conventions or invalid hymns

@@ -222,21 +222,41 @@ def standardize_hlc_value(value):
     return value
 
 def IndexFinder(Song):
-    song = standardize_hlc_value(Song)
-    global dfH, dfL, dfC
-    if song.startswith("H"):
-        song = song.replace('H','').strip().replace("-", "")
-        song = int(song)
-        return dfH['Hymn Index'][song-1]
-    elif song.startswith("L"):
-        song = song.replace('L','').strip().replace("-", "")
-        song = int(song)
-        return dfL['Lyric Index'][song-1]
-    elif song.startswith("C"):
-        song = song.replace('C','').strip().replace("-", "")
-        song = int(song)
-        return dfC['Convention Index'][song-1]
-    else:
+    try:
+        song = standardize_hlc_value(Song)
+        global dfH, dfL, dfC
+
+        # Handle empty or invalid input
+        if not song or len(song) < 2:
+            return "Invalid Number"
+
+        if song.startswith("H"):
+            song_num = song.replace('H','').strip().replace("-", "")
+            if not song_num:  # Check if empty after processing
+                return "Invalid Number"
+            song_num = int(song_num)
+            if dfH is not None and 0 < song_num <= len(dfH):
+                return dfH['Hymn Index'][song_num-1]
+            return "Invalid Number"
+        elif song.startswith("L"):
+            song_num = song.replace('L','').strip().replace("-", "")
+            if not song_num:  # Check if empty after processing
+                return "Invalid Number"
+            song_num = int(song_num)
+            if dfL is not None and 0 < song_num <= len(dfL):
+                return dfL['Lyric Index'][song_num-1]
+            return "Invalid Number"
+        elif song.startswith("C"):
+            song_num = song.replace('C','').strip().replace("-", "")
+            if not song_num:  # Check if empty after processing
+                return "Invalid Number"
+            song_num = int(song_num)
+            if dfC is not None and 0 < song_num <= len(dfC):
+                return dfC['Convention Index'][song_num-1]
+            return "Invalid Number"
+        else:
+            return "Invalid Number"
+    except (ValueError, IndexError, TypeError):
         return "Invalid Number"
 
 def Datefinder(songs, category=None, first=False):
