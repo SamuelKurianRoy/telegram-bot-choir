@@ -542,6 +542,24 @@ class AudioDownloader:
             logger.warning(f"Browser cookie extraction failed: {e}")
             return None
 
+    def _run_spotdl_command(self, args: list, timeout: int = 10):
+        """Run spotdl command with appropriate Python executable"""
+        import subprocess as sp
+
+        # Determine the correct Python command
+        if self.is_streamlit_cloud:
+            # Streamlit Cloud uses python3
+            cmd = ["python3", "-m", "spotdl"] + args
+        else:
+            # Local environment
+            import platform
+            if platform.system().lower() == "windows":
+                cmd = ["py", "-m", "spotdl"] + args
+            else:
+                cmd = ["python3", "-m", "spotdl"] + args
+
+        return sp.run(cmd, capture_output=True, text=True, timeout=timeout)
+
     async def configure_spotdl_ffmpeg(self):
         """Configure spotdl to use the available FFmpeg installation (from audio_downloader_bot.py)"""
         try:
@@ -976,7 +994,7 @@ class AudioDownloader:
             result = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: sp.run(["py", "-m", "spotdl", "--version"], capture_output=True, text=True, timeout=10)
+                    lambda: self._run_spotdl_command(["--version"], timeout=10)
                 ),
                 timeout=15
             )
@@ -988,7 +1006,7 @@ class AudioDownloader:
 
                 # Also test help to see available commands
                 try:
-                    help_result = sp.run(["py", "-m", "spotdl", "--help"], capture_output=True, text=True, timeout=5)
+                    help_result = self._run_spotdl_command(["--help"], timeout=5)
                     if help_result.returncode == 0:
                         test_result['help_output'] = help_result.stdout
                         logger.info("spotdl help command successful")
@@ -2375,9 +2393,19 @@ class AudioDownloader:
             output_dir.mkdir(exist_ok=True)
             
             # Prepare spotdl command with valid arguments only
-            # Use py -m spotdl for better compatibility on Windows
-            base_cmd = [
-                "py", "-m", "spotdl",
+            # Use appropriate Python command based on environment
+            if self.is_streamlit_cloud:
+                # Streamlit Cloud uses python3
+                python_cmd = ["python3", "-m", "spotdl"]
+            else:
+                # Local Windows uses py launcher, Linux uses python3
+                import platform
+                if platform.system().lower() == "windows":
+                    python_cmd = ["py", "-m", "spotdl"]
+                else:
+                    python_cmd = ["python3", "-m", "spotdl"]
+
+            base_cmd = python_cmd + [
                 "download",
                 url,
                 "--bitrate", f"{bitrate}k",
@@ -2689,9 +2717,19 @@ class AudioDownloader:
             bitrate = quality_map.get(quality, "192")
 
             # Ultra-conservative spotdl command with valid arguments only
-            # Use py -m spotdl for better compatibility on Windows
-            alt_cmd = [
-                "py", "-m", "spotdl",
+            # Use appropriate Python command based on environment
+            if self.is_streamlit_cloud:
+                # Streamlit Cloud uses python3
+                python_cmd = ["python3", "-m", "spotdl"]
+            else:
+                # Local Windows uses py launcher, Linux uses python3
+                import platform
+                if platform.system().lower() == "windows":
+                    python_cmd = ["py", "-m", "spotdl"]
+                else:
+                    python_cmd = ["python3", "-m", "spotdl"]
+
+            alt_cmd = python_cmd + [
                 "download",
                 url,
                 "--bitrate", f"{bitrate}k",
