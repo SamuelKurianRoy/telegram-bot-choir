@@ -1539,6 +1539,17 @@ class AudioDownloader:
                 'geo_bypass': True,
                 'geo_bypass_country': 'US',
 
+                # DNS resolution fixes
+                'socket_timeout': 60,  # Longer timeout for DNS
+                'http_headers': {
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-us,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'DNT': '1',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                },
+
                 # Additional network robustness
                 'http_chunk_size': 10485760,  # 10MB chunks
                 'prefer_insecure': False,
@@ -1769,6 +1780,16 @@ class AudioDownloader:
             # Special handling for DNS resolution issues (Failed to resolve 'y')
             if "Failed to resolve 'y'" in str(e) or "Name or service not known" in str(e):
                 logger.warning("DNS resolution issue detected - trying comprehensive URL and DNS workarounds")
+
+                # Quick network connectivity test
+                try:
+                    import socket
+                    socket.setdefaulttimeout(10)
+                    socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(('8.8.8.8', 53))
+                    logger.info("Basic internet connectivity confirmed")
+                except Exception as net_e:
+                    logger.error(f"Network connectivity issue detected: {net_e}")
+                    # Still try the workarounds even if network test fails
                 try:
                     # Try multiple URL transformations and DNS fixes
                     transformed_urls = []
@@ -1776,12 +1797,33 @@ class AudioDownloader:
                     # Transform youtu.be URLs to full youtube.com format
                     if 'youtu.be/' in url:
                         video_id = url.split('youtu.be/')[-1].split('?')[0].split('&')[0]
-                        transformed_urls.append(f"https://www.youtube.com/watch?v={video_id}")
-                        transformed_urls.append(f"https://youtube.com/watch?v={video_id}")  # Without www
+                        # Try multiple YouTube domain variations
+                        transformed_urls.extend([
+                            f"https://www.youtube.com/watch?v={video_id}",
+                            f"https://youtube.com/watch?v={video_id}",
+                            f"https://m.youtube.com/watch?v={video_id}",
+                            f"https://music.youtube.com/watch?v={video_id}",
+                        ])
                     elif 'youtube.com' in url:
-                        # Try alternative YouTube domains
-                        transformed_urls.append(url.replace('www.youtube.com', 'youtube.com'))
-                        transformed_urls.append(url.replace('youtube.com', 'm.youtube.com'))
+                        # Try alternative YouTube domains and formats
+                        base_url = url.split('?')[0]  # Remove parameters first
+                        video_id = None
+                        if 'watch?v=' in url:
+                            video_id = url.split('watch?v=')[1].split('&')[0]
+
+                        if video_id:
+                            transformed_urls.extend([
+                                f"https://www.youtube.com/watch?v={video_id}",
+                                f"https://youtube.com/watch?v={video_id}",
+                                f"https://m.youtube.com/watch?v={video_id}",
+                                f"https://music.youtube.com/watch?v={video_id}",
+                            ])
+                        else:
+                            transformed_urls.extend([
+                                url.replace('www.youtube.com', 'youtube.com'),
+                                url.replace('youtube.com', 'm.youtube.com'),
+                                url.replace('youtube.com', 'music.youtube.com'),
+                            ])
                     else:
                         transformed_urls.append(url)
 
@@ -1799,18 +1841,24 @@ class AudioDownloader:
                             }],
                             'quiet': True,
                             'force_ipv4': True,
-                            'socket_timeout': 60,
-                            'retries': 2,
-                            'fragment_retries': 2,
-                            'user_agent': 'Mozilla/5.0 (Linux; Android 11; SM-A515F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                            'socket_timeout': 120,  # Even longer timeout
+                            'retries': 1,  # Single retry to avoid hanging
+                            'fragment_retries': 1,
+                            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                             'extractor_args': {
                                 'youtube': {
-                                    'player_client': ['android_creator'],  # Most reliable client
+                                    'player_client': ['web'],  # Use web client for DNS issues
                                     'skip': ['dash', 'hls'],
+                                    'innertube_host': 'www.youtube.com',  # Explicit host
                                 }
                             },
                             'geo_bypass': True,
                             'source_address': '0.0.0.0',
+                            # Additional DNS resolution helpers
+                            'http_headers': {
+                                'Accept': '*/*',
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                            },
                         }
 
                         with yt_dlp.YoutubeDL(minimal_opts) as ydl:
@@ -2259,7 +2307,7 @@ class AudioDownloader:
             output_dir = self.temp_dir / f"spotify_{int(time.time())}"
             output_dir.mkdir(exist_ok=True)
             
-            # Prepare spotdl command with enhanced anti-bot measures
+            # Prepare spotdl command with valid arguments only
             base_cmd = [
                 "spotdl",
                 "download",
@@ -2268,13 +2316,8 @@ class AudioDownloader:
                 "--format", "mp3",
                 "--output", str(output_dir),
                 "--print-errors",  # Show detailed errors
-                # Anti-bot measures for YouTube backend
-                "--client-id", "android_creator",  # Use mobile client
-                "--user-agent", "Mozilla/5.0 (Linux; Android 11; SM-A515F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-                "--sleep-interval", "2",  # Add delays between requests
-                "--max-sleep-interval", "5",
-                "--retries", "3",
-                "--no-cache-dir",  # Avoid cache issues
+                "--max-retries", "3",  # Valid spotdl argument
+                "--no-cache",  # Valid spotdl argument (not --no-cache-dir)
             ]
 
             # Add cookie support if available
@@ -2577,7 +2620,7 @@ class AudioDownloader:
             quality_map = {"high": "320", "medium": "192", "low": "128"}
             bitrate = quality_map.get(quality, "192")
 
-            # Ultra-conservative spotdl command
+            # Ultra-conservative spotdl command with valid arguments only
             alt_cmd = [
                 "spotdl",
                 "download",
@@ -2585,15 +2628,11 @@ class AudioDownloader:
                 "--bitrate", f"{bitrate}k",
                 "--format", "mp3",
                 "--output", str(output_dir),
-                "--simple-tui",
-                "--restrict-filenames",
-                "--no-cache-dir",
-                "--threads", "1",
-                "--client-id", "android",  # Different client
-                "--sleep-interval", "5",   # Longer delays
-                "--max-sleep-interval", "10",
-                "--retries", "2",
-                "--ignore-errors",  # Continue on errors
+                "--simple-tui",  # Valid argument
+                "--restrict", "ascii",  # Valid argument (not --restrict-filenames)
+                "--no-cache",  # Valid argument
+                "--threads", "1",  # Valid argument
+                "--max-retries", "2",  # Valid argument (not --retries)
             ]
 
             logger.info(f"Alternative spotdl command: {' '.join(alt_cmd)}")
