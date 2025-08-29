@@ -1325,7 +1325,8 @@ class AudioDownloader:
     async def download_youtube_audio(self, url: str, quality: str, chat_id: str = None, download_playlist: bool = False) -> Optional[Tuple[Path, Dict]]:
         """Download audio from YouTube using yt-dlp, with checkpoint/resume support."""
         # Overall function timeout to prevent hanging
-        overall_timeout = 240 if self.is_streamlit_cloud else 300  # 4-5 minutes total
+        # Increased timeout for cloud environment due to slower network
+        overall_timeout = 600 if self.is_streamlit_cloud else 300  # 10 minutes cloud, 5 minutes local
         logger.info(f"Starting YouTube download with overall timeout of {overall_timeout}s")
 
         try:
@@ -1572,8 +1573,9 @@ class AudioDownloader:
                 'geo_bypass': True,
                 'geo_bypass_country': 'US',
 
-                # DNS resolution fixes
-                'socket_timeout': 60,  # Longer timeout for DNS
+                # Optimized timeouts for cloud environment
+                'socket_timeout': 120 if self.is_streamlit_cloud else 60,
+                'read_timeout': 180 if self.is_streamlit_cloud else 120,
                 'http_headers': {
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                     'Accept-Language': 'en-us,en;q=0.5',
@@ -1636,6 +1638,17 @@ class AudioDownloader:
                 logger.info("Streamlit Cloud: Using cloud-optimized anti-detection without browser cookies")
                 downloader_logger.info("Streamlit Cloud mode: Enhanced headers and user agents only")
 
+                # Additional cloud-specific optimizations for better timeout handling
+                ydl_opts.update({
+                    'concurrent_fragment_downloads': 1,  # Single thread for stability
+                    'fragment_retries': 1,  # Minimal retries to avoid hanging
+                    'file_access_retries': 1,
+                    'extractor_retries': 1,  # Single extractor retry
+                    'http_chunk_size': 1024 * 1024,  # 1MB chunks for better progress tracking
+                    'sleep_interval': 1,  # Short delays to avoid timeouts
+                    'max_sleep_interval': 3,
+                })
+
             # Add FFmpeg location if found (using same logic as audio_downloader_bot.py)
             if self.ffmpeg_path == "system":
                 # System FFmpeg is available, yt-dlp will find it automatically
@@ -1673,8 +1686,13 @@ class AudioDownloader:
                     logger.info(f"Passing URL to yt-dlp: '{url}' (length: {len(url)})")
                     downloader_logger.info(f"yt-dlp download attempt {attempt + 1}: URL='{url}', length={len(url)}")
 
-                    # Reduce timeout to prevent hanging
-                    download_timeout = 90 if self.is_streamlit_cloud else 120  # Shorter timeouts
+                    # Adjust timeout based on environment and attempt
+                    if self.is_streamlit_cloud:
+                        # Streamlit Cloud needs longer timeouts due to slower network
+                        download_timeout = 180 + (attempt * 60)  # 3, 4, 5 minutes per attempt
+                    else:
+                        download_timeout = 120  # 2 minutes for local
+
                     logger.info(f"Starting yt-dlp download attempt {attempt + 1} with {download_timeout}s timeout...")
 
                     # Create a progress task that logs every 30 seconds
