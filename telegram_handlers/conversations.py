@@ -31,6 +31,7 @@ import io
 from telegram_handlers.handlers import is_authorized
 from downloader import AudioDownloader
 import logging
+import asyncio
 from telegram.constants import ParseMode
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -1241,108 +1242,102 @@ async def start_download_process(update: Update, context: CallbackContext) -> in
             bot_logger.info(f"Telegram handler passing URL to downloader: '{url}' (length: {len(url) if url else 'None'})")
             user_logger.info(f"Download request from {user.full_name}: URL='{url}', Quality={quality}")
 
-            result = await downloader.download_audio(url, quality, chat_id=str(chat_id), download_playlist=download_playlist)
+            # Start download in background task to avoid blocking other commands
+            await update.message.reply_text(
+                "🎵 **Download started!**\n\n"
+                "⏳ Your audio is being processed in the background.\n"
+                "📱 You can continue using other bot commands while waiting.\n"
+                "🔔 I'll send you the file when it's ready!\n\n"
+                "⚠️ *Note: Downloads may take 2-5 minutes depending on video length.*",
+                parse_mode="Markdown"
+            )
 
-            if result:
-                file_path, file_info = result
-
-                # Send the audio file
-                with open(file_path, 'rb') as audio_file:
-                    caption = f"🎵 **{file_info.get('title', 'Unknown Title')}**\n" \
-                            f"👤 **Artist:** {file_info.get('artist', 'Unknown Artist')}\n" \
-                            f"🎯 **Quality:** {quality_text}\n" \
-                            f"🌐 **Platform:** {file_info.get('platform', platform)}"
-
-                    await context.bot.send_audio(
-                        chat_id=chat_id,
-                        audio=audio_file,
-                        caption=caption,
-                        parse_mode="Markdown",
-                        title=file_info.get('title', 'Unknown Title'),
-                        performer=file_info.get('artist', 'Unknown Artist')
-                    )
-
-                # Clean up the file
-                file_path.unlink(missing_ok=True)
-
-                await update.message.reply_text(
-                    "✅ **Download completed successfully!**\n\n"
-                    "🎵 Your audio file has been sent above.",
-                    parse_mode="Markdown"
+            # Create background task for download
+            asyncio.create_task(
+                background_download_task(
+                    downloader, url, quality, str(chat_id), download_playlist,
+                    update, context, user, platform
                 )
-            else:
-                # Try to get a user-friendly error message from the downloader
-                error_message = "❌ **Download failed**\n\n"
-
-                # Check if it's likely a YouTube blocking issue
-                if platform == "YouTube":
-                    error_message = (
-                        "🚫 **YouTube Download Failed**\n\n"
-                        "This is likely due to YouTube's anti-bot measures. Common causes:\n\n"
-                        "• **IP blocking** - Too many requests from our server\n"
-                        "• **Rate limiting** - YouTube is restricting downloads\n"
-                        "• **Video restrictions** - Age-restricted or private content\n"
-                        "• **Geographic blocks** - Content not available in this region\n\n"
-                        "**What you can do:**\n"
-                        "• ⏰ Wait 10-15 minutes and try again\n"
-                        "• 🔄 Try a different video\n"
-                        "• 📱 Use a shorter video (less likely to be blocked)\n"
-                        "• 💬 Contact admin if this keeps happening\n\n"
-                        "We're constantly working to improve download reliability!"
-                    )
-                else:
-                    error_message = (
-                        "❌ **Download Failed**\n\n"
-                        "Could not download the audio. This might be due to:\n"
-                        "• The track is not available\n"
-                        "• Geographic restrictions\n"
-                        "• The link has expired\n"
-                        "• Server issues\n\n"
-                        "Please try with a different link."
-                    )
-
-                await update.message.reply_text(error_message, parse_mode="Markdown")
+            )
 
     except Exception as e:
-        error_str = str(e).lower()
-
-        # Provide specific error messages based on the error type
-        if "403" in error_str or "forbidden" in error_str:
-            error_message = (
-                "🚫 **YouTube Access Temporarily Blocked**\n\n"
-                "YouTube has blocked our download requests due to high traffic.\n\n"
-                "**This is temporary!** Please:\n"
-                "• ⏰ Wait 10-15 minutes and try again\n"
-                "• 🔄 Try a different video in the meantime\n"
-                "• 📱 Shorter videos are less likely to be blocked\n\n"
-                "We're working on improving our download system to avoid these blocks."
-            )
-        elif "timeout" in error_str:
-            error_message = (
-                "⏱️ **Download Timeout**\n\n"
-                "The download took too long and was cancelled.\n\n"
-                "This usually happens with:\n"
-                "• Very long videos\n"
-                "• Slow server connections\n"
-                "• High-quality downloads\n\n"
-                "Try again with a shorter video or lower quality setting."
-            )
-        elif "network" in error_str or "connection" in error_str:
-            error_message = (
-                "🌐 **Network Error**\n\n"
-                "There was a connection problem during download.\n\n"
-                "Please try again in a few minutes."
-            )
-        else:
-            error_message = (
-                f"❌ **Download Error**\n\n"
-                f"An unexpected error occurred: {str(e)[:100]}{'...' if len(str(e)) > 100 else ''}\n\n"
-                "Please try again later or contact support if the problem persists."
-            )
-
-        await update.message.reply_text(error_message, parse_mode="Markdown")
+        bot_logger.error(f"Error starting background download: {e}")
+        await update.message.reply_text(
+            "❌ **Error starting download**\n\n"
+            "There was an issue starting your download. Please try again.",
+            parse_mode="Markdown"
+        )
 
     return ConversationHandler.END
+
+
+async def background_download_task(downloader, url, quality, chat_id, download_playlist, update, context, user, platform):
+    """Background task to handle downloads without blocking other commands"""
+    try:
+        bot_logger.info(f"Background download started for user {user.full_name}: {url}")
+
+        # Perform the download
+        result = await downloader.download_audio(url, quality, chat_id=chat_id, download_playlist=download_playlist)
+
+        if result:
+            file_path, file_info = result
+
+            # Map quality for display
+            quality_map = {"high": "🔥 High (320kbps)", "medium": "🎵 Medium (192kbps)", "low": "💾 Low (128kbps)"}
+            quality_text = quality_map.get(quality, quality)
+
+            # Send the audio file
+            with open(file_path, 'rb') as audio_file:
+                caption = f"🎵 **{file_info.get('title', 'Unknown Title')}**\n" \
+                        f"👤 **Artist:** {file_info.get('artist', 'Unknown Artist')}\n" \
+                        f"🎯 **Quality:** {quality_text}\n" \
+                        f"🌐 **Platform:** {file_info.get('platform', platform)}"
+
+                await context.bot.send_audio(
+                    chat_id=int(chat_id),
+                    audio=audio_file,
+                    caption=caption,
+                    parse_mode="Markdown",
+                    title=file_info.get('title', 'Unknown Title'),
+                    performer=file_info.get('artist', 'Unknown Artist')
+                )
+
+            # Clean up the file
+            file_path.unlink(missing_ok=True)
+
+            await context.bot.send_message(
+                chat_id=int(chat_id),
+                text="✅ **Download completed successfully!**\n\n🎵 Your audio file has been sent above.",
+                parse_mode="Markdown"
+            )
+
+            bot_logger.info(f"Background download completed successfully for user {user.full_name}")
+
+        else:
+            # Download failed
+            error_message = "❌ **Download failed**\n\nPlease try again with a different link or try again later."
+
+            await context.bot.send_message(
+                chat_id=int(chat_id),
+                text=error_message,
+                parse_mode="Markdown"
+            )
+
+            bot_logger.warning(f"Background download failed for user {user.full_name}: {url}")
+
+    except Exception as e:
+        bot_logger.error(f"Background download task error for user {user.full_name}: {e}")
+
+        # Send error message to user
+        try:
+            error_message = f"❌ **Download Error**\n\nAn error occurred during download: {str(e)[:100]}{'...' if len(str(e)) > 100 else ''}"
+            await context.bot.send_message(
+                chat_id=int(chat_id),
+                text=error_message,
+                parse_mode="Markdown"
+            )
+        except Exception as send_error:
+            bot_logger.error(f"Failed to send error message to user: {send_error}")
 
 async def download_quality_selection(update: Update, context: CallbackContext) -> int:
     """Handle quality selection and start download"""

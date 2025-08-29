@@ -208,8 +208,21 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
     from data.udb import save_if_pending, load_user_database
 
     user = update.effective_user
-    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) used /refresh")
     config = get_config()
+
+    # Check if user is admin
+    admin_id = config.ADMIN_ID
+    if user.id != admin_id:
+        await update.message.reply_text(
+            "🚫 **Access Denied**\n\n"
+            "The `/refresh` command is restricted to administrators only.\n\n"
+            "This command reloads all bot data and should only be used by admins.",
+            parse_mode="Markdown"
+        )
+        user_logger.warning(f"Unauthorized /refresh attempt by {user.full_name} (@{user.username}, ID: {user.id})")
+        return
+
+    user_logger.info(f"Admin {user.full_name} (@{user.username}, ID: {user.id}) used /refresh")
 
     # Store message IDs to delete later
     progress_messages = []
