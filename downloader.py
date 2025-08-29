@@ -1812,12 +1812,33 @@ class AudioDownloader:
             if "Failed to resolve 'y'" in str(e) or "Name or service not known" in str(e):
                 logger.warning("DNS resolution issue detected - trying comprehensive URL and DNS workarounds")
 
-                # Quick network connectivity test
+                # Quick network connectivity test and DNS resolution test
                 try:
                     import socket
                     socket.setdefaulttimeout(10)
                     socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(('8.8.8.8', 53))
                     logger.info("Basic internet connectivity confirmed")
+
+                    # Test DNS resolution for YouTube
+                    try:
+                        youtube_ip = socket.gethostbyname('www.youtube.com')
+                        logger.info(f"YouTube DNS resolution successful: {youtube_ip}")
+                    except Exception as dns_e:
+                        logger.error(f"YouTube DNS resolution failed: {dns_e}")
+                        # Try direct IP connection as workaround
+                        try:
+                            # Try connecting to YouTube's known IP addresses
+                            youtube_ips = ['142.250.191.78', '172.217.14.206', '216.58.194.174']  # Common YouTube IPs
+                            for ip in youtube_ips:
+                                try:
+                                    socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((ip, 443))
+                                    logger.info(f"Direct YouTube IP connection successful: {ip}")
+                                    break
+                                except:
+                                    continue
+                        except Exception as ip_e:
+                            logger.error(f"Direct IP connection also failed: {ip_e}")
+
                 except Exception as net_e:
                     logger.error(f"Network connectivity issue detected: {net_e}")
                     # Still try the workarounds even if network test fails
@@ -1828,12 +1849,15 @@ class AudioDownloader:
                     # Transform youtu.be URLs to full youtube.com format
                     if 'youtu.be/' in url:
                         video_id = url.split('youtu.be/')[-1].split('?')[0].split('&')[0]
-                        # Try multiple YouTube domain variations
+                        # Try multiple YouTube domain variations AND direct IP access
                         transformed_urls.extend([
                             f"https://www.youtube.com/watch?v={video_id}",
                             f"https://youtube.com/watch?v={video_id}",
                             f"https://m.youtube.com/watch?v={video_id}",
                             f"https://music.youtube.com/watch?v={video_id}",
+                            # Try direct IP access as DNS workaround
+                            f"https://142.250.191.78/watch?v={video_id}",  # YouTube IP
+                            f"https://172.217.14.206/watch?v={video_id}",  # YouTube IP
                         ])
                     elif 'youtube.com' in url:
                         # Try alternative YouTube domains and formats
@@ -1860,45 +1884,31 @@ class AudioDownloader:
                     for attempt_url in transformed_urls:
                         logger.info(f"DNS workaround attempt: {attempt_url}")
 
-                        # Try with ultra-minimal, robust configuration
+                        # Try with ULTRA-minimal configuration to bypass DNS issues
                         minimal_opts = {
-                            'format': 'worst[ext=mp4]/worst',  # Use worst quality to reduce load
+                            'format': 'worst',  # Simplest format selection
                             'outtmpl': str(temp_filepath) + '.%(ext)s',
-                            'postprocessors': [{
-                                'key': 'FFmpegExtractAudio',
-                                'preferredcodec': 'mp3',
-                                'preferredquality': '128',  # Lower quality for reliability
-                            }],
                             'quiet': True,
-                            'force_ipv4': True,
-                            'socket_timeout': 120,  # Even longer timeout
-                            'retries': 1,  # Single retry to avoid hanging
-                            'fragment_retries': 1,
-                            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'no_warnings': True,
+                            'socket_timeout': 30,  # Shorter timeout for faster failure
+                            'retries': 0,  # No retries to avoid hanging
+                            'user_agent': 'Mozilla/5.0 (compatible)',  # Simple user agent
+                            # Minimal extractor args
                             'extractor_args': {
                                 'youtube': {
-                                    'player_client': ['web'],  # Use web client for DNS issues
-                                    'skip': ['dash', 'hls'],
-                                    'innertube_host': 'www.youtube.com',  # Explicit host
+                                    'player_client': ['web'],
                                 }
-                            },
-                            'geo_bypass': True,
-                            'source_address': '0.0.0.0',
-                            # Additional DNS resolution helpers
-                            'http_headers': {
-                                'Accept': '*/*',
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                             },
                         }
 
                         # Much shorter timeout for DNS workaround attempts
-                        logger.info(f"Trying DNS workaround with 60s timeout: {attempt_url}")
+                        logger.info(f"Trying DNS workaround with 30s timeout: {attempt_url}")
                         with yt_dlp.YoutubeDL(minimal_opts) as ydl:
                             info = await asyncio.wait_for(
                                 asyncio.get_event_loop().run_in_executor(
                                     None, lambda: ydl.extract_info(attempt_url, download=True)
                                 ),
-                                timeout=60  # Much shorter timeout for workarounds
+                                timeout=30  # Very short timeout for workarounds
                             )
 
                         # If successful, find the downloaded file
@@ -2661,7 +2671,7 @@ class AudioDownloader:
                 "--format", "mp3",
                 "--output", str(output_dir),
                 "--simple-tui",  # Valid argument
-                "--restrict", "ascii",  # Valid argument (not --restrict-filenames)
+                "--restrict",  # Valid argument (not --restrict-filenames)
                 "--no-cache",  # Valid argument
                 "--threads", "1",  # Valid argument
                 "--max-retries", "2",  # Valid argument (not --retries)
