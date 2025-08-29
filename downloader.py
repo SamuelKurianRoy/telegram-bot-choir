@@ -1306,6 +1306,21 @@ class AudioDownloader:
 
     async def download_youtube_audio(self, url: str, quality: str, chat_id: str = None, download_playlist: bool = False) -> Optional[Tuple[Path, Dict]]:
         """Download audio from YouTube using yt-dlp, with checkpoint/resume support."""
+        # Overall function timeout to prevent hanging
+        overall_timeout = 240 if self.is_streamlit_cloud else 300  # 4-5 minutes total
+        logger.info(f"Starting YouTube download with overall timeout of {overall_timeout}s")
+
+        try:
+            return await asyncio.wait_for(
+                self._download_youtube_audio_internal(url, quality, chat_id, download_playlist),
+                timeout=overall_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"YouTube download timed out after {overall_timeout}s")
+            raise Exception(f"🕐 Download timed out after {overall_timeout//60} minutes. Try a shorter video or try again later.")
+
+    async def _download_youtube_audio_internal(self, url: str, quality: str, chat_id: str = None, download_playlist: bool = False) -> Optional[Tuple[Path, Dict]]:
+        """Internal YouTube download function with timeout protection."""
         import hashlib
         import json
         from datetime import datetime, timedelta
@@ -1640,13 +1655,29 @@ class AudioDownloader:
                     logger.info(f"Passing URL to yt-dlp: '{url}' (length: {len(url)})")
                     downloader_logger.info(f"yt-dlp download attempt {attempt + 1}: URL='{url}', length={len(url)}")
 
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        info = await asyncio.wait_for(
-                            asyncio.get_event_loop().run_in_executor(
-                                None, lambda: ydl.extract_info(url, download=True)
-                            ),
-                            timeout=300  # 5 minute timeout
-                        )
+                    # Reduce timeout to prevent hanging
+                    download_timeout = 90 if self.is_streamlit_cloud else 120  # Shorter timeouts
+                    logger.info(f"Starting yt-dlp download attempt {attempt + 1} with {download_timeout}s timeout...")
+
+                    # Create a progress task that logs every 30 seconds
+                    async def progress_logger():
+                        for i in range(download_timeout // 30):
+                            await asyncio.sleep(30)
+                            logger.info(f"Download still in progress... ({(i+1)*30}s elapsed)")
+
+                    progress_task = asyncio.create_task(progress_logger())
+
+                    try:
+                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                            info = await asyncio.wait_for(
+                                asyncio.get_event_loop().run_in_executor(
+                                    None, lambda: ydl.extract_info(url, download=True)
+                                ),
+                                timeout=download_timeout
+                            )
+                        logger.info("yt-dlp download completed successfully")
+                    finally:
+                        progress_task.cancel()  # Stop the progress logger
                     break  # Success, exit retry loop
 
                 except Exception as e:
@@ -1806,7 +1837,6 @@ class AudioDownloader:
                         ])
                     elif 'youtube.com' in url:
                         # Try alternative YouTube domains and formats
-                        base_url = url.split('?')[0]  # Remove parameters first
                         video_id = None
                         if 'watch?v=' in url:
                             video_id = url.split('watch?v=')[1].split('&')[0]
@@ -1861,12 +1891,14 @@ class AudioDownloader:
                             },
                         }
 
+                        # Much shorter timeout for DNS workaround attempts
+                        logger.info(f"Trying DNS workaround with 60s timeout: {attempt_url}")
                         with yt_dlp.YoutubeDL(minimal_opts) as ydl:
                             info = await asyncio.wait_for(
                                 asyncio.get_event_loop().run_in_executor(
                                     None, lambda: ydl.extract_info(attempt_url, download=True)
                                 ),
-                                timeout=120
+                                timeout=60  # Much shorter timeout for workarounds
                             )
 
                         # If successful, find the downloaded file
