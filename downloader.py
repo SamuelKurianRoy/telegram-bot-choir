@@ -2259,27 +2259,38 @@ class AudioDownloader:
             output_dir = self.temp_dir / f"spotify_{int(time.time())}"
             output_dir.mkdir(exist_ok=True)
             
-            # Prepare spotdl command with better output handling for Streamlit Cloud
+            # Prepare spotdl command with enhanced anti-bot measures
+            base_cmd = [
+                "spotdl",
+                "download",
+                url,
+                "--bitrate", f"{bitrate}k",
+                "--format", "mp3",
+                "--output", str(output_dir),
+                "--print-errors",  # Show detailed errors
+                # Anti-bot measures for YouTube backend
+                "--client-id", "android_creator",  # Use mobile client
+                "--user-agent", "Mozilla/5.0 (Linux; Android 11; SM-A515F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+                "--sleep-interval", "2",  # Add delays between requests
+                "--max-sleep-interval", "5",
+                "--retries", "3",
+                "--no-cache-dir",  # Avoid cache issues
+            ]
+
+            # Add cookie support if available
+            if hasattr(self, 'cookie_file') and self.cookie_file and Path(self.cookie_file).exists():
+                base_cmd.extend(["--cookie-file", str(self.cookie_file)])
+                logger.info(f"Using cookie file for spotdl: {self.cookie_file}")
+
+            # Additional options for Streamlit Cloud
             if self.is_streamlit_cloud:
-                # Use a simpler output pattern for Streamlit Cloud
-                spotdl_cmd = [
-                    "spotdl",  # Use direct command like the working version
-                    "download",
-                    url,
-                    "--bitrate", f"{bitrate}k",
-                    "--format", "mp3",
-                    "--output", str(output_dir),
-                    "--print-errors"  # Show more detailed errors
-                ]
-            else:
-                spotdl_cmd = [
-                    "spotdl",  # Use direct command like the working version
-                    "download",
-                    url,
-                    "--bitrate", f"{bitrate}k",
-                    "--format", "mp3",
-                    "--output", str(output_dir)
-                ]
+                base_cmd.extend([
+                    "--threads", "1",  # Single thread for stability
+                    "--simple-tui",    # Simpler output for cloud
+                    "--restrict-filenames",  # Avoid filename issues
+                ])
+
+            spotdl_cmd = base_cmd
 
             # Add FFmpeg path explicitly for spotdl (using same logic as audio_downloader_bot.py)
             if self.ffmpeg_path == "system":
@@ -2367,11 +2378,28 @@ class AudioDownloader:
                 downloader_logger.error(f"stdout: {result.stdout}")
                 downloader_logger.error(f"stderr: {result.stderr}")
 
-                logger.error(f"Command: {' '.join(spotdl_cmd)}")
-                logger.error(f"Working directory: {output_dir}")
+                # Analyze the specific error type
+                error_output = (result.stderr or "") + (result.stdout or "")
+
+                # Check for YouTube bot detection in spotdl
+                if any(phrase in error_output.lower() for phrase in [
+                    "sign in to confirm you're not a bot",
+                    "unable to download api page",
+                    "failed to resolve 'y'",
+                    "http error 403",
+                    "forbidden"
+                ]):
+                    logger.error("YouTube bot detection affecting spotdl backend")
+                    downloader_logger.error("spotdl failed due to YouTube anti-bot measures")
+
+                    # Try with alternative spotdl configuration
+                    logger.info("Attempting spotdl with alternative configuration...")
+                    alternative_result = await self._try_alternative_spotdl(url, quality, output_dir)
+                    if alternative_result:
+                        return alternative_result
 
                 # Check if it's an FFmpeg-related error
-                if result.stderr and ("ffmpeg" in result.stderr.lower() or "code -11" in result.stderr):
+                elif result.stderr and ("ffmpeg" in result.stderr.lower() or "code -11" in result.stderr):
                     logger.error("FFmpeg-related error detected. Running diagnostics...")
                     downloader_logger.error("FFmpeg-related error detected in spotdl output")
 
@@ -2486,6 +2514,10 @@ class AudioDownloader:
                 logger.error("Both Spotify direct download and YouTube fallback failed")
                 downloader_logger.error("Both Spotify direct download and YouTube fallback failed")
 
+                # Provide helpful error message for users
+                error_msg = self._get_spotify_error_message(str(e))
+                raise Exception(error_msg)
+
             return fallback_result
     
     async def download_spotify_fallback(self, url: str, quality: str) -> Optional[Tuple[Path, Dict]]:
@@ -2535,6 +2567,129 @@ class AudioDownloader:
             downloader_logger.error(f"Fallback error type: {type(e).__name__}")
             downloader_logger.error(f"Fallback error details: {str(e)}")
             return None
+
+    async def _try_alternative_spotdl(self, url: str, quality: str, output_dir: Path) -> Optional[Tuple[Path, Dict]]:
+        """Try alternative spotdl configuration when standard approach fails."""
+        try:
+            logger.info("Trying alternative spotdl configuration...")
+
+            # Map quality to bitrate
+            quality_map = {"high": "320", "medium": "192", "low": "128"}
+            bitrate = quality_map.get(quality, "192")
+
+            # Ultra-conservative spotdl command
+            alt_cmd = [
+                "spotdl",
+                "download",
+                url,
+                "--bitrate", f"{bitrate}k",
+                "--format", "mp3",
+                "--output", str(output_dir),
+                "--simple-tui",
+                "--restrict-filenames",
+                "--no-cache-dir",
+                "--threads", "1",
+                "--client-id", "android",  # Different client
+                "--sleep-interval", "5",   # Longer delays
+                "--max-sleep-interval", "10",
+                "--retries", "2",
+                "--ignore-errors",  # Continue on errors
+            ]
+
+            logger.info(f"Alternative spotdl command: {' '.join(alt_cmd)}")
+
+            # Shorter timeout for alternative attempt
+            result = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: sp.run(
+                        alt_cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,  # 2 minutes only
+                        cwd=str(output_dir)
+                    )
+                ),
+                timeout=140
+            )
+
+            if result.returncode == 0:
+                logger.info("Alternative spotdl configuration succeeded!")
+
+                # Find downloaded file
+                audio_extensions = ["*.mp3", "*.m4a", "*.webm", "*.ogg"]
+                downloaded_files = []
+                for ext in audio_extensions:
+                    downloaded_files.extend(list(output_dir.glob(ext)))
+
+                if downloaded_files:
+                    downloaded_file = downloaded_files[0]
+                    logger.info(f"Alternative spotdl downloaded: {downloaded_file.name}")
+
+                    # Create basic file info
+                    file_info = {
+                        'title': downloaded_file.stem,
+                        'artist': 'Unknown',
+                        'duration': 0,
+                        'size_mb': downloaded_file.stat().st_size / (1024 * 1024),
+                        'platform': 'Spotify (alternative)',
+                        'filename': str(downloaded_file.name)
+                    }
+                    return downloaded_file, file_info
+
+            logger.warning("Alternative spotdl configuration also failed")
+            return None
+
+        except Exception as e:
+            logger.error(f"Alternative spotdl attempt failed: {e}")
+            return None
+
+    def _get_spotify_error_message(self, error_str: str) -> str:
+        """Generate user-friendly error message for Spotify download failures."""
+        error_lower = error_str.lower()
+
+        if any(phrase in error_lower for phrase in [
+            "sign in to confirm you're not a bot",
+            "unable to download api page",
+            "failed to resolve 'y'",
+            "http error 403",
+            "forbidden"
+        ]):
+            return (
+                "🎵 **Spotify Download Currently Unavailable**\n\n"
+                "Spotify downloads are temporarily blocked due to YouTube's enhanced anti-bot measures.\n\n"
+                "**Why this happens:**\n"
+                "• Spotify downloads use YouTube as the audio source\n"
+                "• YouTube is currently blocking automated downloads\n"
+                "• This affects all Spotify download services globally\n\n"
+                "**Alternative Solutions:**\n"
+                "• Use direct YouTube links instead of Spotify links\n"
+                "• Try during off-peak hours (early morning/late night)\n"
+                "• Wait 30-60 minutes and try again\n"
+                "• Use shorter songs (under 5 minutes work better)\n\n"
+                "**This is temporary** - Spotify downloads typically resume within 1-2 hours."
+            )
+        elif "ffmpeg" in error_lower:
+            return (
+                "🔧 **Audio Processing Error**\n\n"
+                "There was an issue processing the audio file.\n\n"
+                "**What you can do:**\n"
+                "• Try again in a few minutes\n"
+                "• Try a different song\n"
+                "• Use 'Medium' or 'Low' quality settings\n"
+                "• Contact admin if issue persists"
+            )
+        else:
+            return (
+                "🎵 **Spotify Download Failed**\n\n"
+                "The Spotify download encountered an unexpected error.\n\n"
+                "**Recommended actions:**\n"
+                "• Try using a direct YouTube link instead\n"
+                "• Wait 15-30 minutes and try again\n"
+                "• Try during off-peak hours\n"
+                "• Contact admin if problem persists\n\n"
+                "**Note:** Spotify downloads depend on YouTube availability."
+            )
 
     async def get_spotify_search_query(self, url: str) -> Optional[str]:
         """Get a search query from Spotify URL by fetching page title"""
