@@ -976,7 +976,7 @@ class AudioDownloader:
             result = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: sp.run(["spotdl", "--version"], capture_output=True, text=True, timeout=10)
+                    lambda: sp.run(["py", "-m", "spotdl", "--version"], capture_output=True, text=True, timeout=10)
                 ),
                 timeout=15
             )
@@ -988,7 +988,7 @@ class AudioDownloader:
 
                 # Also test help to see available commands
                 try:
-                    help_result = sp.run(["spotdl", "--help"], capture_output=True, text=True, timeout=5)
+                    help_result = sp.run(["py", "-m", "spotdl", "--help"], capture_output=True, text=True, timeout=5)
                     if help_result.returncode == 0:
                         test_result['help_output'] = help_result.stdout
                         logger.info("spotdl help command successful")
@@ -2350,8 +2350,9 @@ class AudioDownloader:
             output_dir.mkdir(exist_ok=True)
             
             # Prepare spotdl command with valid arguments only
+            # Use py -m spotdl for better compatibility on Windows
             base_cmd = [
-                "spotdl",
+                "py", "-m", "spotdl",
                 "download",
                 url,
                 "--bitrate", f"{bitrate}k",
@@ -2663,8 +2664,9 @@ class AudioDownloader:
             bitrate = quality_map.get(quality, "192")
 
             # Ultra-conservative spotdl command with valid arguments only
+            # Use py -m spotdl for better compatibility on Windows
             alt_cmd = [
-                "spotdl",
+                "py", "-m", "spotdl",
                 "download",
                 url,
                 "--bitrate", f"{bitrate}k",
