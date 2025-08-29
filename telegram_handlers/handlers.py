@@ -298,6 +298,62 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
             except Exception as delete_error:
                 user_logger.warning(f"Could not delete progress message {msg_id}: {delete_error}")
 
+# DNS Testing Command (Admin Only)
+async def dns_test_command(update: Update, context: CallbackContext) -> None:
+    """Test DNS resolution in the current environment (Admin only)"""
+    user = update.effective_user
+    config = get_config()
+
+    # Check if user is admin
+    admin_id = config.ADMIN_ID
+    if user.id != admin_id:
+        await update.message.reply_text(
+            "🚫 **Access Denied**\n\n"
+            "The `/dnstest` command is restricted to administrators only.",
+            parse_mode="Markdown"
+        )
+        user_logger.warning(f"Unauthorized /dnstest attempt by {user.full_name} (@{user.username}, ID: {user.id})")
+        return
+
+    user_logger.info(f"Admin {user.full_name} (@{user.username}, ID: {user.id}) used /dnstest")
+
+    # Send initial message
+    test_msg = await update.message.reply_text("🧪 **DNS Testing Started**\n\nRunning DNS resolution tests...", parse_mode="Markdown")
+
+    try:
+        # Import and run the DNS test
+        from cloud_dns_test import sync_test_cloud_dns
+
+        results = sync_test_cloud_dns()
+
+        # Format results
+        result_text = "🧪 **DNS Test Results**\n\n"
+        result_text += f"**Environment:** Streamlit Cloud\n"
+        result_text += f"**Basic Connectivity:** {'✅ PASS' if results.get('basic_connectivity', False) else '❌ FAIL'}\n"
+        result_text += f"**DNS Resolution:** {'✅ PASS' if results.get('dns_resolution', False) else '❌ FAIL'}"
+
+        if 'dns_success_rate' in results:
+            result_text += f" ({results['dns_success_rate']:.0f}%)"
+
+        if 'direct_ip' in results:
+            result_text += f"\n**Direct IP Access:** {'✅ PASS' if results['direct_ip'] else '❌ FAIL'}"
+            if 'ip_success_rate' in results:
+                result_text += f" ({results['ip_success_rate']:.0f}%)"
+
+        # Overall assessment
+        if results.get('dns_resolution', False):
+            result_text += "\n\n🎉 **DNS resolution is working!** Downloads should be possible."
+        else:
+            result_text += "\n\n❌ **DNS resolution is failing.** This explains why downloads are not working."
+            result_text += "\n\n**Recommendation:** Consider alternative hosting or proxy solutions."
+
+        await test_msg.edit_text(result_text, parse_mode="Markdown")
+
+    except Exception as e:
+        error_text = f"❌ **DNS Test Failed**\n\nError running DNS test: {str(e)[:200]}{'...' if len(str(e)) > 200 else ''}"
+        await test_msg.edit_text(error_text, parse_mode="Markdown")
+        user_logger.error(f"DNS test error: {e}")
+
 # Enhanced Admin Reply System
 
 # Conversation states for reply
@@ -1326,6 +1382,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 
 **Bot Management:**
 • `/refresh` - Reload all datasets from Google Drive
+• `/dnstest` - Test DNS resolution and network connectivity
 • `/reply <message>` - Reply to user comments/feedback
 • `/list` - Show this admin commands list
 

@@ -1275,6 +1275,24 @@ async def background_download_task(downloader, url, quality, chat_id, download_p
     """Background task to handle downloads without blocking other commands"""
     try:
         bot_logger.info(f"Background download started for user {user.full_name}: {url}")
+        bot_logger.info(f"Environment: Streamlit Cloud = {getattr(downloader, 'is_streamlit_cloud', 'Unknown')}")
+
+        # Quick network connectivity test
+        try:
+            import socket
+            socket.setdefaulttimeout(5)
+            socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(('8.8.8.8', 53))
+            bot_logger.info("Background task: Basic internet connectivity confirmed")
+
+            # Test YouTube DNS resolution
+            try:
+                youtube_ip = socket.gethostbyname('www.youtube.com')
+                bot_logger.info(f"Background task: YouTube DNS resolution successful: {youtube_ip}")
+            except Exception as dns_e:
+                bot_logger.error(f"Background task: YouTube DNS resolution failed: {dns_e}")
+
+        except Exception as net_e:
+            bot_logger.error(f"Background task: Network connectivity issue: {net_e}")
 
         # Perform the download
         result = await downloader.download_audio(url, quality, chat_id=chat_id, download_playlist=download_playlist)
@@ -1327,6 +1345,17 @@ async def background_download_task(downloader, url, quality, chat_id, download_p
 
     except Exception as e:
         bot_logger.error(f"Background download task error for user {user.full_name}: {e}")
+        bot_logger.error(f"Full error details: {repr(e)}")
+        bot_logger.error(f"Error type: {type(e).__name__}")
+
+        # Log specific error patterns for debugging
+        error_str = str(e).lower()
+        if "failed to resolve" in error_str:
+            bot_logger.error("DNS resolution error detected in background task")
+        elif "timeout" in error_str:
+            bot_logger.error("Timeout error detected in background task")
+        elif "403" in error_str or "forbidden" in error_str:
+            bot_logger.error("Access forbidden error detected in background task")
 
         # Send error message to user
         try:

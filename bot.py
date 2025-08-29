@@ -13,7 +13,7 @@ try:
     from data.vocabulary import ChoirVocabulary
     from utils.search import setup_search
     from telegram_handlers.handlers import (
-        start, help_command, refresh_command, cancel,
+        start, help_command, refresh_command, cancel, dns_test_command,
         check_song_start, last_sung_start, check_song_input, ENTER_SONG,
         last_sung_input, ENTER_LAST_SONG,
         date_start, date_input, ASK_DATE, last_show_all_dates_callback,
@@ -225,6 +225,7 @@ app.add_handler(bible_game_conv_handler)
 app.add_handler(settings_conv_handler)
 app.add_handler(date_conv_handler)
 app.add_handler(CommandHandler("refresh", refresh_command))
+app.add_handler(CommandHandler("dnstest", dns_test_command))
 app.add_handler(admin_reply_conv_handler)
 app.add_handler(CommandHandler("reply_legacy", admin_reply_legacy))
 app.add_handler(CommandHandler("admin_users", admin_users_stats))
