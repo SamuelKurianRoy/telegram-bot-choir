@@ -321,10 +321,53 @@ async def dns_test_command(update: Update, context: CallbackContext) -> None:
     test_msg = await update.message.reply_text("🧪 **DNS Testing Started**\n\nRunning DNS resolution tests...", parse_mode="Markdown")
 
     try:
-        # Import and run the DNS test
-        from cloud_dns_test import sync_test_cloud_dns
+        # Try to import and run the DNS test
+        try:
+            import sys
+            from pathlib import Path
 
-        results = sync_test_cloud_dns()
+            # Add the project root to Python path to ensure imports work
+            project_root = Path(__file__).parent.parent
+            if str(project_root) not in sys.path:
+                sys.path.insert(0, str(project_root))
+
+            from cloud_dns_test import sync_test_cloud_dns
+            results = sync_test_cloud_dns()
+
+        except ImportError as import_error:
+            # If import fails, run inline DNS test
+            user_logger.warning(f"Could not import cloud_dns_test: {import_error}")
+            await test_msg.edit_text("🔧 Running inline DNS test...", parse_mode="Markdown")
+
+            import socket
+            import time
+
+            results = {}
+
+            # Test basic connectivity
+            try:
+                socket.setdefaulttimeout(5)
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                result = sock.connect_ex(('8.8.8.8', 53))
+                sock.close()
+                results['basic_connectivity'] = result == 0
+            except Exception:
+                results['basic_connectivity'] = False
+
+            # Test YouTube DNS resolution
+            youtube_domains = ['www.youtube.com', 'youtu.be']
+            dns_results = []
+
+            for domain in youtube_domains:
+                try:
+                    socket.setdefaulttimeout(10)
+                    ip = socket.gethostbyname(domain)
+                    dns_results.append(True)
+                except Exception:
+                    dns_results.append(False)
+
+            results['dns_resolution'] = any(dns_results)
+            results['dns_success_rate'] = sum(dns_results) / len(dns_results) * 100
 
         # Format results
         result_text = "🧪 **DNS Test Results**\n\n"
