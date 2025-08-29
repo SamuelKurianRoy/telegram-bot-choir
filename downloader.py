@@ -1218,16 +1218,20 @@ class AudioDownloader:
 
             if hasattr(self, 'is_streamlit_cloud') and self.is_streamlit_cloud:
                 return (
-                    "🤖 **YouTube Bot Detection (Streamlit Cloud)**\n\n"
-                    "YouTube has detected automated access and is blocking downloads.\n\n"
+                    "🤖 **YouTube Access Temporarily Blocked**\n\n"
+                    "YouTube has implemented stronger anti-bot measures that are currently blocking downloads.\n\n"
                     f"**Cookie Authentication:** {cookie_status}\n"
-                    "**Environment:** Streamlit Cloud (optimized strategies active)\n\n"
-                    "**What you can do:**\n"
-                    "• Wait 10-15 minutes and try again\n"
-                    "• Try a different video\n"
-                    "• The bot uses cloud-optimized bypass strategies\n"
-                    "• Issue typically resolves within an hour\n\n"
-                    "**For better reliability on Streamlit Cloud:**\n"
+                    "**Environment:** Cloud-hosted (enhanced bypass strategies active)\n\n"
+                    "**Immediate Solutions:**\n"
+                    "• Wait 15-30 minutes and try again\n"
+                    "• Try a different video/song\n"
+                    "• Use shorter videos (under 5 minutes work better)\n"
+                    "• Try during off-peak hours (early morning/late night)\n\n"
+                    "**Alternative Options:**\n"
+                    "• Use direct YouTube links instead of Spotify links\n"
+                    "• Try music from other platforms\n"
+                    "• Contact admin if issue persists for multiple hours\n\n"
+                    "**Technical Note:** This is a temporary YouTube restriction, not a bot malfunction.\n\n"
                     "• Upload a youtube_cookies.txt file to the app\n"
                     "• The bot automatically tries mobile client strategies\n\n"
                     "*Note: Running on Streamlit Cloud with enhanced anti-detection optimized for cloud environments.*"
@@ -1509,11 +1513,13 @@ class AudioDownloader:
                 # Advanced YouTube-specific options to bypass bot detection
                 'extractor_args': {
                     'youtube': {
-                        'player_client': ['android', 'ios', 'web'],
+                        'player_client': ['android_creator', 'android_music', 'android', 'ios_music', 'ios'],
                         'player_skip': ['configs', 'webpage'],
                         'skip': ['dash', 'hls'] if self.is_streamlit_cloud else [],
                         'innertube_host': 'youtubei.googleapis.com',
                         'innertube_key': None,  # Let yt-dlp auto-detect
+                        'include_live_dash': False,
+                        'include_hls': False,
                     }
                 },
 
@@ -1527,10 +1533,23 @@ class AudioDownloader:
                 # Force IPv4 to avoid DNS issues
                 'force_ipv4': True,
 
+                # Enhanced DNS and network configuration
+                'source_address': '0.0.0.0',  # Bind to all interfaces
+                'force_json': False,
+                'geo_bypass': True,
+                'geo_bypass_country': 'US',
+
                 # Additional network robustness
                 'http_chunk_size': 10485760,  # 10MB chunks
                 'prefer_insecure': False,
                 'no_check_certificate': False,
+
+                # Enhanced retry logic
+                'retry_sleep_functions': {
+                    'http': lambda n: min(4 ** n, 100),
+                    'fragment': lambda n: min(4 ** n, 100),
+                    'extractor': lambda n: min(4 ** n, 100),
+                },
 
                 # Additional headers to mimic real browser behavior
                 'http_headers': {
@@ -1749,39 +1768,55 @@ class AudioDownloader:
 
             # Special handling for DNS resolution issues (Failed to resolve 'y')
             if "Failed to resolve 'y'" in str(e) or "Name or service not known" in str(e):
-                logger.warning("DNS resolution issue detected - trying URL transformation workaround")
+                logger.warning("DNS resolution issue detected - trying comprehensive URL and DNS workarounds")
                 try:
-                    # Try converting youtu.be URLs to full youtube.com format
+                    # Try multiple URL transformations and DNS fixes
+                    transformed_urls = []
+
+                    # Transform youtu.be URLs to full youtube.com format
                     if 'youtu.be/' in url:
                         video_id = url.split('youtu.be/')[-1].split('?')[0].split('&')[0]
-                        transformed_url = f"https://www.youtube.com/watch?v={video_id}"
-                        logger.info(f"Transforming URL: {url} -> {transformed_url}")
+                        transformed_urls.append(f"https://www.youtube.com/watch?v={video_id}")
+                        transformed_urls.append(f"https://youtube.com/watch?v={video_id}")  # Without www
+                    elif 'youtube.com' in url:
+                        # Try alternative YouTube domains
+                        transformed_urls.append(url.replace('www.youtube.com', 'youtube.com'))
+                        transformed_urls.append(url.replace('youtube.com', 'm.youtube.com'))
+                    else:
+                        transformed_urls.append(url)
 
-                        # Try with minimal, robust configuration
+                    for attempt_url in transformed_urls:
+                        logger.info(f"DNS workaround attempt: {attempt_url}")
+
+                        # Try with ultra-minimal, robust configuration
                         minimal_opts = {
-                            'format': 'bestaudio/best',
+                            'format': 'worst[ext=mp4]/worst',  # Use worst quality to reduce load
                             'outtmpl': str(temp_filepath) + '.%(ext)s',
                             'postprocessors': [{
                                 'key': 'FFmpegExtractAudio',
                                 'preferredcodec': 'mp3',
-                                'preferredquality': bitrate,
+                                'preferredquality': '128',  # Lower quality for reliability
                             }],
                             'quiet': True,
                             'force_ipv4': True,
-                            'socket_timeout': 30,
-                            'retries': 3,
-                            'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
+                            'socket_timeout': 60,
+                            'retries': 2,
+                            'fragment_retries': 2,
+                            'user_agent': 'Mozilla/5.0 (Linux; Android 11; SM-A515F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
                             'extractor_args': {
                                 'youtube': {
-                                    'player_client': ['android'],
+                                    'player_client': ['android_creator'],  # Most reliable client
+                                    'skip': ['dash', 'hls'],
                                 }
                             },
+                            'geo_bypass': True,
+                            'source_address': '0.0.0.0',
                         }
 
                         with yt_dlp.YoutubeDL(minimal_opts) as ydl:
                             info = await asyncio.wait_for(
                                 asyncio.get_event_loop().run_in_executor(
-                                    None, lambda: ydl.extract_info(transformed_url, download=True)
+                                    None, lambda: ydl.extract_info(attempt_url, download=True)
                                 ),
                                 timeout=120
                             )
