@@ -1681,7 +1681,30 @@ class AudioDownloader:
                     break  # Success, exit retry loop
 
                 except Exception as e:
-                    logger.warning(f"Download attempt {attempt + 1} failed: {e}")
+                    logger.error(f"Download attempt {attempt + 1} failed: {e}")
+                    logger.error(f"Error type: {type(e).__name__}")
+                    logger.error(f"Full error details: {repr(e)}")
+                    downloader_logger.error(f"Download attempt {attempt + 1} failed: {e}")
+                    downloader_logger.error(f"Error type: {type(e).__name__}")
+                    downloader_logger.error(f"Full error details: {repr(e)}")
+
+                    # Log specific error patterns for debugging
+                    error_str = str(e).lower()
+                    if "403" in error_str or "forbidden" in error_str:
+                        logger.error("HTTP 403 Forbidden error detected - YouTube blocking access")
+                    elif "429" in error_str or "too many requests" in error_str:
+                        logger.error("Rate limiting error detected - too many requests")
+                    elif "sign in" in error_str or "bot" in error_str:
+                        logger.error("Bot detection error detected - YouTube detected automation")
+                    elif "timeout" in error_str:
+                        logger.error("Timeout error detected - request took too long")
+                    elif "connection" in error_str:
+                        logger.error("Connection error detected - network issue")
+                    elif "unavailable" in error_str:
+                        logger.error("Video unavailable error detected")
+                    elif "private" in error_str or "deleted" in error_str:
+                        logger.error("Video access error detected - private or deleted")
+
                     if attempt == max_retries - 1:
                         raise  # Re-raise on final attempt
 
@@ -1709,7 +1732,9 @@ class AudioDownloader:
                         ydl_opts['max_sleep_interval'] = random.uniform(15, 20)
 
             if info is None:
-                raise Exception("All download attempts failed")
+                logger.error("All download attempts failed - no video info extracted")
+                downloader_logger.error("All download attempts failed - no video info extracted")
+                raise Exception("All download attempts failed - unable to extract video information")
             
             # Find downloaded file
             downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))

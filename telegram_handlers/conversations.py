@@ -1295,7 +1295,9 @@ async def background_download_task(downloader, url, quality, chat_id, download_p
             bot_logger.error(f"Background task: Network connectivity issue: {net_e}")
 
         # Perform the download
+        bot_logger.info("Background task: Starting download_audio call...")
         result = await downloader.download_audio(url, quality, chat_id=chat_id, download_playlist=download_playlist)
+        bot_logger.info(f"Background task: download_audio returned: {result is not None}")
 
         if result:
             file_path, file_info = result
