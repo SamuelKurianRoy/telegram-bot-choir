@@ -1018,6 +1018,31 @@ class AudioDownloader:
                 test_result['error'] = result.stderr or result.stdout
                 logger.error(f"spotdl version check failed: {test_result['error']}")
 
+                # If spotdl is not found, try to install it
+                if "no module named spotdl" in test_result['error'].lower():
+                    logger.warning("spotdl not found - attempting installation during startup...")
+                    try:
+                        import subprocess
+                        install_result = subprocess.run([
+                            "python3", "-m", "pip", "install", "spotdl>=4.2.0", "--no-cache-dir"
+                        ], capture_output=True, text=True, timeout=180)
+
+                        if install_result.returncode == 0:
+                            logger.info("Successfully installed spotdl during startup")
+                            # Test again after installation
+                            retry_result = self._run_spotdl_command(["--version"], timeout=10)
+                            if retry_result.returncode == 0:
+                                test_result['status'] = 'working'
+                                test_result['version'] = retry_result.stdout.strip()
+                                test_result['error'] = ''
+                                logger.info(f"spotdl working after installation: {test_result['version']}")
+                            else:
+                                logger.error(f"spotdl still not working after installation: {retry_result.stderr}")
+                        else:
+                            logger.error(f"Failed to install spotdl during startup: {install_result.stderr}")
+                    except Exception as install_error:
+                        logger.error(f"spotdl installation error during startup: {install_error}")
+
         except Exception as e:
             test_result['status'] = 'not_found'
             test_result['error'] = str(e)
@@ -2537,6 +2562,37 @@ class AudioDownloader:
 
                 # Analyze the specific error type
                 error_output = (result.stderr or "") + (result.stdout or "")
+
+                # Check if spotdl module is missing
+                if "no module named spotdl" in error_output.lower():
+                    logger.error("spotdl module not found - attempting to install")
+                    downloader_logger.error("spotdl module missing - trying installation")
+
+                    try:
+                        import subprocess
+                        logger.info("Installing spotdl...")
+                        install_result = subprocess.run([
+                            "python3", "-m", "pip", "install", "spotdl>=4.2.0", "--no-cache-dir"
+                        ], capture_output=True, text=True, timeout=180)
+
+                        if install_result.returncode == 0:
+                            logger.info("Successfully installed spotdl - retrying download")
+                            downloader_logger.info("spotdl installation successful - retrying")
+
+                            # Retry the download after installation
+                            retry_result = subprocess.run(spotdl_cmd, capture_output=True, text=True, timeout=timeout)
+                            if retry_result.returncode == 0:
+                                logger.info("spotdl download successful after installation")
+                                result = retry_result  # Use the successful result
+                            else:
+                                logger.error(f"spotdl still failed after installation: {retry_result.stderr}")
+                                raise Exception(f"spotdl failed even after installation: {retry_result.stderr}")
+                        else:
+                            logger.error(f"Failed to install spotdl: {install_result.stderr}")
+                            raise Exception(f"spotdl not available and installation failed: {install_result.stderr}")
+                    except Exception as install_error:
+                        logger.error(f"spotdl installation error: {install_error}")
+                        raise Exception(f"spotdl not available and installation failed: {install_error}")
 
                 # Check for YouTube bot detection in spotdl
                 if any(phrase in error_output.lower() for phrase in [
