@@ -289,7 +289,7 @@ class FeatureController:
             # Update the feature
             idx = feature_idx[0]
             df.loc[idx, 'enabled'] = False
-            df.loc[idx, 'disabled_reason'] = reason or "Disabled by administrator"
+            df.loc[idx, 'disabled_reason'] = reason or "There are some problems in the commmand"
             df.loc[idx, 'disabled_by_admin_id'] = str(admin_id)
             df.loc[idx, 'disabled_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             df.loc[idx, 'last_modified'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
