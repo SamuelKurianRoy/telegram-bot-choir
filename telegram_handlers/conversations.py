@@ -1492,6 +1492,23 @@ async def bible_game_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) started Bible game")
 
+    # Check if bible feature is enabled and user has access
+    try:
+        from data.feature_control import can_user_access_feature
+
+        can_access, error_message = can_user_access_feature('bible', user.id)
+        if not can_access:
+            await update.message.reply_text(
+                error_message,
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            user_logger.info(f"Bible access blocked for {user.full_name} ({user.id}) - {error_message[:50]}...")
+            return ConversationHandler.END
+    except Exception as feature_check_error:
+        bot_logger.error(f"Error checking bible feature access: {feature_check_error}")
+        # Continue with normal flow if feature check fails
+
     # Reset game data for new session
     context.user_data['bible_game_score'] = 0
     context.user_data['bible_game_total'] = 0

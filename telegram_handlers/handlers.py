@@ -703,6 +703,25 @@ async def date_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Conversation handler for /check
 async def check_song_start(update: Update, context: CallbackContext) -> int:
+    user = update.effective_user
+
+    # Check if check feature is enabled and user has access
+    try:
+        from data.feature_control import can_user_access_feature
+
+        can_access, error_message = can_user_access_feature('check', user.id)
+        if not can_access:
+            await update.message.reply_text(
+                error_message,
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            user_logger.info(f"Check access blocked for {user.first_name} ({user.id}) - {error_message[:50]}...")
+            return ConversationHandler.END
+    except Exception as feature_check_error:
+        user_logger.error(f"Error checking check feature access: {feature_check_error}")
+        # Continue with normal flow if feature check fails
+
     await update.message.reply_text(
         "🔎 Please enter a song code (e.g. H-27, L-14, or C-5):",
         reply_markup=ReplyKeyboardRemove()
@@ -778,6 +797,25 @@ ENTER_URL, SELECT_QUALITY = range(2, 4)
  
  # /last entry point
 async def last_sung_start(update: Update, context: CallbackContext) -> int:
+    user = update.effective_user
+
+    # Check if last feature is enabled and user has access
+    try:
+        from data.feature_control import can_user_access_feature
+
+        can_access, error_message = can_user_access_feature('last', user.id)
+        if not can_access:
+            await update.message.reply_text(
+                error_message,
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            user_logger.info(f"Last access blocked for {user.first_name} ({user.id}) - {error_message[:50]}...")
+            return ConversationHandler.END
+    except Exception as feature_check_error:
+        user_logger.error(f"Error checking last feature access: {feature_check_error}")
+        # Continue with normal flow if feature check fails
+
     await update.message.reply_text(
         "🎼 Please enter the song (e.g. H-27, L-14, C-5):",
         reply_markup=ReplyKeyboardRemove()
