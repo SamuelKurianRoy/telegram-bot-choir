@@ -1407,6 +1407,189 @@ async def admin_save_database(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text(f"❌ Error saving database: {str(e)}")
         user_logger.error(f"Error in admin_save_database: {e}")
 
+# === AUTHORIZED USERS MANAGEMENT ===
+
+async def admin_view_authorized_users(update: Update, context: CallbackContext) -> None:
+    """Admin command to view all authorized users"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        from data.udb import get_authorized_users
+
+        authorized_users = get_authorized_users()
+
+        if not authorized_users:
+            await update.message.reply_text("📋 **No Authorized Users Found**\n\nThere are currently no authorized users in the database.", parse_mode="Markdown")
+            return
+
+        # Build the authorized users list
+        users_text = "👥 **Authorized Users List**\n\n"
+        users_text += f"**Total Authorized Users:** {len(authorized_users)}\n\n"
+
+        for i, auth_user in enumerate(authorized_users, 1):
+            user_id = auth_user['user_id']
+            username = auth_user.get('username', '')
+            name = auth_user.get('name', 'Unknown')
+            last_seen = auth_user.get('last_seen', 'Never')
+            is_admin = auth_user.get('is_admin', False)
+
+            admin_badge = " 👑" if is_admin else ""
+            username_display = f"@{username}" if username else "No username"
+
+            users_text += f"**{i}. {name}**{admin_badge}\n"
+            users_text += f"   • **ID:** `{user_id}`\n"
+            users_text += f"   • **Username:** {username_display}\n"
+            users_text += f"   • **Last Seen:** {last_seen}\n\n"
+
+        users_text += "**Commands:**\n"
+        users_text += "• `/add_authorized_user <user_id>` - Add user to authorized list\n"
+        users_text += "• `/remove_authorized_user <user_id>` - Remove user from authorized list"
+
+        await update.message.reply_text(users_text, parse_mode="Markdown")
+        user_logger.info(f"Admin {user.id} viewed authorized users list")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error retrieving authorized users: {str(e)}")
+        user_logger.error(f"Error in admin_view_authorized_users: {e}")
+
+async def admin_add_authorized_user(update: Update, context: CallbackContext) -> None:
+    """Admin command to add a user to the authorized list"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    # Check if user_id was provided
+    if not context.args:
+        await update.message.reply_text(
+            "❌ **User ID required**\n\n"
+            "**Usage:** `/add_authorized_user <user_id>`\n\n"
+            "**Example:** `/add_authorized_user 123456789`\n\n"
+            "**How to get User ID:**\n"
+            "• Forward a message from the user to @userinfobot\n"
+            "• Or ask the user to send /start and check the logs",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        target_user_id = int(context.args[0])
+
+        from data.udb import set_user_authorization, get_user_by_id, is_user_authorized
+
+        # Check if user is already authorized
+        if is_user_authorized(target_user_id):
+            await update.message.reply_text(f"ℹ️ **User Already Authorized**\n\nUser ID `{target_user_id}` is already in the authorized users list.", parse_mode="Markdown")
+            return
+
+        # Add user to authorized list
+        success = set_user_authorization(target_user_id, authorized=True)
+
+        if success:
+            # Get user info if available
+            user_info = get_user_by_id(target_user_id)
+            if user_info is not None:
+                name = user_info.get('name', 'Unknown')
+                username = user_info.get('username', '')
+                username_display = f"@{username}" if username else "No username"
+
+                success_text = f"✅ **User Authorized Successfully!**\n\n"
+                success_text += f"**User Details:**\n"
+                success_text += f"• **Name:** {name}\n"
+                success_text += f"• **Username:** {username_display}\n"
+                success_text += f"• **ID:** `{target_user_id}`\n\n"
+                success_text += f"This user can now access restricted bot features."
+            else:
+                success_text = f"✅ **User Authorized Successfully!**\n\n"
+                success_text += f"**User ID:** `{target_user_id}`\n\n"
+                success_text += f"User record created and authorized. They can now access restricted bot features."
+
+            await update.message.reply_text(success_text, parse_mode="Markdown")
+            user_logger.info(f"Admin {user.id} authorized user {target_user_id}")
+        else:
+            await update.message.reply_text("❌ **Failed to authorize user**\n\nThere was an error updating the database.", parse_mode="Markdown")
+
+    except ValueError:
+        await update.message.reply_text("❌ **Invalid User ID**\n\nPlease provide a valid numeric user ID.", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error authorizing user: {str(e)}")
+        user_logger.error(f"Error in admin_add_authorized_user: {e}")
+
+async def admin_remove_authorized_user(update: Update, context: CallbackContext) -> None:
+    """Admin command to remove a user from the authorized list"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    # Check if user_id was provided
+    if not context.args:
+        await update.message.reply_text(
+            "❌ **User ID required**\n\n"
+            "**Usage:** `/remove_authorized_user <user_id>`\n\n"
+            "**Example:** `/remove_authorized_user 123456789`\n\n"
+            "Use `/view_authorized_users` to see the list of authorized users.",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        target_user_id = int(context.args[0])
+
+        # Prevent admin from removing themselves
+        if target_user_id == ADMIN_ID:
+            await update.message.reply_text("❌ **Cannot Remove Admin**\n\nYou cannot remove your own admin authorization.", parse_mode="Markdown")
+            return
+
+        from data.udb import set_user_authorization, get_user_by_id, is_user_authorized
+
+        # Check if user is currently authorized
+        if not is_user_authorized(target_user_id):
+            await update.message.reply_text(f"ℹ️ **User Not Authorized**\n\nUser ID `{target_user_id}` is not in the authorized users list.", parse_mode="Markdown")
+            return
+
+        # Remove user from authorized list
+        success = set_user_authorization(target_user_id, authorized=False)
+
+        if success:
+            # Get user info if available
+            user_info = get_user_by_id(target_user_id)
+            if user_info is not None:
+                name = user_info.get('name', 'Unknown')
+                username = user_info.get('username', '')
+                username_display = f"@{username}" if username else "No username"
+
+                success_text = f"🚫 **User Authorization Revoked**\n\n"
+                success_text += f"**User Details:**\n"
+                success_text += f"• **Name:** {name}\n"
+                success_text += f"• **Username:** {username_display}\n"
+                success_text += f"• **ID:** `{target_user_id}`\n\n"
+                success_text += f"This user can no longer access restricted bot features."
+            else:
+                success_text = f"🚫 **User Authorization Revoked**\n\n"
+                success_text += f"**User ID:** `{target_user_id}`\n\n"
+                success_text += f"User authorization has been removed."
+
+            await update.message.reply_text(success_text, parse_mode="Markdown")
+            user_logger.info(f"Admin {user.id} removed authorization for user {target_user_id}")
+        else:
+            await update.message.reply_text("❌ **Failed to remove authorization**\n\nThere was an error updating the database.", parse_mode="Markdown")
+
+    except ValueError:
+        await update.message.reply_text("❌ **Invalid User ID**\n\nPlease provide a valid numeric user ID.", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error removing authorization: {str(e)}")
+        user_logger.error(f"Error in admin_remove_authorized_user: {e}")
+
 async def admin_list_commands(update: Update, context: CallbackContext) -> None:
     """Admin command to list all available admin commands"""
     user = update.effective_user
@@ -1432,6 +1615,9 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 
 **User Management:**
 • `/admin_save_db` - Manually save user database to Google Drive
+• `/view_authorized_users` - View all authorized users
+• `/add_authorized_user <user_id>` - Add user to authorized list
+• `/remove_authorized_user <user_id>` - Remove user from authorized list
 
 **Bot Management:**
 • `/refresh` - Reload all datasets from Google Drive

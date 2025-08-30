@@ -19,6 +19,7 @@ try:
         date_start, date_input, ASK_DATE, last_show_all_dates_callback,
         bible_start, bible_input_handler, bible_confirm_handler, BIBLE_INPUT, BIBLE_CONFIRM,
         admin_list_commands, admin_save_database,
+        admin_view_authorized_users, admin_add_authorized_user, admin_remove_authorized_user,
         admin_reply_start, admin_reply_select_user, admin_reply_send_message, REPLY_SELECT_USER, REPLY_ENTER_MESSAGE, admin_reply_legacy,
         admin_disable_feature, admin_enable_feature, admin_feature_status,
         admin_restrict_access, admin_unrestrict_access, admin_debug_features, admin_add_missing_features, admin_restore_all_features
@@ -230,10 +231,13 @@ app.add_handler(CommandHandler("refresh", refresh_command))
 app.add_handler(CommandHandler("dnstest", dns_test_command))
 app.add_handler(admin_reply_conv_handler)
 app.add_handler(CommandHandler("reply_legacy", admin_reply_legacy))
-# Removed problematic user database admin commands:
-# admin_users, admin_user_info (had Markdown parsing errors)
-# Restored admin_save_db - it was working fine
+# User database admin commands
 app.add_handler(CommandHandler("admin_save_db", admin_save_database))
+
+# Authorized users management commands
+app.add_handler(CommandHandler("view_authorized_users", admin_view_authorized_users))
+app.add_handler(CommandHandler("add_authorized_user", admin_add_authorized_user))
+app.add_handler(CommandHandler("remove_authorized_user", admin_remove_authorized_user))
 app.add_handler(CommandHandler("list", admin_list_commands))
 
 # Feature control admin commands

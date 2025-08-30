@@ -4,6 +4,7 @@
 import pandas as pd
 import io
 import os
+from datetime import datetime
 from googleapiclient.http import MediaIoBaseDownload
 from googleapiclient.errors import HttpError
 from data.drive import get_drive_service
@@ -186,6 +187,89 @@ def user_exists(user_id):
     Checks if a user exists in the database.
     """
     return get_user_by_id(user_id) is not None
+
+def is_user_authorized(user_id):
+    """
+    Check if a user is authorized based on database record.
+    Returns True if user is authorized, False otherwise.
+    """
+    user = get_user_by_id(user_id)
+    if user is None:
+        return False
+    return bool(user.get('is_authorized', False))
+
+def set_user_authorization(user_id, authorized=True):
+    """
+    Set authorization status for a user.
+    Creates user record if it doesn't exist.
+
+    Args:
+        user_id (int): Telegram user ID
+        authorized (bool): Authorization status to set
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        db = get_user_database()
+
+        # Check if user exists
+        user_idx = db[db['user_id'] == user_id].index
+
+        if user_idx.empty:
+            # User doesn't exist, create new record
+            new_user = {
+                'user_id': user_id,
+                'username': '',
+                'name': '',
+                'last_seen': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'is_authorized': authorized,
+                'is_admin': False,
+                'status': 'active',
+                'notes': f"Authorization {'granted' if authorized else 'revoked'} by admin",
+                'bible_language': 'malayalam',
+                'game_language': 'malayalam',
+                'search_results_limit': 10,
+                'download_preference': 'audio',
+                'download_quality': 'medium',
+                'theme_preference': 'default',
+                'show_tunes_in_date': True
+            }
+
+            # Add new user to database
+            global user_database
+            user_database = pd.concat([db, pd.DataFrame([new_user])], ignore_index=True)
+        else:
+            # User exists, update authorization
+            idx = user_idx[0]
+            user_database.loc[idx, 'is_authorized'] = authorized
+            user_database.loc[idx, 'notes'] = f"Authorization {'granted' if authorized else 'revoked'} by admin"
+            user_database.loc[idx, 'last_seen'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        # Mark for saving
+        mark_pending_save()
+        return True
+
+    except Exception as e:
+        logger.error(f"Error setting user authorization: {e}")
+        return False
+
+def get_authorized_users():
+    """
+    Get list of all authorized users.
+
+    Returns:
+        list: List of dictionaries containing authorized user information
+    """
+    try:
+        db = get_user_database()
+        authorized_users = db[db['is_authorized'] == True]
+
+        return authorized_users[['user_id', 'username', 'name', 'last_seen', 'is_admin']].to_dict('records')
+
+    except Exception as e:
+        logger.error(f"Error getting authorized users: {e}")
+        return []
 
 def mark_pending_save():
     """
