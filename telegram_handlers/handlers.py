@@ -9,7 +9,7 @@ from logging_utils import setup_loggers
 from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
 from data.drive import upload_log_to_google_doc
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
-from data.udb import track_user_interaction, user_exists, get_user_by_id, get_user_stats, get_user_summary, save_user_database, track_user_fast, save_if_pending, get_user_bible_language, get_user_show_tunes_in_date
+from data.udb import track_user_interaction, user_exists, get_user_by_id, save_user_database, track_user_fast, get_user_bible_language, get_user_show_tunes_in_date
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import pandas as pd
 from datetime import date
@@ -1377,90 +1377,9 @@ def extract_verses_from_cleaned_text(cleaned_text, start_verse, end_verse):
             continue
     return verses
 
-# === USER DATABASE ADMIN COMMANDS ===
-
-async def admin_users_stats(update: Update, context: CallbackContext) -> None:
-    """Admin command to view user database statistics"""
-    user = update.effective_user
-
-    # Check if user is admin
-    if user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Admin access required")
-        return
-
-    try:
-        stats = get_user_stats()
-
-        stats_text = f"""
-📊 **User Database Statistics**
-
-👥 **Total Users:** {stats['total_users']}
-✅ **Authorized Users:** {stats['authorized_users']}
-👑 **Admin Users:** {stats['admin_users']}
-🟢 **Active Users:** {stats['active_users']}
-
-Use /admin_user_info <user_id> to view specific user details.
-"""
-
-        await update.message.reply_text(stats_text, parse_mode="Markdown")
-        user_logger.info(f"Admin {user.id} viewed user database statistics")
-
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error retrieving user statistics: {str(e)}")
-        user_logger.error(f"Error in admin_users_stats: {e}")
-
-async def admin_user_info(update: Update, context: CallbackContext) -> None:
-    """Admin command to view specific user information"""
-    user = update.effective_user
-
-    # Check if user is admin
-    if user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Admin access required")
-        return
-
-    # Check if user_id was provided
-    if not context.args:
-        await update.message.reply_text("❌ Please provide a user ID. Usage: /admin_user_info <user_id>")
-        return
-
-    try:
-        target_user_id = int(context.args[0])
-        user_summary = get_user_summary(target_user_id)
-
-        await update.message.reply_text(user_summary, parse_mode="Markdown")
-        user_logger.info(f"Admin {user.id} viewed info for user {target_user_id}")
-
-    except ValueError:
-        await update.message.reply_text("❌ Invalid user ID. Please provide a numeric user ID.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error retrieving user information: {str(e)}")
-        user_logger.error(f"Error in admin_user_info: {e}")
-
-async def admin_save_database(update: Update, context: CallbackContext) -> None:
-    """Admin command to manually save user database to Google Drive"""
-    user = update.effective_user
-
-    # Check if user is admin
-    if user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Admin access required")
-        return
-
-    try:
-        await update.message.reply_text("💾 Saving user database to Google Drive...")
-
-        # Use save_if_pending for efficiency
-        success = save_if_pending()
-
-        if success:
-            await update.message.reply_text("✅ User database saved successfully to Google Drive!")
-            user_logger.info(f"Admin {user.id} manually saved user database")
-        else:
-            await update.message.reply_text("❌ Failed to save user database to Google Drive")
-            user_logger.error(f"Admin {user.id} failed to save user database")
-
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error saving database: {str(e)}")
-        user_logger.error(f"Error in admin_save_database: {e}")
+# === REMOVED PROBLEMATIC USER DATABASE ADMIN COMMANDS ===
+# The admin_users_stats, admin_user_info, and admin_save_database commands
+# have been removed due to parsing errors with Markdown formatting
 
 async def admin_list_commands(update: Update, context: CallbackContext) -> None:
     """Admin command to list all available admin commands"""
@@ -1482,11 +1401,11 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/unrestrict_access <feature>` - Remove access restriction
 • `/feature_status` - View all feature statuses
 • `/debug_features` - Debug feature loading (troubleshooting)
+• `/add_missing_features` - Add missing features to Excel sheet
+• `/restore_all_features` - Restore all 11 features (fix missing features)
 
 **User Management:**
-• `/admin_users` - View user database statistics
-• `/admin_user_info <user_id>` - View specific user details
-• `/admin_save_db` - Manually save user database
+• User database commands temporarily removed due to technical issues
 
 **Bot Management:**
 • `/refresh` - Reload all datasets from Google Drive
@@ -1945,11 +1864,104 @@ async def admin_add_missing_features(update: Update, context: CallbackContext) -
             if feature_data['feature_name'] not in existing_features:
                 features_to_add.append(feature_data)
 
+        # Also check if we need to restore original features
+        original_features_data = [
+            {
+                'feature_name': 'download',
+                'feature_display_name': 'Download Commands',
+                'commands': '/download, URL downloads',
+                'enabled': False,  # Keep previous disabled state
+                'disabled_reason': 'Disabled by administrator',
+                'disabled_by_admin_id': '757438955',
+                'disabled_date': '2025-08-30 11:57:20',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'search',
+                'feature_display_name': 'Song Search',
+                'commands': '/search',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'date',
+                'feature_display_name': 'Date Commands',
+                'commands': '/date',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'bible',
+                'feature_display_name': 'Bible Verses',
+                'commands': '/bible',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'check',
+                'feature_display_name': 'Song Checking',
+                'commands': '/check',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'last',
+                'feature_display_name': 'Last Sung',
+                'commands': '/last',
+                'enabled': True,  # Re-enable last (was disabled before)
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+        ]
+
+        # Check which original features need to be restored
+        for feature_data in original_features_data:
+            if feature_data['feature_name'] not in existing_features:
+                features_to_add.append(feature_data)
+
         if not features_to_add:
             await update.message.reply_text("✅ **All features already exist!**\n\nNo new features need to be added.", parse_mode="Markdown")
             return
 
-        # Add new features to DataFrame
+        # Add missing features to DataFrame
         new_rows_df = pd.DataFrame(features_to_add)
         updated_df = pd.concat([df, new_rows_df], ignore_index=True)
 
@@ -1978,3 +1990,216 @@ async def admin_add_missing_features(update: Update, context: CallbackContext) -
     except Exception as e:
         await update.message.reply_text(f"❌ Error adding features: {str(e)}")
         user_logger.error(f"Error in admin_add_missing_features: {e}")
+
+async def admin_restore_all_features(update: Update, context: CallbackContext) -> None:
+    """Admin command to restore all 11 features (original 6 + new 5)"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        await update.message.reply_text("🔄 **Restoring All Features...**\n\nThis will restore all 11 features to the Excel sheet.", parse_mode="Markdown")
+
+        # Import feature controller
+        from data.feature_control import get_feature_controller
+        import pandas as pd
+        from datetime import datetime
+
+        feature_controller = get_feature_controller()
+
+        # Create complete feature set (all 11 features)
+        all_features_data = [
+            # Original 6 features
+            {
+                'feature_name': 'download',
+                'feature_display_name': 'Download Commands',
+                'commands': '/download, URL downloads',
+                'enabled': False,  # Keep disabled as it was
+                'disabled_reason': 'Disabled by administrator',
+                'disabled_by_admin_id': '757438955',
+                'disabled_date': '2025-08-30 11:57:20',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'search',
+                'feature_display_name': 'Song Search',
+                'commands': '/search',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'date',
+                'feature_display_name': 'Date Commands',
+                'commands': '/date',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'bible',
+                'feature_display_name': 'Bible Verses',
+                'commands': '/bible',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'check',
+                'feature_display_name': 'Song Checking',
+                'commands': '/check',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'last',
+                'feature_display_name': 'Last Sung',
+                'commands': '/last',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            # New 5 features
+            {
+                'feature_name': 'notation',
+                'feature_display_name': 'Musical Notation',
+                'commands': '/notation, notation search',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'vocabulary',
+                'feature_display_name': 'Song Vocabulary',
+                'commands': '/vocabulary, word search',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'games',
+                'feature_display_name': 'Bible Games',
+                'commands': '/games, bible games',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'tune',
+                'feature_display_name': 'Tune Finder',
+                'commands': '/tune, tune search',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'theme',
+                'feature_display_name': 'Theme Search',
+                'commands': '/theme, theme finder',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+        ]
+
+        # Create complete DataFrame
+        complete_df = pd.DataFrame(all_features_data)
+
+        # Save to Google Drive (replace entire sheet)
+        if feature_controller._save_to_drive(complete_df):
+            # Clear cache to force reload
+            feature_controller._cache = None
+
+            result_text = f"🎉 **All Features Restored Successfully!**\n\n"
+            result_text += f"**Total Features:** 11\n\n"
+            result_text += "**Original Features (6):**\n"
+            result_text += "• Download Commands (disabled)\n"
+            result_text += "• Song Search\n"
+            result_text += "• Date Commands\n"
+            result_text += "• Bible Verses\n"
+            result_text += "• Song Checking\n"
+            result_text += "• Last Sung\n\n"
+            result_text += "**New Features (5):**\n"
+            result_text += "• Musical Notation\n"
+            result_text += "• Song Vocabulary\n"
+            result_text += "• Bible Games\n"
+            result_text += "• Tune Finder\n"
+            result_text += "• Theme Search\n\n"
+            result_text += "Use `/feature_status` to see all features!"
+
+            await update.message.reply_text(result_text, parse_mode="Markdown")
+            user_logger.info(f"Admin {user.id} restored all 11 features")
+        else:
+            await update.message.reply_text("❌ **Failed to restore features**\n\nThere was an error saving to Google Drive.", parse_mode="Markdown")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error restoring features: {str(e)}")
+        user_logger.error(f"Error in admin_restore_all_features: {e}")
