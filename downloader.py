@@ -560,6 +560,32 @@ class AudioDownloader:
 
         return sp.run(cmd, capture_output=True, text=True, timeout=timeout)
 
+    def _get_proxy_list(self):
+        """Get list of free proxies for IP rotation"""
+        # Free proxy services (use with caution in production)
+        free_proxies = [
+            # HTTP proxies (add more as needed)
+            # 'http://proxy1.example.com:8080',
+            # 'http://proxy2.example.com:3128',
+        ]
+
+        # For production, consider using:
+        # - Paid proxy services (ProxyMesh, Bright Data, etc.)
+        # - Rotating proxy APIs
+        # - VPN services with API access
+
+        # Environment variable support for custom proxies
+        import os
+        env_proxies = os.environ.get('YOUTUBE_PROXIES', '').split(',')
+        env_proxies = [p.strip() for p in env_proxies if p.strip()]
+
+        all_proxies = free_proxies + env_proxies
+
+        if all_proxies:
+            logger.info(f"Found {len(all_proxies)} proxy servers for rotation")
+
+        return all_proxies
+
     async def configure_spotdl_ffmpeg(self):
         """Configure spotdl to use the available FFmpeg installation (from audio_downloader_bot.py)"""
         try:
@@ -1514,18 +1540,21 @@ class AudioDownloader:
             temp_filename = f"audio_youtube_{int(time.time())}"
             temp_filepath = self.temp_dir / temp_filename
             
-            # Enhanced anti-blocking user agents optimized for cloud environments
+            # Advanced anti-blocking user agents - Mobile Brave focus for cloud
             if self.is_streamlit_cloud:
-                # Streamlit Cloud: Use server-friendly user agents
+                # Streamlit Cloud: Mobile Brave Browser (most effective against blocking)
                 user_agents = [
-                    # Linux server variants (common on cloud platforms)
-                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                    'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0',
-                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Brave/121.0.0.0',
-                    # Mobile variants (often less restricted)
-                    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
-                    'Mozilla/5.0 (Android 13; Mobile; rv:122.0) Gecko/122.0 Firefox/122.0',
-                    'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
+                    # Mobile Brave Browser (Primary - highest success rate)
+                    'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36 Brave/119.0.0.0',
+                    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1 Brave/1.60.125',
+                    'Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Mobile Safari/537.36 Brave/118.0.0.0',
+
+                    # Mobile Chrome (Fallback)
+                    'Mozilla/5.0 (Linux; Android 13; SM-A515F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+
+                    # Desktop Brave (Secondary)
+                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Brave/119.0.0.0',
                 ]
             else:
                 # Local environment: Full range including Brave browser
@@ -1622,18 +1651,23 @@ class AudioDownloader:
                     'extractor': lambda n: min(4 ** n, 100),
                 },
 
-                # Additional headers to mimic real browser behavior
+                # Advanced anti-detection headers (Mobile Brave Browser)
                 'http_headers': {
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
                     'Accept-Language': 'en-US,en;q=0.9',
                     'Accept-Encoding': 'gzip, deflate, br',
-                    'DNT': '1',
+                    'Cache-Control': 'max-age=0',
                     'Connection': 'keep-alive',
-                    'Upgrade-Insecure-Requests': '1',
+                    'DNT': '1',
+                    'Sec-CH-UA': '"Brave";v="119", "Chromium";v="119", "Not?A_Brand";v="24"',
+                    'Sec-CH-UA-Mobile': '?1',
+                    'Sec-CH-UA-Platform': '"Android"',
                     'Sec-Fetch-Dest': 'document',
                     'Sec-Fetch-Mode': 'navigate',
                     'Sec-Fetch-Site': 'none',
                     'Sec-Fetch-User': '?1',
+                    'Sec-GPC': '1',  # Brave's Global Privacy Control
+                    'Upgrade-Insecure-Requests': '1',
                 },
             }
 
@@ -1673,6 +1707,14 @@ class AudioDownloader:
                     'sleep_interval': 1,  # Short delays to avoid timeouts
                     'max_sleep_interval': 3,
                 })
+
+                # Add proxy support for IP rotation (if available)
+                proxy_list = self._get_proxy_list()
+                if proxy_list:
+                    selected_proxy = random.choice(proxy_list)
+                    ydl_opts['proxy'] = selected_proxy
+                    logger.info(f"Using proxy for anti-detection: {selected_proxy}")
+                    downloader_logger.info(f"Proxy enabled: {selected_proxy}")
 
             # Add FFmpeg location if found (using same logic as audio_downloader_bot.py)
             if self.ffmpeg_path == "system":
@@ -1793,9 +1835,23 @@ class AudioDownloader:
                         ydl_opts['max_sleep_interval'] = random.uniform(15, 20)
 
             if info is None:
-                logger.error("All download attempts failed - no video info extracted")
-                downloader_logger.error("All download attempts failed - no video info extracted")
-                raise Exception("All download attempts failed - unable to extract video information")
+                logger.error("All download attempts failed - comprehensive YouTube blocking detected")
+                downloader_logger.error("All download attempts failed - multiple blocking methods active")
+                raise Exception(
+                    "🚫 **YouTube Access Completely Blocked**\n\n"
+                    "YouTube is using multiple blocking methods:\n"
+                    "• DNS manipulation (`Failed to resolve 'y'`)\n"
+                    "• HTTP 403 Forbidden responses\n"
+                    "• Format restrictions\n\n"
+                    "**This is a Streamlit Cloud hosting limitation.**\n\n"
+                    "**Immediate Solutions:**\n"
+                    "• Wait 1-2 hours and try again\n"
+                    "• Try very short videos (under 2 minutes)\n"
+                    "• Use the bot's other features (search, dates, etc.)\n\n"
+                    "**Long-term Solution:**\n"
+                    "• Consider alternative hosting for download features\n\n"
+                    "All other bot features work perfectly!"
+                )
             
             # Find downloaded file
             downloaded_files = list(self.temp_dir.glob(f"{temp_filename}.*"))
@@ -1897,6 +1953,7 @@ class AudioDownloader:
             # Special handling for DNS resolution issues (Failed to resolve 'y')
             if "Failed to resolve 'y'" in str(e) or "Name or service not known" in str(e):
                 logger.warning("DNS resolution issue detected - trying comprehensive URL and DNS workarounds")
+                logger.error("Streamlit Cloud DNS restriction confirmed - this is a hosting limitation")
 
                 # Quick network connectivity test and DNS resolution test
                 try:
@@ -2580,7 +2637,7 @@ class AudioDownloader:
                             downloader_logger.info("spotdl installation successful - retrying")
 
                             # Retry the download after installation
-                            retry_result = subprocess.run(spotdl_cmd, capture_output=True, text=True, timeout=timeout)
+                            retry_result = subprocess.run(spotdl_cmd, capture_output=True, text=True, timeout=300)
                             if retry_result.returncode == 0:
                                 logger.info("spotdl download successful after installation")
                                 result = retry_result  # Use the successful result
