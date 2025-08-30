@@ -83,25 +83,66 @@ class FeatureController:
 
             logger.info("Loading feature configuration from Google Drive...")
 
-            # Download Excel file from Google Drive
-            request = self.drive_service.files().get_media(fileId=self.disabled_db_id)
-            file_data = io.BytesIO()
-            downloader = MediaIoBaseDownload(file_data, request)
+            # Download from Google Drive (try both Excel export and direct read)
+            try:
+                # First try: Export as Excel (for Google Sheets)
+                request = self.drive_service.files().export_media(
+                    fileId=self.disabled_db_id,
+                    mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                )
+                file_data = io.BytesIO()
+                downloader = MediaIoBaseDownload(file_data, request)
 
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
 
-            file_data.seek(0)
+                file_data.seek(0)
+                df = pd.read_excel(file_data, sheet_name=None)  # Read all sheets
 
-            # Read Excel file
-            df = pd.read_excel(file_data, sheet_name='FeatureControl')
+                # Get the first sheet if FeatureControl doesn't exist
+                if 'FeatureControl' in df:
+                    df = df['FeatureControl']
+                else:
+                    # Use the first sheet
+                    sheet_name = list(df.keys())[0]
+                    df = df[sheet_name]
+                    logger.info(f"Using sheet '{sheet_name}' instead of 'FeatureControl'")
+
+                logger.info("Successfully loaded data using Excel export method")
+
+            except Exception as export_error:
+                logger.warning(f"Excel export failed: {export_error}, trying direct media download...")
+
+                # Second try: Direct media download (for actual Excel files)
+                request = self.drive_service.files().get_media(fileId=self.disabled_db_id)
+                file_data = io.BytesIO()
+                downloader = MediaIoBaseDownload(file_data, request)
+
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+
+                file_data.seek(0)
+                df = pd.read_excel(file_data, sheet_name='FeatureControl')
+                logger.info("Successfully loaded data using direct media download")
+
+            # Debug: Log the structure and data we loaded
+            logger.info(f"Loaded Excel columns: {list(df.columns)}")
+            logger.info(f"Loaded {len(df)} features from Google Drive")
+
+            # Debug: Log the actual data for troubleshooting
+            logger.info("=== EXCEL DATA DEBUG ===")
+            for _, row in df.iterrows():
+                feature_name = row.get('feature_name', 'UNKNOWN')
+                enabled = row.get('enabled', 'UNKNOWN')
+                logger.info(f"Feature: {feature_name}, Enabled: {enabled} (type: {type(enabled)})")
+            logger.info("=== END EXCEL DATA DEBUG ===")
 
             # Update cache
             self._cache = df
             self._cache_timestamp = datetime.now()
 
-            logger.info(f"Successfully loaded {len(df)} features from Google Drive")
             return df
 
         except Exception as e:

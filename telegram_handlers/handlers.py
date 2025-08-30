@@ -1793,3 +1793,50 @@ async def admin_unrestrict_access(update: Update, context: CallbackContext) -> N
     except Exception as e:
         await update.message.reply_text(f"❌ Error unrestricting access: {str(e)}")
         user_logger.error(f"Error in admin_unrestrict_access: {e}")
+
+async def admin_debug_features(update: Update, context: CallbackContext) -> None:
+    """Admin command to debug feature loading"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        await update.message.reply_text("🔍 **Debugging Feature Loading...**\n\nCheck the logs for detailed information.", parse_mode="Markdown")
+
+        # Import feature controller
+        from data.feature_control import get_feature_controller
+
+        feature_controller = get_feature_controller()
+
+        # Force reload from Google Drive (bypass cache)
+        feature_controller._cache = None
+        df = feature_controller._load_from_drive()
+
+        debug_text = "🔍 **Feature Loading Debug Results**\n\n"
+        debug_text += f"**Data Source:** Google Drive\n"
+        debug_text += f"**Rows Loaded:** {len(df)}\n"
+        debug_text += f"**Columns:** {len(df.columns)}\n\n"
+
+        debug_text += "**Feature Status from Excel:**\n"
+        for _, row in df.iterrows():
+            feature_name = row.get('feature_name', 'UNKNOWN')
+            enabled = row.get('enabled', 'UNKNOWN')
+            enabled_icon = "✅" if enabled else "❌"
+            debug_text += f"{enabled_icon} {feature_name}: {enabled}\n"
+
+        debug_text += "\n**Feature Status from Bot Logic:**\n"
+        for _, row in df.iterrows():
+            feature_name = row.get('feature_name', 'UNKNOWN')
+            bot_enabled = feature_controller.is_feature_enabled(feature_name)
+            enabled_icon = "✅" if bot_enabled else "❌"
+            debug_text += f"{enabled_icon} {feature_name}: {bot_enabled}\n"
+
+        await update.message.reply_text(debug_text, parse_mode="Markdown")
+        user_logger.info(f"Admin {user.id} debugged feature loading")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error debugging features: {str(e)}")
+        user_logger.error(f"Error in admin_debug_features: {e}")
