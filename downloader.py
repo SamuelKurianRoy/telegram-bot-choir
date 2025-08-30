@@ -1869,19 +1869,25 @@ class AudioDownloader:
                 logger.error("All download attempts failed - comprehensive YouTube blocking detected")
                 downloader_logger.error("All download attempts failed - multiple blocking methods active")
                 raise Exception(
-                    "🚫 **YouTube Access Completely Blocked**\n\n"
-                    "YouTube is using multiple blocking methods:\n"
+                    "🚫 **YouTube Downloads Blocked by Hosting Provider**\n\n"
+                    "**What's Happening:**\n"
+                    "Streamlit Cloud is blocking YouTube access using multiple methods:\n"
                     "• DNS manipulation (`Failed to resolve 'y'`)\n"
                     "• HTTP 403 Forbidden responses\n"
-                    "• Format restrictions\n\n"
-                    "**This is a Streamlit Cloud hosting limitation.**\n\n"
-                    "**Immediate Solutions:**\n"
-                    "• Wait 1-2 hours and try again\n"
-                    "• Try very short videos (under 2 minutes)\n"
-                    "• Use the bot's other features (search, dates, etc.)\n\n"
-                    "**Long-term Solution:**\n"
-                    "• Consider alternative hosting for download features\n\n"
-                    "All other bot features work perfectly!"
+                    "• Format restrictions\n"
+                    "• Advanced bot detection\n\n"
+                    "**This is NOT a bot issue - it's a hosting limitation.**\n\n"
+                    "**✅ What Still Works:**\n"
+                    "• 🔍 Song search (`/search`)\n"
+                    "• 📅 Date checking (`/date`)\n"
+                    "• 📖 Bible verses (`/bible`)\n"
+                    "• 🎵 Hymn information\n"
+                    "• 👥 All user features\n\n"
+                    "**💡 Alternative Solutions:**\n"
+                    "• Use other music download apps locally\n"
+                    "• Try again in 2-3 hours (sometimes works)\n"
+                    "• Consider hosting on Railway/Heroku for downloads\n\n"
+                    "**The bot works perfectly for everything except downloads!**"
                 )
             
             # Find downloaded file
@@ -2557,7 +2563,7 @@ class AudioDownloader:
                 base_cmd.extend([
                     "--threads", "1",  # Single thread for stability
                     "--simple-tui",    # Simpler output for cloud
-                    "--restrict-filenames",  # Avoid filename issues
+                    # Note: --restrict-filenames doesn't exist in spotdl 4.4.1
                 ])
 
             spotdl_cmd = base_cmd
@@ -2898,7 +2904,7 @@ class AudioDownloader:
                 "--format", "mp3",
                 "--output", str(output_dir),
                 "--simple-tui",  # Valid argument
-                "--restrict",  # Valid argument (not --restrict-filenames)
+                # Note: --restrict argument removed as it may not be valid in all versions
                 "--no-cache",  # Valid argument
                 "--threads", "1",  # Valid argument
                 "--max-retries", "2",  # Valid argument (not --retries)
