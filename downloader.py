@@ -545,11 +545,14 @@ class AudioDownloader:
     def _run_spotdl_command(self, args: list, timeout: int = 10):
         """Run spotdl command with appropriate Python executable"""
         import subprocess as sp
+        import sys
 
         # Determine the correct Python command
         if self.is_streamlit_cloud:
-            # Streamlit Cloud uses python3
-            cmd = ["python3", "-m", "spotdl"] + args
+            # Streamlit Cloud: Use the current Python executable (from venv)
+            # sys.executable points to the active Python interpreter
+            cmd = [sys.executable, "-m", "spotdl"] + args
+            logger.info(f"Using Streamlit Cloud Python: {sys.executable}")
         else:
             # Local environment
             import platform
@@ -1014,6 +1017,13 @@ class AudioDownloader:
             'error': '',
             'help_output': ''
         }
+
+        # Debug Python path information
+        logger.info("Testing spotdl installation and availability...")
+        if self.is_streamlit_cloud:
+            import sys
+            logger.info(f"Streamlit Cloud detected - using Python: {sys.executable}")
+            logger.info(f"Python version: {sys.version}")
 
         try:
             # Test spotdl version

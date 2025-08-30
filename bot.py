@@ -20,7 +20,8 @@ try:
         bible_start, bible_input_handler, bible_confirm_handler, BIBLE_INPUT, BIBLE_CONFIRM,
         admin_users_stats, admin_user_info, admin_save_database, admin_list_commands,
         admin_reply_start, admin_reply_select_user, admin_reply_send_message, REPLY_SELECT_USER, REPLY_ENTER_MESSAGE, admin_reply_legacy,
-        admin_disable_feature, admin_enable_feature, admin_feature_status
+        admin_disable_feature, admin_enable_feature, admin_feature_status,
+        admin_restrict_access, admin_unrestrict_access
     )
     from telegram_handlers.conversations import (
         SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT,
@@ -238,6 +239,10 @@ app.add_handler(CommandHandler("list", admin_list_commands))
 app.add_handler(CommandHandler("disable", admin_disable_feature))
 app.add_handler(CommandHandler("enable", admin_enable_feature))
 app.add_handler(CommandHandler("feature_status", admin_feature_status))
+
+# Access restriction admin commands
+app.add_handler(CommandHandler("restrict_access", admin_restrict_access))
+app.add_handler(CommandHandler("unrestrict_access", admin_unrestrict_access))
 app.add_handler(CallbackQueryHandler(handle_notation_callback, pattern="^notation:"))
 
 app.add_handler(tune_conv_handler)

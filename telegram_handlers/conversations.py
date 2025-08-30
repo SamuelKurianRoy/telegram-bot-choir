@@ -910,21 +910,21 @@ async def download_start(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) used /download")
 
-    # Check if download feature is enabled
+    # Check if download feature is enabled and user has access
     try:
-        from data.feature_control import is_feature_enabled, get_disabled_message
+        from data.feature_control import can_user_access_feature
 
-        if not is_feature_enabled('download'):
-            disabled_message = get_disabled_message('download')
+        can_access, error_message = can_user_access_feature('download', user.id)
+        if not can_access:
             await update.message.reply_text(
-                disabled_message,
+                error_message,
                 parse_mode="Markdown",
                 reply_markup=ReplyKeyboardRemove()
             )
-            user_logger.info(f"Download feature disabled - blocked access for {user.full_name} ({user.id})")
+            user_logger.info(f"Download access blocked for {user.full_name} ({user.id}) - {error_message[:50]}...")
             return ConversationHandler.END
     except Exception as feature_check_error:
-        bot_logger.error(f"Error checking download feature status: {feature_check_error}")
+        bot_logger.error(f"Error checking download feature access: {feature_check_error}")
         # Continue with normal flow if feature check fails
 
     if not DOWNLOADER_AVAILABLE:
@@ -2010,21 +2010,21 @@ async def search_start(update: Update, context: CallbackContext) -> int:
      user = update.effective_user
      user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) started /search")
 
-     # Check if search feature is enabled
+     # Check if search feature is enabled and user has access
      try:
-         from data.feature_control import is_feature_enabled, get_disabled_message
+         from data.feature_control import can_user_access_feature
 
-         if not is_feature_enabled('search'):
-             disabled_message = get_disabled_message('search')
+         can_access, error_message = can_user_access_feature('search', user.id)
+         if not can_access:
              await update.message.reply_text(
-                 disabled_message,
+                 error_message,
                  parse_mode="Markdown",
                  reply_markup=ReplyKeyboardRemove()
              )
-             user_logger.info(f"Search feature disabled - blocked access for {user.full_name} ({user.id})")
+             user_logger.info(f"Search access blocked for {user.full_name} ({user.id}) - {error_message[:50]}...")
              return ConversationHandler.END
      except Exception as feature_check_error:
-         bot_logger.error(f"Error checking search feature status: {feature_check_error}")
+         bot_logger.error(f"Error checking search feature access: {feature_check_error}")
          # Continue with normal flow if feature check fails
  
      keyboard = [["By Index", "By Number"]]

@@ -637,21 +637,21 @@ ASK_DATE = 1000
 async def date_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
-    # Check if date feature is enabled
+    # Check if date feature is enabled and user has access
     try:
-        from data.feature_control import is_feature_enabled, get_disabled_message
+        from data.feature_control import can_user_access_feature
 
-        if not is_feature_enabled('date'):
-            disabled_message = get_disabled_message('date')
+        can_access, error_message = can_user_access_feature('date', user.id)
+        if not can_access:
             await update.message.reply_text(
-                disabled_message,
+                error_message,
                 parse_mode="Markdown",
                 reply_markup=ReplyKeyboardRemove()
             )
-            user_logger.info(f"Date feature disabled - blocked access for {user.first_name} ({user.id})")
+            user_logger.info(f"Date access blocked for {user.first_name} ({user.id}) - {error_message[:50]}...")
             return ConversationHandler.END
     except Exception as feature_check_error:
-        user_logger.error(f"Error checking date feature status: {feature_check_error}")
+        user_logger.error(f"Error checking date feature access: {feature_check_error}")
         # Continue with normal flow if feature check fails
 
     await update.message.reply_text(
@@ -1440,6 +1440,8 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 **Feature Control:**
 • `/disable <feature> [reason]` - Disable a bot feature
 • `/enable <feature>` - Enable a bot feature
+• `/restrict_access <feature> [reason]` - Restrict to authorized users only
+• `/unrestrict_access <feature>` - Remove access restriction
 • `/feature_status` - View all feature statuses
 
 **User Management:**
@@ -1600,31 +1602,54 @@ async def admin_feature_status(update: Update, context: CallbackContext) -> None
         status_text = "🔧 **Feature Control Status**\n\n"
 
         for feature_name, feature_info in all_features.items():
-            status_icon = "✅" if feature_info['enabled'] else "❌"
+            # Status icons
+            enabled_icon = "✅" if feature_info['enabled'] else "❌"
+            restricted_icon = "🔒" if feature_info.get('restricted_to_authorized', False) else ""
+
             feature_display = feature_info['name']
 
-            status_text += f"{status_icon} **{feature_display}**\n"
+            status_text += f"{enabled_icon}{restricted_icon} **{feature_display}**\n"
             status_text += f"   Commands: {', '.join(feature_info['commands'])}\n"
 
+            # Show disabled status
             if not feature_info['enabled']:
                 reason = feature_info.get('reason', 'No reason provided')
-                modified_date = feature_info.get('last_modified', 'Unknown')
-                if modified_date != 'Unknown':
+                modified_date = feature_info.get('disabled_date', 'Unknown')
+                if modified_date and modified_date != 'Unknown':
                     try:
                         from datetime import datetime
                         dt = datetime.fromisoformat(modified_date)
                         modified_date = dt.strftime('%Y-%m-%d %H:%M')
                     except:
                         pass
-                status_text += f"   Disabled: {modified_date}\n"
+                status_text += f"   ❌ Disabled: {modified_date}\n"
                 status_text += f"   Reason: {reason}\n"
+
+            # Show restriction status
+            if feature_info.get('restricted_to_authorized', False):
+                restriction_reason = feature_info.get('restriction_reason', 'No reason provided')
+                restricted_date = feature_info.get('restricted_date', 'Unknown')
+                if restricted_date and restricted_date != 'Unknown':
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(restricted_date)
+                        restricted_date = dt.strftime('%Y-%m-%d %H:%M')
+                    except:
+                        pass
+                status_text += f"   🔒 Restricted: {restricted_date}\n"
+                status_text += f"   Access: Authorized users only\n"
+                status_text += f"   Reason: {restriction_reason}\n"
 
             status_text += "\n"
 
         status_text += "**Commands:**\n"
         status_text += "• `/disable <feature> [reason]` - Disable a feature\n"
         status_text += "• `/enable <feature>` - Enable a feature\n"
-        status_text += "• `/feature_status` - View this status"
+        status_text += "• `/restrict_access <feature> [reason]` - Restrict to authorized users\n"
+        status_text += "• `/unrestrict_access <feature>` - Remove access restriction\n"
+        status_text += "• `/feature_status` - View this status\n\n"
+        status_text += "**Legend:**\n"
+        status_text += "✅ = Enabled, ❌ = Disabled, 🔒 = Restricted to authorized users"
 
         await update.message.reply_text(status_text, parse_mode="Markdown")
         user_logger.info(f"Admin {user.id} viewed feature status")
@@ -1632,3 +1657,101 @@ async def admin_feature_status(update: Update, context: CallbackContext) -> None
     except Exception as e:
         await update.message.reply_text(f"❌ Error retrieving feature status: {str(e)}")
         user_logger.error(f"Error in admin_feature_status: {e}")
+
+# === ACCESS RESTRICTION ADMIN COMMANDS ===
+
+async def admin_restrict_access(update: Update, context: CallbackContext) -> None:
+    """Admin command to restrict a feature to authorized users only"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        # Import feature controller
+        from data.feature_control import get_feature_controller
+
+        feature_controller = get_feature_controller()
+
+        # Get feature name from command arguments
+        if not context.args:
+            available_features = feature_controller.get_available_features()
+            features_list = "\n".join([f"• `{f}`" for f in available_features])
+
+            await update.message.reply_text(
+                f"❌ **Feature name required**\n\n"
+                f"**Usage:** `/restrict_access <feature> [reason]`\n\n"
+                f"**Available features:**\n{features_list}\n\n"
+                f"**Example:** `/restrict_access download Premium feature - contact admin for access`",
+                parse_mode="Markdown"
+            )
+            return
+
+        feature_name = context.args[0].lower()
+        reason = " ".join(context.args[1:]) if len(context.args) > 1 else "Restricted to authorized users only"
+
+        success, message = feature_controller.restrict_access(feature_name, user.id, reason)
+
+        if success:
+            await update.message.reply_text(
+                f"{message}\n\n**Reason:** {reason}\n\n"
+                f"Only authorized users can now access this feature.\n"
+                f"Unauthorized users will see a restriction message.",
+                parse_mode="Markdown"
+            )
+            user_logger.info(f"Admin {user.id} restricted access to '{feature_name}': {reason}")
+        else:
+            await update.message.reply_text(f"❌ {message}")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error restricting access: {str(e)}")
+        user_logger.error(f"Error in admin_restrict_access: {e}")
+
+async def admin_unrestrict_access(update: Update, context: CallbackContext) -> None:
+    """Admin command to remove access restriction from a feature"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        # Import feature controller
+        from data.feature_control import get_feature_controller
+
+        feature_controller = get_feature_controller()
+
+        # Get feature name from command arguments
+        if not context.args:
+            available_features = feature_controller.get_available_features()
+            features_list = "\n".join([f"• `{f}`" for f in available_features])
+
+            await update.message.reply_text(
+                f"❌ **Feature name required**\n\n"
+                f"**Usage:** `/unrestrict_access <feature>`\n\n"
+                f"**Available features:**\n{features_list}\n\n"
+                f"**Example:** `/unrestrict_access download`",
+                parse_mode="Markdown"
+            )
+            return
+
+        feature_name = context.args[0].lower()
+
+        success, message = feature_controller.unrestrict_access(feature_name, user.id)
+
+        if success:
+            await update.message.reply_text(
+                f"{message}\n\n"
+                f"All users can now access this feature normally.",
+                parse_mode="Markdown"
+            )
+            user_logger.info(f"Admin {user.id} unrestricted access to '{feature_name}'")
+        else:
+            await update.message.reply_text(f"❌ {message}")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error unrestricting access: {str(e)}")
+        user_logger.error(f"Error in admin_unrestrict_access: {e}")

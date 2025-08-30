@@ -155,6 +155,10 @@ class FeatureController:
                 'disabled_reason': '',
                 'disabled_by_admin_id': '',
                 'disabled_date': '',
+                'restricted_to_authorized': False,  # New field for access restriction
+                'restriction_reason': '',           # Reason for restriction
+                'restricted_by_admin_id': '',       # Who applied the restriction
+                'restricted_date': '',              # When restriction was applied
                 'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             })
 
@@ -323,6 +327,87 @@ class FeatureController:
             logger.error(f"Error getting available features: {e}")
             return list(self.default_features.keys())
 
+    def restrict_access(self, feature_name: str, admin_id: int, reason: str = None) -> tuple[bool, str]:
+        """Restrict a feature to authorized users only"""
+        try:
+            df = self._load_from_drive()
+
+            # Find the feature in the DataFrame
+            feature_idx = df[df['feature_name'] == feature_name].index
+
+            if feature_idx.empty:
+                return False, f"Unknown feature: {feature_name}"
+
+            # Update the feature
+            idx = feature_idx[0]
+            df.loc[idx, 'restricted_to_authorized'] = True
+            df.loc[idx, 'restriction_reason'] = reason or "Restricted to authorized users only"
+            df.loc[idx, 'restricted_by_admin_id'] = str(admin_id)
+            df.loc[idx, 'restricted_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            df.loc[idx, 'last_modified'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Save to Google Drive
+            if self._save_to_drive(df):
+                feature_display_name = df.loc[idx, 'feature_display_name']
+                return True, f"🔒 **{feature_display_name}** is now restricted to authorized users only"
+            else:
+                return False, "Failed to save configuration to Google Drive"
+
+        except Exception as e:
+            logger.error(f"Error restricting access: {e}")
+            return False, f"Error restricting access: {str(e)}"
+
+    def unrestrict_access(self, feature_name: str, admin_id: int) -> tuple[bool, str]:
+        """Remove access restriction from a feature"""
+        try:
+            df = self._load_from_drive()
+
+            # Find the feature in the DataFrame
+            feature_idx = df[df['feature_name'] == feature_name].index
+
+            if feature_idx.empty:
+                return False, f"Unknown feature: {feature_name}"
+
+            # Update the feature
+            idx = feature_idx[0]
+            df.loc[idx, 'restricted_to_authorized'] = False
+            df.loc[idx, 'restriction_reason'] = ''
+            df.loc[idx, 'restricted_by_admin_id'] = ''
+            df.loc[idx, 'restricted_date'] = ''
+            df.loc[idx, 'last_modified'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Save to Google Drive
+            if self._save_to_drive(df):
+                feature_display_name = df.loc[idx, 'feature_display_name']
+                return True, f"🔓 **{feature_display_name}** is now available to all users"
+            else:
+                return False, "Failed to save configuration to Google Drive"
+
+        except Exception as e:
+            logger.error(f"Error unrestricting access: {e}")
+            return False, f"Error unrestricting access: {str(e)}"
+
+    def is_feature_restricted(self, feature_name: str) -> bool:
+        """Check if a feature is restricted to authorized users only"""
+        try:
+            df = self._load_from_drive()
+
+            # Find the feature in the DataFrame
+            feature_row = df[df['feature_name'] == feature_name]
+
+            if feature_row.empty:
+                return False  # Unknown features are not restricted
+
+            # Check if restricted_to_authorized column exists and is True
+            if 'restricted_to_authorized' in df.columns:
+                return bool(feature_row.iloc[0]['restricted_to_authorized'])
+            else:
+                return False  # No restriction if column doesn't exist
+
+        except Exception as e:
+            logger.error(f"Error checking feature restriction: {e}")
+            return False  # Default to not restricted on error
+
 # Global instance (lazy initialization to avoid startup errors)
 _feature_controller = None
 
@@ -358,3 +443,53 @@ def get_disabled_message(feature_name: str) -> Optional[str]:
     except Exception as e:
         logger.error(f"Error getting disabled message: {e}")
         return None  # Default to no message on error
+
+def is_feature_restricted(feature_name: str) -> bool:
+    """Quick function to check if feature is restricted to authorized users"""
+    try:
+        return get_feature_controller().is_feature_restricted(feature_name)
+    except Exception as e:
+        logger.error(f"Error checking feature restriction: {e}")
+        return False  # Default to not restricted on error
+
+def can_user_access_feature(feature_name: str, user_id: int) -> tuple[bool, Optional[str]]:
+    """
+    Check if a user can access a feature (considering both enabled status and restrictions)
+    Returns (can_access, error_message)
+    """
+    try:
+        controller = get_feature_controller()
+
+        # Check if feature is enabled
+        if not controller.is_feature_enabled(feature_name):
+            return False, controller.get_disabled_message(feature_name)
+
+        # Check if feature is restricted to authorized users
+        if controller.is_feature_restricted(feature_name):
+            # Check if user is authorized
+            from data.udb import is_user_authorized
+
+            if not is_user_authorized(user_id):
+                feature_info = controller.get_feature_status(feature_name)
+                feature_display_name = feature_info.get('name', feature_name.title())
+                restriction_reason = feature_info.get('restriction_reason', 'Restricted to authorized users only')
+
+                restricted_message = (
+                    f"🔒 **{feature_display_name} - Access Restricted**\n\n"
+                    f"This feature is currently restricted to authorized users only.\n\n"
+                    f"**Reason:** {restriction_reason}\n\n"
+                    f"**What you can do:**\n"
+                    f"• Contact the administrator to request authorization\n"
+                    f"• Use other available bot features\n"
+                    f"• Check your authorization status with the admin\n\n"
+                    f"Type /help to see available commands."
+                )
+
+                return False, restricted_message
+
+        # Feature is enabled and user has access
+        return True, None
+
+    except Exception as e:
+        logger.error(f"Error checking user access to feature: {e}")
+        return True, None  # Default to allow access on error
