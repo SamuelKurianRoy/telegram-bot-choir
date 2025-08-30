@@ -635,6 +635,25 @@ ASK_DATE = 1000
 
 # Conversation handler for /date
 async def date_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+
+    # Check if date feature is enabled
+    try:
+        from data.feature_control import is_feature_enabled, get_disabled_message
+
+        if not is_feature_enabled('date'):
+            disabled_message = get_disabled_message('date')
+            await update.message.reply_text(
+                disabled_message,
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            user_logger.info(f"Date feature disabled - blocked access for {user.first_name} ({user.id})")
+            return ConversationHandler.END
+    except Exception as feature_check_error:
+        user_logger.error(f"Error checking date feature status: {feature_check_error}")
+        # Continue with normal flow if feature check fails
+
     await update.message.reply_text(
         "📅 Please enter a date (DD/MM/YYYY, DD/MM, or DD):",
         reply_markup=ReplyKeyboardRemove()
@@ -1418,6 +1437,11 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
         admin_commands = f"""
 🔧 **Admin Commands List**
 
+**Feature Control:**
+• `/disable <feature> [reason]` - Disable a bot feature
+• `/enable <feature>` - Enable a bot feature
+• `/feature_status` - View all feature statuses
+
 **User Management:**
 • `/admin_users` - View user database statistics
 • `/admin_user_info <user_id>` - View specific user details
@@ -1458,3 +1482,153 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
     except Exception as e:
         await update.message.reply_text(f"❌ Error retrieving admin commands: {str(e)}")
         user_logger.error(f"Error in admin_list_commands: {e}")
+
+# === FEATURE CONTROL ADMIN COMMANDS ===
+
+async def admin_disable_feature(update: Update, context: CallbackContext) -> None:
+    """Admin command to disable a bot feature"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        # Import feature controller
+        from data.feature_control import get_feature_controller
+
+        feature_controller = get_feature_controller()
+
+        # Get feature name from command arguments
+        if not context.args:
+            available_features = feature_controller.get_available_features()
+            features_list = "\n".join([f"• `{f}`" for f in available_features])
+
+            await update.message.reply_text(
+                f"❌ **Feature name required**\n\n"
+                f"**Usage:** `/disable <feature> [reason]`\n\n"
+                f"**Available features:**\n{features_list}\n\n"
+                f"**Example:** `/disable download Temporarily disabled for maintenance`",
+                parse_mode="Markdown"
+            )
+            return
+
+        feature_name = context.args[0].lower()
+        reason = " ".join(context.args[1:]) if len(context.args) > 1 else "Disabled by administrator"
+
+        success, message = feature_controller.disable_feature(feature_name, user.id, reason)
+
+        if success:
+            await update.message.reply_text(
+                f"{message}\n\n**Reason:** {reason}\n\n"
+                f"Users will now see a disabled message when trying to use this feature.",
+                parse_mode="Markdown"
+            )
+            user_logger.info(f"Admin {user.id} disabled feature '{feature_name}': {reason}")
+        else:
+            await update.message.reply_text(f"❌ {message}")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error disabling feature: {str(e)}")
+        user_logger.error(f"Error in admin_disable_feature: {e}")
+
+async def admin_enable_feature(update: Update, context: CallbackContext) -> None:
+    """Admin command to enable a bot feature"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        # Import feature controller
+        from data.feature_control import get_feature_controller
+
+        feature_controller = get_feature_controller()
+
+        # Get feature name from command arguments
+        if not context.args:
+            available_features = feature_controller.get_available_features()
+            features_list = "\n".join([f"• `{f}`" for f in available_features])
+
+            await update.message.reply_text(
+                f"❌ **Feature name required**\n\n"
+                f"**Usage:** `/enable <feature>`\n\n"
+                f"**Available features:**\n{features_list}\n\n"
+                f"**Example:** `/enable download`",
+                parse_mode="Markdown"
+            )
+            return
+
+        feature_name = context.args[0].lower()
+
+        success, message = feature_controller.enable_feature(feature_name, user.id)
+
+        if success:
+            await update.message.reply_text(
+                f"{message}\n\n"
+                f"Users can now use this feature normally.",
+                parse_mode="Markdown"
+            )
+            user_logger.info(f"Admin {user.id} enabled feature '{feature_name}'")
+        else:
+            await update.message.reply_text(f"❌ {message}")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error enabling feature: {str(e)}")
+        user_logger.error(f"Error in admin_enable_feature: {e}")
+
+async def admin_feature_status(update: Update, context: CallbackContext) -> None:
+    """Admin command to view all feature statuses"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        # Import feature controller
+        from data.feature_control import get_feature_controller
+
+        feature_controller = get_feature_controller()
+
+        all_features = feature_controller.get_all_features_status()
+
+        status_text = "🔧 **Feature Control Status**\n\n"
+
+        for feature_name, feature_info in all_features.items():
+            status_icon = "✅" if feature_info['enabled'] else "❌"
+            feature_display = feature_info['name']
+
+            status_text += f"{status_icon} **{feature_display}**\n"
+            status_text += f"   Commands: {', '.join(feature_info['commands'])}\n"
+
+            if not feature_info['enabled']:
+                reason = feature_info.get('reason', 'No reason provided')
+                modified_date = feature_info.get('last_modified', 'Unknown')
+                if modified_date != 'Unknown':
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(modified_date)
+                        modified_date = dt.strftime('%Y-%m-%d %H:%M')
+                    except:
+                        pass
+                status_text += f"   Disabled: {modified_date}\n"
+                status_text += f"   Reason: {reason}\n"
+
+            status_text += "\n"
+
+        status_text += "**Commands:**\n"
+        status_text += "• `/disable <feature> [reason]` - Disable a feature\n"
+        status_text += "• `/enable <feature>` - Enable a feature\n"
+        status_text += "• `/feature_status` - View this status"
+
+        await update.message.reply_text(status_text, parse_mode="Markdown")
+        user_logger.info(f"Admin {user.id} viewed feature status")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error retrieving feature status: {str(e)}")
+        user_logger.error(f"Error in admin_feature_status: {e}")

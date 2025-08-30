@@ -910,6 +910,23 @@ async def download_start(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
     user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) used /download")
 
+    # Check if download feature is enabled
+    try:
+        from data.feature_control import is_feature_enabled, get_disabled_message
+
+        if not is_feature_enabled('download'):
+            disabled_message = get_disabled_message('download')
+            await update.message.reply_text(
+                disabled_message,
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            user_logger.info(f"Download feature disabled - blocked access for {user.full_name} ({user.id})")
+            return ConversationHandler.END
+    except Exception as feature_check_error:
+        bot_logger.error(f"Error checking download feature status: {feature_check_error}")
+        # Continue with normal flow if feature check fails
+
     if not DOWNLOADER_AVAILABLE:
         await update.message.reply_text(
             "❌ Audio download feature is not available. Please contact the administrator.",
@@ -1992,6 +2009,23 @@ SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT = range
 async def search_start(update: Update, context: CallbackContext) -> int:
      user = update.effective_user
      user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) started /search")
+
+     # Check if search feature is enabled
+     try:
+         from data.feature_control import is_feature_enabled, get_disabled_message
+
+         if not is_feature_enabled('search'):
+             disabled_message = get_disabled_message('search')
+             await update.message.reply_text(
+                 disabled_message,
+                 parse_mode="Markdown",
+                 reply_markup=ReplyKeyboardRemove()
+             )
+             user_logger.info(f"Search feature disabled - blocked access for {user.full_name} ({user.id})")
+             return ConversationHandler.END
+     except Exception as feature_check_error:
+         bot_logger.error(f"Error checking search feature status: {feature_check_error}")
+         # Continue with normal flow if feature check fails
  
      keyboard = [["By Index", "By Number"]]
      reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)

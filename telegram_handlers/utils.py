@@ -363,4 +363,31 @@ def get_wordproject_url_from_input(lang: str, user_input: str) -> tuple:
     except Exception as e:
         return (f"❌ Error: {str(e)}", None, None, False)
 
-# TODO: Add more Telegram-specific helpers as needed 
+# Feature Control Helper
+async def check_feature_enabled(feature_name: str, update, user_logger) -> bool:
+    """
+    Check if a feature is enabled and send disabled message if not.
+    Returns True if feature is enabled, False if disabled.
+    """
+    try:
+        from data.feature_control import is_feature_enabled, get_disabled_message
+        from telegram import ReplyKeyboardRemove
+        from telegram.ext import ConversationHandler
+
+        if not is_feature_enabled(feature_name):
+            disabled_message = get_disabled_message(feature_name)
+            await update.message.reply_text(
+                disabled_message,
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            user = update.effective_user
+            user_logger.info(f"{feature_name.title()} feature disabled - blocked access for {user.first_name} ({user.id})")
+            return False
+    except Exception as feature_check_error:
+        # Log error but don't block the feature if checking fails
+        user_logger.error(f"Error checking {feature_name} feature status: {feature_check_error}")
+
+    return True
+
+# TODO: Add more Telegram-specific helpers as needed
