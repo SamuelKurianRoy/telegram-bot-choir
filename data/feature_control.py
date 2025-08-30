@@ -68,6 +68,36 @@ class FeatureController:
                 'description': 'Check when songs were last sung',
                 'commands': '/last',
                 'enabled': True
+            },
+            'notation': {
+                'name': 'Musical Notation',
+                'description': 'Search for musical notation and sheet music',
+                'commands': '/notation, notation search',
+                'enabled': True
+            },
+            'vocabulary': {
+                'name': 'Song Vocabulary',
+                'description': 'Search for words and meanings in songs',
+                'commands': '/vocabulary, word search',
+                'enabled': True
+            },
+            'games': {
+                'name': 'Bible Games',
+                'description': 'Interactive Bible games and quizzes',
+                'commands': '/games, bible games',
+                'enabled': True
+            },
+            'tune': {
+                'name': 'Tune Finder',
+                'description': 'Find tunes and melodies for songs',
+                'commands': '/tune, tune search',
+                'enabled': True
+            },
+            'theme': {
+                'name': 'Theme Search',
+                'description': 'Search songs by theme and topic',
+                'commands': '/theme, theme finder',
+                'enabled': True
             }
         }
     
@@ -127,17 +157,8 @@ class FeatureController:
                 df = pd.read_excel(file_data, sheet_name='FeatureControl')
                 logger.info("Successfully loaded data using direct media download")
 
-            # Debug: Log the structure and data we loaded
-            logger.info(f"Loaded Excel columns: {list(df.columns)}")
-            logger.info(f"Loaded {len(df)} features from Google Drive")
-
-            # Debug: Log the actual data for troubleshooting
-            logger.info("=== EXCEL DATA DEBUG ===")
-            for _, row in df.iterrows():
-                feature_name = row.get('feature_name', 'UNKNOWN')
-                enabled = row.get('enabled', 'UNKNOWN')
-                logger.info(f"Feature: {feature_name}, Enabled: {enabled} (type: {type(enabled)})")
-            logger.info("=== END EXCEL DATA DEBUG ===")
+            # Log successful loading
+            logger.info(f"Successfully loaded {len(df)} features from Google Drive")
 
             # Update cache
             self._cache = df

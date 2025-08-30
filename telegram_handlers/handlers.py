@@ -1481,6 +1481,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/restrict_access <feature> [reason]` - Restrict to authorized users only
 • `/unrestrict_access <feature>` - Remove access restriction
 • `/feature_status` - View all feature statuses
+• `/debug_features` - Debug feature loading (troubleshooting)
 
 **User Management:**
 • `/admin_users` - View user database statistics
@@ -1840,3 +1841,140 @@ async def admin_debug_features(update: Update, context: CallbackContext) -> None
     except Exception as e:
         await update.message.reply_text(f"❌ Error debugging features: {str(e)}")
         user_logger.error(f"Error in admin_debug_features: {e}")
+
+async def admin_add_missing_features(update: Update, context: CallbackContext) -> None:
+    """Admin command to add missing features to Excel sheet"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        await update.message.reply_text("🆕 **Adding Missing Features...**\n\nThis may take a moment...", parse_mode="Markdown")
+
+        # Import feature controller
+        from data.feature_control import get_feature_controller
+        import pandas as pd
+        from datetime import datetime
+
+        feature_controller = get_feature_controller()
+
+        # Get current data
+        df = feature_controller._load_from_drive()
+        existing_features = df['feature_name'].tolist() if 'feature_name' in df.columns else []
+
+        # Define new features to add
+        new_features_data = [
+            {
+                'feature_name': 'notation',
+                'feature_display_name': 'Musical Notation',
+                'commands': '/notation, notation search',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'vocabulary',
+                'feature_display_name': 'Song Vocabulary',
+                'commands': '/vocabulary, word search',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'games',
+                'feature_display_name': 'Bible Games',
+                'commands': '/games, bible games',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'tune',
+                'feature_display_name': 'Tune Finder',
+                'commands': '/tune, tune search',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'feature_name': 'theme',
+                'feature_display_name': 'Theme Search',
+                'commands': '/theme, theme finder',
+                'enabled': True,
+                'disabled_reason': '',
+                'disabled_by_admin_id': '',
+                'disabled_date': '',
+                'restricted_to_authorized': False,
+                'restriction_reason': '',
+                'restricted_by_admin_id': '',
+                'restricted_date': '',
+                'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+        ]
+
+        # Check which features need to be added
+        features_to_add = []
+        for feature_data in new_features_data:
+            if feature_data['feature_name'] not in existing_features:
+                features_to_add.append(feature_data)
+
+        if not features_to_add:
+            await update.message.reply_text("✅ **All features already exist!**\n\nNo new features need to be added.", parse_mode="Markdown")
+            return
+
+        # Add new features to DataFrame
+        new_rows_df = pd.DataFrame(features_to_add)
+        updated_df = pd.concat([df, new_rows_df], ignore_index=True)
+
+        # Save to Google Drive
+        if feature_controller._save_to_drive(updated_df):
+            # Clear cache to force reload
+            feature_controller._cache = None
+
+            added_names = [f['feature_display_name'] for f in features_to_add]
+            result_text = f"🎉 **Added {len(features_to_add)} New Features!**\n\n"
+            result_text += "**New Features:**\n"
+            for name in added_names:
+                result_text += f"• {name}\n"
+
+            result_text += f"\n**Total Features:** {len(updated_df)}\n\n"
+            result_text += "**Next Steps:**\n"
+            result_text += "• Use `/feature_status` to see all features\n"
+            result_text += "• Use `/disable <feature>` to disable any feature\n"
+            result_text += "• Use `/restrict_access <feature>` to restrict access"
+
+            await update.message.reply_text(result_text, parse_mode="Markdown")
+            user_logger.info(f"Admin {user.id} added {len(features_to_add)} new features")
+        else:
+            await update.message.reply_text("❌ **Failed to save new features**\n\nThere was an error saving to Google Drive.", parse_mode="Markdown")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error adding features: {str(e)}")
+        user_logger.error(f"Error in admin_add_missing_features: {e}")

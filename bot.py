@@ -21,7 +21,7 @@ try:
         admin_users_stats, admin_user_info, admin_save_database, admin_list_commands,
         admin_reply_start, admin_reply_select_user, admin_reply_send_message, REPLY_SELECT_USER, REPLY_ENTER_MESSAGE, admin_reply_legacy,
         admin_disable_feature, admin_enable_feature, admin_feature_status,
-        admin_restrict_access, admin_unrestrict_access, admin_debug_features
+        admin_restrict_access, admin_unrestrict_access, admin_debug_features, admin_add_missing_features
     )
     from telegram_handlers.conversations import (
         SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT,
@@ -246,6 +246,7 @@ app.add_handler(CommandHandler("unrestrict_access", admin_unrestrict_access))
 
 # Debug admin commands
 app.add_handler(CommandHandler("debug_features", admin_debug_features))
+app.add_handler(CommandHandler("add_missing_features", admin_add_missing_features))
 app.add_handler(CallbackQueryHandler(handle_notation_callback, pattern="^notation:"))
 
 app.add_handler(tune_conv_handler)
