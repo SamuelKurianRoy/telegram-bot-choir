@@ -9,7 +9,7 @@ from logging_utils import setup_loggers
 from data.datasets import load_datasets, yrDataPreprocessing, dfcleaning, standardize_song_columns, get_all_data, Tune_finder_of_known_songs, Datefinder, IndexFinder
 from data.drive import upload_log_to_google_doc
 from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
-from data.udb import track_user_interaction, user_exists, get_user_by_id, save_user_database, track_user_fast, get_user_bible_language, get_user_show_tunes_in_date
+from data.udb import track_user_interaction, user_exists, get_user_by_id, save_user_database, track_user_fast, save_if_pending, get_user_bible_language, get_user_show_tunes_in_date
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import pandas as pd
 from datetime import date
@@ -1377,9 +1377,35 @@ def extract_verses_from_cleaned_text(cleaned_text, start_verse, end_verse):
             continue
     return verses
 
-# === REMOVED PROBLEMATIC USER DATABASE ADMIN COMMANDS ===
-# The admin_users_stats, admin_user_info, and admin_save_database commands
-# have been removed due to parsing errors with Markdown formatting
+# === USER DATABASE ADMIN COMMANDS ===
+# admin_users_stats and admin_user_info removed due to Markdown parsing errors
+# admin_save_database restored - it was working fine
+
+async def admin_save_database(update: Update, context: CallbackContext) -> None:
+    """Admin command to manually save user database to Google Drive"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        await update.message.reply_text("💾 Saving user database to Google Drive...")
+
+        # Use save_if_pending for efficiency
+        success = save_if_pending()
+
+        if success:
+            await update.message.reply_text("✅ User database saved successfully to Google Drive!")
+            user_logger.info(f"Admin {user.id} manually saved user database")
+        else:
+            await update.message.reply_text("❌ Failed to save user database to Google Drive")
+            user_logger.error(f"Admin {user.id} failed to save user database")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error saving database: {str(e)}")
+        user_logger.error(f"Error in admin_save_database: {e}")
 
 async def admin_list_commands(update: Update, context: CallbackContext) -> None:
     """Admin command to list all available admin commands"""
@@ -1405,7 +1431,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/restore_all_features` - Restore all 11 features (fix missing features)
 
 **User Management:**
-• User database commands temporarily removed due to technical issues
+• `/admin_save_db` - Manually save user database to Google Drive
 
 **Bot Management:**
 • `/refresh` - Reload all datasets from Google Drive
