@@ -1598,16 +1598,27 @@ class AudioDownloader:
                 'fragment_retries': 8,
                 'socket_timeout': 120,
 
-                # Advanced YouTube-specific options to bypass bot detection
+                # Advanced mobile-first YouTube configuration for maximum bypass success
                 'extractor_args': {
                     'youtube': {
-                        'player_client': ['android_creator', 'android_music', 'android', 'ios_music', 'ios'],
+                        # Mobile clients prioritized (most effective against blocking)
+                        'player_client': ['android_creator', 'android_music', 'android', 'ios_music', 'ios', 'mweb'],
                         'player_skip': ['configs', 'webpage'],
                         'skip': ['dash', 'hls'] if self.is_streamlit_cloud else [],
                         'innertube_host': 'youtubei.googleapis.com',
-                        'innertube_key': None,  # Let yt-dlp auto-detect
+                        'innertube_key': None,  # Auto-detect
                         'include_live_dash': False,
                         'include_hls': False,
+
+                        # Mobile device simulation parameters
+                        'android_sdk_version': '33',  # Android 13
+                        'android_version': '13',
+                        'ios_version': '17.1',
+                        'mobile_version': '17.49.4',
+
+                        # Anti-detection parameters
+                        'visitor_data': None,  # Auto-generate
+                        'po_token': None,      # Auto-generate if needed
                     }
                 },
 
@@ -1677,21 +1688,41 @@ class AudioDownloader:
                 logger.info(f"Using cookie file for authentication: {self.cookie_file}")
                 downloader_logger.info(f"Cookie authentication enabled: {self.cookie_file}")
             elif not self.is_streamlit_cloud:
-                # Only try browser cookie extraction on local environments
+                # Enhanced browser cookie extraction prioritizing Brave (most effective)
+                cookie_success = False
+
+                # Priority 1: Brave browser (best privacy, less tracked)
                 try:
-                    # Prefer Brave browser cookies (less tracked)
                     ydl_opts['cookies_from_browser'] = ('brave', None, None, None)
-                    logger.info("Attempting to use Brave browser cookies")
-                    downloader_logger.info("Using Brave browser cookie extraction")
-                except Exception:
+                    logger.info("Using Brave browser cookies (highest success rate)")
+                    downloader_logger.info("Brave browser cookie extraction enabled")
+                    cookie_success = True
+                except Exception as brave_error:
+                    logger.warning(f"Brave cookie extraction failed: {brave_error}")
+
+                # Priority 2: Chrome (fallback)
+                if not cookie_success:
                     try:
-                        # Fallback to Chrome
                         ydl_opts['cookies_from_browser'] = ('chrome', None, None, None)
-                        logger.info("Attempting to use Chrome browser cookies")
-                        downloader_logger.info("Using Chrome browser cookie extraction")
-                    except Exception:
-                        logger.info("No browser cookies available - using enhanced headers only")
-                        downloader_logger.info("Cookie extraction failed - using cookieless mode")
+                        logger.info("Using Chrome browser cookies (fallback)")
+                        downloader_logger.info("Chrome browser cookie extraction enabled")
+                        cookie_success = True
+                    except Exception as chrome_error:
+                        logger.warning(f"Chrome cookie extraction failed: {chrome_error}")
+
+                # Priority 3: Firefox (secondary fallback)
+                if not cookie_success:
+                    try:
+                        ydl_opts['cookies_from_browser'] = ('firefox', None, None, None)
+                        logger.info("Using Firefox browser cookies (secondary fallback)")
+                        downloader_logger.info("Firefox browser cookie extraction enabled")
+                        cookie_success = True
+                    except Exception as firefox_error:
+                        logger.warning(f"Firefox cookie extraction failed: {firefox_error}")
+
+                if not cookie_success:
+                    logger.info("No browser cookies available - using enhanced mobile headers only")
+                    downloader_logger.info("All cookie extraction failed - using cookieless mobile mode")
             else:
                 # Streamlit Cloud: Use cloud-optimized settings without browser cookies
                 logger.info("Streamlit Cloud: Using cloud-optimized anti-detection without browser cookies")
