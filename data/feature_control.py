@@ -367,7 +367,7 @@ class FeatureController:
             return None
 
         feature_display_name = feature_info.get('name', feature_name.title())
-        reason = feature_info.get('disabled_reason', 'Disabled by administrator')
+        reason = feature_info.get('disabled_reason', 'There are some problems in the commmand')
 
         return (
             f"🚫 **{feature_display_name} Disabled**\n\n"
