@@ -1697,7 +1697,7 @@ async def admin_disable_feature(update: Update, context: CallbackContext) -> Non
             return
 
         feature_name = context.args[0].lower()
-        reason = " ".join(context.args[1:]) if len(context.args) > 1 else "Disabled by administrator"
+        reason = " ".join(context.args[1:]) if len(context.args) > 1 else "There are some problems in the commmand"
 
         success, message = feature_controller.disable_feature(feature_name, user.id, reason)
 
@@ -2093,7 +2093,7 @@ async def admin_add_missing_features(update: Update, context: CallbackContext) -
                 'feature_display_name': 'Download Commands',
                 'commands': '/download, URL downloads',
                 'enabled': False,  # Keep previous disabled state
-                'disabled_reason': 'Disabled by administrator',
+                'disabled_reason': 'There are some problems in the commmand',
                 'disabled_by_admin_id': '757438955',
                 'disabled_date': '2025-08-30 11:57:20',
                 'restricted_to_authorized': False,
@@ -2240,7 +2240,7 @@ async def admin_restore_all_features(update: Update, context: CallbackContext) -
                 'feature_display_name': 'Download Commands',
                 'commands': '/download, URL downloads',
                 'enabled': False,  # Keep disabled as it was
-                'disabled_reason': 'Disabled by administrator',
+                'disabled_reason': 'There are some problems in the commmand',
                 'disabled_by_admin_id': '757438955',
                 'disabled_date': '2025-08-30 11:57:20',
                 'restricted_to_authorized': False,
