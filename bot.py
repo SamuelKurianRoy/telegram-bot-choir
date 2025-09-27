@@ -235,6 +235,7 @@ app.add_handler(CommandHandler("reply_legacy", admin_reply_legacy))
 app.add_handler(CommandHandler("admin_save_db", admin_save_database))
 
 # Authorized users management commands
+app.add_handler(CommandHandler("users", admin_list_users))
 app.add_handler(CommandHandler("view_authorized_users", admin_view_authorized_users))
 app.add_handler(CommandHandler("add_authorized_user", admin_add_authorized_user))
 app.add_handler(CommandHandler("remove_authorized_user", admin_remove_authorized_user))

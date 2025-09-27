@@ -348,6 +348,10 @@ class FeatureController:
                     'disabled_reason': row['disabled_reason'] if pd.notna(row['disabled_reason']) else '',
                     'disabled_by_admin_id': row['disabled_by_admin_id'] if pd.notna(row['disabled_by_admin_id']) else '',
                     'disabled_date': row['disabled_date'] if pd.notna(row['disabled_date']) else '',
+                    'restricted_to_authorized': bool(row.get('restricted_to_authorized', False)) if pd.notna(row.get('restricted_to_authorized', False)) else False,
+                    'restriction_reason': row['restriction_reason'] if pd.notna(row.get('restriction_reason', '')) else '',
+                    'restricted_by_admin_id': row['restricted_by_admin_id'] if pd.notna(row.get('restricted_by_admin_id', '')) else '',
+                    'restricted_date': row['restricted_date'] if pd.notna(row.get('restricted_date', '')) else '',
                     'last_modified': row['last_modified'] if pd.notna(row['last_modified']) else ''
                 }
 

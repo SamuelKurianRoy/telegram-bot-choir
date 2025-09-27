@@ -67,6 +67,17 @@ async def start(update: Update, context: CallbackContext) -> None:
         if tracking_success:
             if is_new_user:
                 user_logger.info(f"Added new user {user.id} to database")
+                
+                # For new users, immediately save to Database
+                try:
+                    from data.udb import save_user_database
+                    save_success = save_user_database()
+                    if save_success:
+                        user_logger.info(f"Successfully saved new user {user.id} to Database")
+                    else:
+                        user_logger.warning(f"Failed to save new user {user.id} to Database")
+                except Exception as save_error:
+                    user_logger.error(f"Error saving new user {user.id} to Database: {save_error}")
 
                 # Notify admin about new user (async, don't wait)
                 asyncio.create_task(context.bot.send_message(
@@ -1600,6 +1611,174 @@ async def admin_remove_authorized_user(update: Update, context: CallbackContext)
         await update.message.reply_text(f"❌ Error removing authorization: {str(e)}")
         user_logger.error(f"Error in admin_remove_authorized_user: {e}")
 
+async def admin_list_users(update: Update, context: CallbackContext) -> None:
+    """Admin command to list all users with their names and IDs"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        # Import user database functions
+        from data.udb import get_user_database
+
+        # Get user database
+        db = get_user_database()
+
+        if db.empty:
+            await update.message.reply_text("📝 **No users found in database.**")
+            return
+
+        # Sort users by last_seen (most recent first)
+        db_sorted = db.sort_values('last_seen', ascending=False, na_position='last')
+
+        # Create user list message
+        user_list = "👥 **All Users in Database**\n\n"
+        
+        # Add summary
+        total_users = len(db)
+        authorized_users = len(db[db['is_authorized'] == True])
+        admin_users = len(db[db['is_admin'] == True])
+        
+        user_list += f"📊 **Summary:**\n"
+        user_list += f"• Total Users: {total_users}\n"
+        user_list += f"• Authorized: {authorized_users}\n"
+        user_list += f"• Admins: {admin_users}\n\n"
+
+        # Add user details (limit to 50 users to avoid message length issues)
+        max_users = 50
+        users_to_show = db_sorted.head(max_users)
+        
+        for idx, (_, user_row) in enumerate(users_to_show.iterrows(), 1):
+            user_id = user_row['user_id']
+            username = user_row.get('username', 'N/A')
+            name = user_row.get('name', 'N/A')
+            is_authorized = user_row.get('is_authorized', False)
+            is_admin = user_row.get('is_admin', False)
+            last_seen = user_row.get('last_seen', 'N/A')
+            
+            # Format username
+            if username != 'N/A' and username:
+                username_display = f"@{username}"
+            else:
+                username_display = "No username"
+            
+            # Format name
+            if name != 'N/A' and name:
+                name_display = name
+            else:
+                name_display = "No name"
+            
+            # Status indicators
+            status_icons = ""
+            if is_admin:
+                status_icons += "👑 "  # Admin
+            if is_authorized:
+                status_icons += "✅ "  # Authorized
+            
+            # Format last seen
+            if last_seen != 'N/A' and last_seen:
+                try:
+                    from datetime import datetime
+                    last_seen_dt = datetime.fromisoformat(last_seen)
+                    last_seen_display = last_seen_dt.strftime('%Y-%m-%d')
+                except:
+                    last_seen_display = str(last_seen)[:10]  # First 10 chars
+            else:
+                last_seen_display = "Unknown"
+            
+            user_list += f"{idx:2d}. {status_icons}**{name_display}**\n"
+            user_list += f"    ID: `{user_id}` | @{username_display.replace('@', '')}\n"
+            user_list += f"    Last seen: {last_seen_display}\n\n"
+        
+        # Add note if there are more users
+        if total_users > max_users:
+            user_list += f"... and {total_users - max_users} more users\n\n"
+        
+        user_list += "**Usage:**\n"
+        user_list += "• Use `/add_authorized_user <user_id>` to authorize a user\n"
+        user_list += "• Use `/remove_authorized_user <user_id>` to remove authorization\n"
+        user_list += "• Copy user IDs from this list for authorization commands"
+
+        # Split message if too long (Telegram limit is 4096 characters)
+        if len(user_list) > 4000:
+            # Split into chunks
+            chunks = []
+            current_chunk = "👥 **All Users in Database**\n\n"
+            current_chunk += f"📊 **Summary:**\n"
+            current_chunk += f"• Total Users: {total_users}\n"
+            current_chunk += f"• Authorized: {authorized_users}\n"
+            current_chunk += f"• Admins: {admin_users}\n\n"
+            
+            for idx, (_, user_row) in enumerate(users_to_show.iterrows(), 1):
+                user_id = user_row['user_id']
+                username = user_row.get('username', 'N/A')
+                name = user_row.get('name', 'N/A')
+                is_authorized = user_row.get('is_authorized', False)
+                is_admin = user_row.get('is_admin', False)
+                last_seen = user_row.get('last_seen', 'N/A')
+                
+                # Format user info (same as above)
+                if username != 'N/A' and username:
+                    username_display = f"@{username}"
+                else:
+                    username_display = "No username"
+                
+                if name != 'N/A' and name:
+                    name_display = name
+                else:
+                    name_display = "No name"
+                
+                status_icons = ""
+                if is_admin:
+                    status_icons += "👑 "
+                if is_authorized:
+                    status_icons += "✅ "
+                
+                if last_seen != 'N/A' and last_seen:
+                    try:
+                        from datetime import datetime
+                        last_seen_dt = datetime.fromisoformat(last_seen)
+                        last_seen_display = last_seen_dt.strftime('%Y-%m-%d')
+                    except:
+                        last_seen_display = str(last_seen)[:10]
+                else:
+                    last_seen_display = "Unknown"
+                
+                user_entry = f"{idx:2d}. {status_icons}**{name_display}**\n"
+                user_entry += f"    ID: `{user_id}` | @{username_display.replace('@', '')}\n"
+                user_entry += f"    Last seen: {last_seen_display}\n\n"
+                
+                # Check if adding this user would exceed limit
+                if len(current_chunk + user_entry) > 4000:
+                    chunks.append(current_chunk)
+                    current_chunk = f"👥 **All Users (Part {len(chunks) + 1})**\n\n"
+                
+                current_chunk += user_entry
+            
+            if current_chunk:
+                chunks.append(current_chunk)
+            
+            # Send each chunk
+            for i, chunk in enumerate(chunks):
+                if i == len(chunks) - 1:  # Last chunk
+                    chunk += "**Usage:**\n"
+                    chunk += "• Use `/add_authorized_user <user_id>` to authorize a user\n"
+                    chunk += "• Use `/remove_authorized_user <user_id>` to remove authorization\n"
+                    chunk += "• Copy user IDs from this list for authorization commands"
+                
+                await update.message.reply_text(chunk, parse_mode="Markdown")
+        else:
+            await update.message.reply_text(user_list, parse_mode="Markdown")
+
+        user_logger.info(f"Admin {user.id} viewed user list ({total_users} users)")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error retrieving user list: {str(e)}")
+        user_logger.error(f"Error in admin_list_users: {e}")
+
 async def admin_list_commands(update: Update, context: CallbackContext) -> None:
     """Admin command to list all available admin commands"""
     user = update.effective_user
@@ -1620,11 +1799,12 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/unrestrict_access <feature>` - Remove access restriction
 • `/feature_status` - View all feature statuses
 • `/debug_features` - Debug feature loading (troubleshooting)
-• `/add_missing_features` - Add missing features to Excel sheet
+• `/add_missing_features` - Add missing features to Database
 • `/restore_all_features` - Restore all 11 features (fix missing features)
 
 **User Management:**
 • `/admin_save_db` - Manually save user database to Google Drive
+• `/users` - View all users with names and IDs
 • `/view_authorized_users` - View all authorized users
 • `/add_authorized_user <user_id>` - Add user to authorized list
 • `/remove_authorized_user <user_id>` - Remove user from authorized list
@@ -1984,7 +2164,7 @@ async def admin_debug_features(update: Update, context: CallbackContext) -> None
         user_logger.error(f"Error in admin_debug_features: {e}")
 
 async def admin_add_missing_features(update: Update, context: CallbackContext) -> None:
-    """Admin command to add missing features to Excel sheet"""
+    """Admin command to add missing features to Database"""
     user = update.effective_user
 
     # Check if user is admin
@@ -2223,7 +2403,7 @@ async def admin_restore_all_features(update: Update, context: CallbackContext) -
         return
 
     try:
-        await update.message.reply_text("🔄 **Restoring All Features...**\n\nThis will restore all 11 features to the Excel sheet.", parse_mode="Markdown")
+        await update.message.reply_text("🔄 **Restoring All Features...**\n\nThis will restore all 11 features in the Database.", parse_mode="Markdown")
 
         # Import feature controller
         from data.feature_control import get_feature_controller

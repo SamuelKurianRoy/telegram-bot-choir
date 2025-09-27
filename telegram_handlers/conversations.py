@@ -2672,6 +2672,33 @@ async def handle_song_code(update: Update, context: CallbackContext) -> None:
 
     response_parts = []
 
+    # Check if notation feature is restricted for H-type songs
+    if song_type == 'H':
+        try:
+            from data.feature_control import can_user_access_feature
+            user = update.effective_user
+            can_access, error_message = can_user_access_feature('notation', user.id)
+            if not can_access:
+                # If notation is restricted, show song info without notation
+                Vocabulary = ChoirVocabulary(df, dfH, dfL, dfC)[0]
+                from data.vocabulary import isVocabulary
+                song_info = isVocabulary(user_input, Vocabulary, dfH, dfTH, Tune_finder_of_known_songs)
+                # Remove notation block from song_info if present
+                if '🎶 Tune:' in song_info:
+                    song_info = song_info.split('🎶 Tune:')[0].strip()
+                response_parts.append(f"🎵 <b>Song Info:</b> {song_info}")
+                response_parts.append(f"🔒 <b>Musical Notation:</b> {error_message}")
+                last_sung = Datefinder(user_input, song_type, first=True)
+                response_parts.append(f"🗓️ <b>Last Sung:</b> {last_sung}")
+                await update.message.reply_text(
+                    "\n".join(response_parts),
+                    parse_mode="HTML", disable_web_page_preview=True
+                )
+                return
+        except Exception as feature_check_error:
+            user_logger.error(f"Error checking notation feature access: {feature_check_error}")
+            # Continue with normal flow if feature check fails
+
     # Get Name/Index info
     Vocabulary = ChoirVocabulary(df, dfH, dfL, dfC)[0]
     song_info = isVocabulary(user_input, Vocabulary, dfH, dfTH, Tune_finder_of_known_songs)
