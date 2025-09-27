@@ -1665,9 +1665,10 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
             else:
                 username_display = "No username"
             
-            # Format name
+            # Format name and escape special characters for Markdown
             if name != 'N/A' and name:
-                name_display = name
+                # Escape special Markdown characters
+                name_display = str(name).replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('`', '\\`')
             else:
                 name_display = "No name"
             
@@ -1727,7 +1728,8 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
                     username_display = "No username"
                 
                 if name != 'N/A' and name:
-                    name_display = name
+                    # Escape special Markdown characters
+                    name_display = str(name).replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('`', '\\`')
                 else:
                     name_display = "No name"
                 
@@ -1761,17 +1763,27 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
             if current_chunk:
                 chunks.append(current_chunk)
             
-            # Send each chunk
-            for i, chunk in enumerate(chunks):
-                if i == len(chunks) - 1:  # Last chunk
-                    chunk += "**Usage:**\n"
-                    chunk += "• Use `/add_authorized_user <user_id>` to authorize a user\n"
-                    chunk += "• Use `/remove_authorized_user <user_id>` to remove authorization\n"
-                    chunk += "• Copy user IDs from this list for authorization commands"
-                
+        # Send each chunk
+        for i, chunk in enumerate(chunks):
+            if i == len(chunks) - 1:  # Last chunk
+                chunk += "**Usage:**\n"
+                chunk += "• Use `/add_authorized_user <user_id>` to authorize a user\n"
+                chunk += "• Use `/remove_authorized_user <user_id>` to remove authorization\n"
+                chunk += "• Copy user IDs from this list for authorization commands"
+            
+            try:
                 await update.message.reply_text(chunk, parse_mode="Markdown")
-        else:
+            except Exception as parse_error:
+                # Fallback to plain text if Markdown parsing fails
+                plain_chunk = chunk.replace('**', '').replace('*', '').replace('`', '')
+                await update.message.reply_text(plain_chunk)
+    else:
+        try:
             await update.message.reply_text(user_list, parse_mode="Markdown")
+        except Exception as parse_error:
+            # Fallback to plain text if Markdown parsing fails
+            plain_list = user_list.replace('**', '').replace('*', '').replace('`', '')
+            await update.message.reply_text(plain_list)
 
         user_logger.info(f"Admin {user.id} viewed user list ({total_users} users)")
 
