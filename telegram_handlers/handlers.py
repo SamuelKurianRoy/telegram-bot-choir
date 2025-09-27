@@ -1763,20 +1763,20 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
             if current_chunk:
                 chunks.append(current_chunk)
             
-        # Send each chunk
-        for i, chunk in enumerate(chunks):
-            if i == len(chunks) - 1:  # Last chunk
-                chunk += "**Usage:**\n"
-                chunk += "• Use `/add_authorized_user <user_id>` to authorize a user\n"
-                chunk += "• Use `/remove_authorized_user <user_id>` to remove authorization\n"
-                chunk += "• Copy user IDs from this list for authorization commands"
-            
-            try:
-                await update.message.reply_text(chunk, parse_mode="Markdown")
-            except Exception as parse_error:
-                # Fallback to plain text if Markdown parsing fails
-                plain_chunk = chunk.replace('**', '').replace('*', '').replace('`', '')
-                await update.message.reply_text(plain_chunk)
+            # Send each chunk
+            for i, chunk in enumerate(chunks):
+                if i == len(chunks) - 1:  # Last chunk
+                    chunk += "**Usage:**\n"
+                    chunk += "• Use `/add_authorized_user <user_id>` to authorize a user\n"
+                    chunk += "• Use `/remove_authorized_user <user_id>` to remove authorization\n"
+                    chunk += "• Copy user IDs from this list for authorization commands"
+                
+                try:
+                    await update.message.reply_text(chunk, parse_mode="Markdown")
+                except Exception as parse_error:
+                    # Fallback to plain text if Markdown parsing fails
+                    plain_chunk = chunk.replace('**', '').replace('*', '').replace('`', '')
+                    await update.message.reply_text(plain_chunk)
         else:
             try:
                 await update.message.reply_text(user_list, parse_mode="Markdown")
