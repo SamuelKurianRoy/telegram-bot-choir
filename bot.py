@@ -18,7 +18,7 @@ try:
         last_sung_input, ENTER_LAST_SONG,
         date_start, date_input, ASK_DATE, last_show_all_dates_callback,
         bible_start, bible_input_handler, bible_confirm_handler, BIBLE_INPUT, BIBLE_CONFIRM,
-        admin_list_commands, admin_save_database,
+        admin_list_commands, admin_save_database, admin_list_users,
         admin_view_authorized_users, admin_add_authorized_user, admin_remove_authorized_user,
         admin_reply_start, admin_reply_select_user, admin_reply_send_message, REPLY_SELECT_USER, REPLY_ENTER_MESSAGE, admin_reply_legacy,
         admin_disable_feature, admin_enable_feature, admin_feature_status,

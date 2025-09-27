@@ -90,7 +90,7 @@ def create_empty_user_database():
         'download_preference',   # Default download behavior (single/ask)
         'download_quality',  # Default download quality (high/medium/low/ask)
         'theme_preference',  # UI theme preference (if applicable)
-        'show_tunes_in_date' # Whether to show tunes in /date command results (true/false)
+        'show_tunes_in_date'  # Whether to show tunes in /date command results (true/false)
     ])
 
 def ensure_user_database_structure(df):
@@ -233,7 +233,7 @@ def set_user_authorization(user_id, authorized=True):
                 'download_preference': 'audio',
                 'download_quality': 'medium',
                 'theme_preference': 'default',
-                'show_tunes_in_date': True
+                'show_tunes_in_date': False
             }
 
             # Add new user to database
@@ -330,7 +330,8 @@ def add_or_update_user(user_data):
                 'search_results_limit': 10,
                 'download_preference': 'single',
                 'download_quality': 'ask',
-                'theme_preference': 'default'
+                'theme_preference': 'default',
+                'show_tunes_in_date': False
             }
             
             # Add new row to database
