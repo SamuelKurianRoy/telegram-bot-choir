@@ -1690,7 +1690,7 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
             else:
                 last_seen_display = "Unknown"
             
-            user_list += f"{idx:2d}. {status_icons}**{name_display}**\n"
+            user_list += f"{idx:2d}. {status_icons}<b>{name_display}</b>\n"
             user_list += f"    ID: <a href=\"tg://user?id={user_id}\">{user_id}</a> | @{username_display.replace('@', '')}\n"
             user_list += f"    Last seen: {last_seen_display}\n\n"
         
@@ -1749,7 +1749,7 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
                 else:
                     last_seen_display = "Unknown"
                 
-                user_entry = f"{idx:2d}. {status_icons}**{name_display}**\n"
+                user_entry = f"{idx:2d}. {status_icons}<b>{name_display}</b>\n"
                 user_entry += f"    ID: <a href=\"tg://user?id={user_id}\">{user_id}</a> | @{username_display.replace('@', '')}\n"
                 user_entry += f"    Last seen: {last_seen_display}\n\n"
                 
@@ -1775,14 +1775,14 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
                 await update.message.reply_text(chunk, parse_mode="HTML")
             except Exception as parse_error:
                 # Fallback to plain text if HTML parsing fails
-                plain_chunk = chunk.replace('**', '').replace('*', '').replace('<a href="tg://user?id=', '').replace('">', ': ').replace('</a>', '')
+                plain_chunk = chunk.replace('<b>', '').replace('</b>', '').replace('<a href="tg://user?id=', '').replace('">', '').replace('</a>', '')
                 await update.message.reply_text(plain_chunk)
         else:
             try:
                 await update.message.reply_text(user_list, parse_mode="HTML")
             except Exception as parse_error:
                 # Fallback to plain text if HTML parsing fails
-                plain_list = user_list.replace('**', '').replace('*', '').replace('<a href="tg://user?id=', '').replace('">', ': ').replace('</a>', '')
+                plain_list = user_list.replace('<b>', '').replace('</b>', '').replace('<a href="tg://user?id=', '').replace('">', '').replace('</a>', '')
                 await update.message.reply_text(plain_list)
 
         # Log the action
