@@ -1777,13 +1777,13 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
                 # Fallback to plain text if Markdown parsing fails
                 plain_chunk = chunk.replace('**', '').replace('*', '').replace('`', '')
                 await update.message.reply_text(plain_chunk)
-    else:
-        try:
-            await update.message.reply_text(user_list, parse_mode="Markdown")
-        except Exception as parse_error:
-            # Fallback to plain text if Markdown parsing fails
-            plain_list = user_list.replace('**', '').replace('*', '').replace('`', '')
-            await update.message.reply_text(plain_list)
+        else:
+            try:
+                await update.message.reply_text(user_list, parse_mode="Markdown")
+            except Exception as parse_error:
+                # Fallback to plain text if Markdown parsing fails
+                plain_list = user_list.replace('**', '').replace('*', '').replace('`', '')
+                await update.message.reply_text(plain_list)
 
         # Log the action
         user_logger.info(f"Admin {user.id} viewed user list ({total_users} users)")
