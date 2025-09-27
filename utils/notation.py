@@ -11,7 +11,9 @@ def getNotation(p):
         if str(p).lower() in ['nan', 'none', '']:
             return "Page number not available"
         
-        p = int(str(p))
+        # Clean up the page number - take first part if comma-separated, remove spaces
+        page_str = str(p).split(',')[0].strip()
+        p = int(page_str)
         if p <= 0:
             return "Enter a valid number"
         elif p < 501:
@@ -43,7 +45,7 @@ def Music_notation_link(hymnno, dfH, dfTH, Tune_finder_of_known_songs):
             if not page_no.empty:
                 page = str(page_no.values[0]).split(',')[0]
                 # Check for NaN or invalid page numbers
-                if page.lower() not in ['nan', 'none', ''] and page.replace('.', '').isdigit():
+                if page.lower() not in ['nan', 'none', ''] and page.strip().replace('.', '').replace(',', '').replace(' ', '').isdigit():
                     link = getNotation(page)
                     results.append(f'<a href="{link}">{hymn_name}</a>')
                 else:
@@ -56,7 +58,7 @@ def Music_notation_link(hymnno, dfH, dfTH, Tune_finder_of_known_songs):
                 if hymn_name in i_list:
                     page_number = str(dfTH['Page no'].iloc[idx]).split(',')[0]
                     # Check for NaN or invalid page numbers
-                    if page_number.lower() not in ['nan', 'none', ''] and page_number.replace('.', '').isdigit():
+                    if page_number.lower() not in ['nan', 'none', ''] and page_number.strip().replace('.', '').replace(',', '').replace(' ', '').isdigit():
                         link = getNotation(page_number)
                         results.append(f'<a href="{link}">{hymn_name}</a>')
                     else:
