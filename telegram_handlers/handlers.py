@@ -1785,8 +1785,8 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
             plain_list = user_list.replace('**', '').replace('*', '').replace('`', '')
             await update.message.reply_text(plain_list)
 
-    # Log the action
-    user_logger.info(f"Admin {user.id} viewed user list ({total_users} users)")
+        # Log the action
+        user_logger.info(f"Admin {user.id} viewed user list ({total_users} users)")
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error retrieving user list: {str(e)}")

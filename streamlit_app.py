@@ -21,6 +21,9 @@ from telegram_handlers.utils import get_wordproject_url_from_input, extract_bibl
 # Add at the top of the file
 STOP_SIGNAL_FILE = "/tmp/telegram_bot_stop_signal"
 
+# Disable file watching to avoid inotify limits
+os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
+
 # Set page config
 st.set_page_config(
     page_title="Railway Choir Bot",
