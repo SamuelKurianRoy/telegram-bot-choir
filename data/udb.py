@@ -239,14 +239,14 @@ def set_user_authorization(user_id, authorized=True):
             }
 
             # Add new user to database
-            global user_database
-            user_database = pd.concat([db, pd.DataFrame([new_user])], ignore_index=True)
+            global user_db 
+            user_db = pd.concat([db, pd.DataFrame([new_user])], ignore_index=True)
         else:
             # User exists, update authorization
             idx = user_idx[0]
-            user_database.loc[idx, 'is_authorized'] = authorized
-            user_database.loc[idx, 'notes'] = f"Authorization {'granted' if authorized else 'revoked'} by admin"
-            user_database.loc[idx, 'last_seen'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            user_db.loc[idx, 'is_authorized'] = authorized
+            user_db.loc[idx, 'notes'] = f"Authorization {'granted' if authorized else 'revoked'} by admin"
+            user_db.loc[idx, 'last_seen'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         # Mark for saving
         mark_pending_save()
