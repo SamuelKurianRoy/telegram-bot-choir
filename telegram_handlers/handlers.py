@@ -1474,7 +1474,8 @@ async def admin_view_authorized_users(update: Update, context: CallbackContext) 
 
 async def admin_add_authorized_user(update: Update, context: CallbackContext) -> None:
     """Admin command to add a user to the authorized list"""
-    global user_logger 
+    global user_logger
+    
     user = update.effective_user
 
     # Check if user is admin
@@ -1490,7 +1491,8 @@ async def admin_add_authorized_user(update: Update, context: CallbackContext) ->
             "Example: /add_authorized_user 123456789\n\n"
             "How to get User ID:\n"
             "• Forward a message from the user to @userinfobot\n"
-            "• Or ask the user to send /start and check the logs"
+            "• Or ask the user to send /start and check the logs\n"
+            "• Use /users command to see all users in database"
         )
         return
 
@@ -1499,48 +1501,74 @@ async def admin_add_authorized_user(update: Update, context: CallbackContext) ->
 
         from data.udb import set_user_authorization, get_user_by_id, is_user_authorized
 
+        # First check if user exists in database
+        user_info = get_user_by_id(target_user_id)
+        
+        if user_info is None:
+            await update.message.reply_text(
+                f"❌ User Not Found\n\n"
+                f"User ID <code>{target_user_id}</code> doesn't exist in the database.\n\n"
+                f"<b>Note:</b> Users must interact with the bot at least once (e.g., send /start) "
+                f"before they can be authorized.\n\n"
+                f"Use /users to see all registered users.",
+                parse_mode="HTML"
+            )
+            return
+
         # Check if user is already authorized
         if is_user_authorized(target_user_id):
-            await update.message.reply_text(f"ℹ️ User Already Authorized\n\nUser ID {target_user_id} is already in the authorized users list.")
+            name = user_info.get('name', 'Unknown')
+            username = user_info.get('username', '')
+            username_display = f"@{username}" if username else "No username"
+            
+            await update.message.reply_text(
+                f"ℹ️ <b>User Already Authorized</b>\n\n"
+                f"<b>User Details:</b>\n"
+                f"• Name: {name}\n"
+                f"• Username: {username_display}\n"
+                f"• ID: <code>{target_user_id}</code>\n\n"
+                f"This user is already in the authorized users list.",
+                parse_mode="HTML"
+            )
             return
 
         # Add user to authorized list
         success = set_user_authorization(target_user_id, authorized=True)
 
         if success:
-            # Get user info if available
-            user_info = get_user_by_id(target_user_id)
-            if user_info is not None:
-                name = user_info.get('name', 'Unknown')
-                username = user_info.get('username', '')
-                username_display = f"@{username}" if username else "No username"
+            name = user_info.get('name', 'Unknown')
+            username = user_info.get('username', '')
+            username_display = f"@{username}" if username else "No username"
 
-                # Escape special characters
-                safe_name = str(name).replace('_', ' ').replace('*', ' ').replace('[', '(').replace(']', ')')
-                safe_username = str(username_display).replace('_', ' ').replace('*', ' ')
+            success_text = f"✅ <b>User Authorized Successfully!</b>\n\n"
+            success_text += f"<b>User Details:</b>\n"
+            success_text += f"• Name: {name}\n"
+            success_text += f"• Username: {username_display}\n"
+            success_text += f"• ID: <code>{target_user_id}</code>\n\n"
+            success_text += f"This user can now access restricted bot features."
 
-                success_text = f"✅ User Authorized Successfully!\n\n"
-                success_text += f"User Details:\n"
-                success_text += f"• Name: {safe_name}\n"
-                success_text += f"• Username: {safe_username}\n"
-                success_text += f"• ID: {target_user_id}\n\n"
-                success_text += f"This user can now access restricted bot features."
-            else:
-                success_text = f"✅ User Authorized Successfully!\n\n"
-                success_text += f"User ID: {target_user_id}\n\n"
-                success_text += f"User record created and authorized. They can now access restricted bot features."
-
-            await update.message.reply_text(success_text)
+            await update.message.reply_text(success_text, parse_mode="HTML")
             user_logger.info(f"Admin {user.id} authorized user {target_user_id}")
         else:
-            await update.message.reply_text("❌ Failed to authorize user\n\nThere was an error updating the database.")
+            await update.message.reply_text(
+                "❌ <b>Failed to authorize user</b>\n\n"
+                "There was an error updating the database. Please check logs.",
+                parse_mode="HTML"
+            )
+            user_logger.error(f"Failed to authorize user {target_user_id} - set_user_authorization returned False")
 
     except ValueError:
-        await update.message.reply_text("❌ Invalid User ID\n\nPlease provide a valid numeric user ID.")
+        await update.message.reply_text(
+            "❌ <b>Invalid User ID</b>\n\n"
+            "Please provide a valid numeric user ID.\n\n"
+            "Example: <code>/add_authorized_user 123456789</code>",
+            parse_mode="HTML"
+        )
     except Exception as e:
         await update.message.reply_text(f"❌ Error authorizing user: {str(e)}")
-        user_logger.error(f"Error in admin_add_authorized_user: {e}")
+        user_logger.error(f"Error in admin_add_authorized_user: {e}", exc_info=True)
 
+        
 async def admin_remove_authorized_user(update: Update, context: CallbackContext) -> None:
     """Admin command to remove a user from the authorized list"""
     user = update.effective_user
