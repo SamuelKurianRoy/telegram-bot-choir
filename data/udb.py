@@ -10,7 +10,9 @@ from googleapiclient.errors import HttpError
 from data.drive import get_drive_service
 from config import get_config
 from datetime import datetime
-import logging
+from logging_utils import setup_loggers
+
+bot_logger, user_logger = setup_loggers()
 
 # Global user database variable
 user_db = None
@@ -251,7 +253,7 @@ def set_user_authorization(user_id, authorized=True):
         return True
 
     except Exception as e:
-        logger.error(f"Error setting user authorization: {e}")
+        bot_logger.error(f"Error setting user authorization: {e}")
         return False
 
 def get_authorized_users():
@@ -268,7 +270,7 @@ def get_authorized_users():
         return authorized_users[['user_id', 'username', 'name', 'last_seen', 'is_admin']].to_dict('records')
 
     except Exception as e:
-        logger.error(f"Error getting authorized users: {e}")
+        bot_logger.error(f"Error getting authorized users: {e}")
         return []
 
 def mark_pending_save():
