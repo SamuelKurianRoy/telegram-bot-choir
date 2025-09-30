@@ -1849,7 +1849,8 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/admin_user_info` 757438955`
 • `/reply` `Thanks for your feedback!`
 """
-
+    except Exception as e:
+        await update.message.reply_text(f"Change the list text: {str(e)}")
 
         await update.message.reply_text(admin_commands, parse_mode="Markdown")
         user_logger.info(f"Admin {user.id} viewed admin commands list")
