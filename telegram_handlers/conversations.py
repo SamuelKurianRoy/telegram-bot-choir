@@ -2678,7 +2678,7 @@ async def handle_song_code(update: Update, context: CallbackContext) -> None:
             from data.feature_control import can_user_access_feature
             user = update.effective_user
             can_access, error_message = can_user_access_feature('notation', user.id)
-            from data.vocabulary import isVocabulary
+            # from data.vocabulary import isVocabulary
             if not can_access:
                 # If notation is restricted, show song info without notation
                 Vocabulary = ChoirVocabulary(df, dfH, dfL, dfC)[0]
@@ -2707,7 +2707,7 @@ async def handle_song_code(update: Update, context: CallbackContext) -> None:
         last_sung = Datefinder(user_input, song_type, first=True)
         response_parts.append(f"🗓️ <b>Last Sung:</b> {last_sung}")
     else:
-        from data.datasets import IndexFinder
+        # from data.datasets import IndexFinder
         response_parts.append(f"Choir doesn't know {f'{user_input}: {IndexFinder(user_input)}'}")
 
     # Send the reply
@@ -2910,8 +2910,8 @@ async def cancel_comment(update: Update, context: CallbackContext) -> int:
 # TODO: Populate this with actual mapping from page number to file_id
 
 # Dynamically compute vocabulary categories for export
-from data.vocabulary import ChoirVocabulary
-from data.datasets import get_all_data
+# from data.vocabulary import ChoirVocabulary
+# from data.datasets import get_all_data
 
 def get_vocabulary_categories():
     data = get_all_data()
