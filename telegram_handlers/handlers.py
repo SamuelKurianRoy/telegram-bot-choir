@@ -1790,7 +1790,7 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text(f"❌ Error retrieving user list: {str(e)}")
         user_logger.error(f"Error in admin_list_users: {e}")
 
-        
+
 async def admin_list_commands(update: Update, context: CallbackContext) -> None:
     """Admin command to list all available admin commands"""
     user = update.effective_user
@@ -1805,10 +1805,10 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 🔧 **Admin Commands List**
 
 **Feature Control:**
-• `/disable <feature> [reason]` - Disable a bot feature
-• `/enable <feature>` - Enable a bot feature
-• `/restrict_access <feature> [reason]` - Restrict to authorized users only
-• `/unrestrict_access <feature>` - Remove access restriction
+• `/disable` `<feature> [reason]` - Disable a bot feature
+• `/enable` `<feature>` - Enable a bot feature
+• `/restrict_access` `<feature> [reason]` - Restrict to authorized users only
+• `/unrestrict_access` `<feature>` - Remove access restriction
 • `/feature_status` - View all feature statuses
 • `/debug_features` - Debug feature loading (troubleshooting)
 • `/add_missing_features` - Add missing features to Database
@@ -1818,13 +1818,13 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/admin_save_db` - Manually save user database to Google Drive
 • `/users` - View all users with names and IDs
 • `/view_authorized_users` - View all authorized users
-• `/add_authorized_user <user_id>` - Add user to authorized list
-• `/remove_authorized_user <user_id>` - Remove user from authorized list
+• `/add_authorized_user` `<user_id>` - Add user to authorized list
+• `/remove_authorized_user` `<user_id>` - Remove user from authorized list
 
 **Bot Management:**
 • `/refresh` - Reload all datasets from Google Drive
 • `/dnstest` - Test DNS resolution and network connectivity
-• `/reply <message>` - Reply to user comments/feedback
+• `/reply` `<message>` - Reply to user comments/feedback
 • `/list` - Show this admin commands list
 
 **General Commands (also available to admin):**
@@ -1845,10 +1845,10 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/setting` - Manage personal settings
 
 **Usage Examples:**
-• `/admin_user_info 757438955`
-• `/reply Thanks for your feedback!`
-• `/admin_users`
+• `/admin_user_info` 757438955`
+• `/reply` `Thanks for your feedback!`
 """
+
 
         await update.message.reply_text(admin_commands, parse_mode="Markdown")
         user_logger.info(f"Admin {user.id} viewed admin commands list")
