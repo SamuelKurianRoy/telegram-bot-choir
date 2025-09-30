@@ -2678,10 +2678,10 @@ async def handle_song_code(update: Update, context: CallbackContext) -> None:
             from data.feature_control import can_user_access_feature
             user = update.effective_user
             can_access, error_message = can_user_access_feature('notation', user.id)
+            from data.vocabulary import isVocabulary
             if not can_access:
                 # If notation is restricted, show song info without notation
                 Vocabulary = ChoirVocabulary(df, dfH, dfL, dfC)[0]
-                from data.vocabulary import isVocabulary
                 song_info = isVocabulary(user_input, Vocabulary, dfH, dfTH, Tune_finder_of_known_songs)
                 # Remove notation block from song_info if present
                 if '🎶 Tune:' in song_info:
