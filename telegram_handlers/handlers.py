@@ -1691,7 +1691,7 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
                 last_seen_display = "Unknown"
             
             user_list += f"{idx:2d}. {status_icons}<b>{name_display}</b>\n"
-            user_list += f"    ID: <a href=\"tg://user?id={user_id}\">{user_id}</a> | @{username_display.replace('@', '')}\n"
+            user_list += f"    ID: <code>{user_id}</code> | {username_display}\n"
             user_list += f"    Last seen: {last_seen_display}\n\n"
         
         # Add note if there are more users
