@@ -1635,14 +1635,14 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
         db_sorted = db.sort_values('last_seen', ascending=False, na_position='last')
 
         # Create user list message
-        user_list = "👥 **All Users in Database**\n\n"
+        user_list = "👥 <b>All Users in Database</b>\n\n"
         
         # Add summary
         total_users = len(db)
         authorized_users = len(db[db['is_authorized'] == True])
         admin_users = len(db[db['is_admin'] == True])
         
-        user_list += f"📊 **Summary:**\n"
+        user_list += f"📊 <b>Summary:</b>\n"
         user_list += f"• Total Users: {total_users}\n"
         user_list += f"• Authorized: {authorized_users}\n"
         user_list += f"• Admins: {admin_users}\n\n"
@@ -1665,10 +1665,9 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
             else:
                 username_display = "No username"
             
-            # Format name and escape special characters for Markdown
+            # Format name - escape HTML special characters
             if name != 'N/A' and name:
-                # Escape special Markdown characters
-                name_display = str(name).replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('`', '\\`')
+                name_display = str(name).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
             else:
                 name_display = "No name"
             
@@ -1698,17 +1697,17 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
         if total_users > max_users:
             user_list += f"... and {total_users - max_users} more users\n\n"
         
-        user_list += "**Usage:**\n"
-        user_list += "• Use `/add_authorized_user <user_id>` to authorize a user\n"
-        user_list += "• Use `/remove_authorized_user <user_id>` to remove authorization\n"
-        user_list += "• Copy user IDs from this list for authorization commands"
+        user_list += "<b>Usage:</b>\n"
+        user_list += "• Use <code>/add_authorized_user &lt;user_id&gt;</code> to authorize\n"
+        user_list += "• Use <code>/remove_authorized_user &lt;user_id&gt;</code> to remove\n"
+        user_list += "• Tap on user IDs to copy them"
 
         # Split message if too long (Telegram limit is 4096 characters)
         if len(user_list) > 4000:
             # Split into chunks
             chunks = []
-            current_chunk = "👥 **All Users in Database**\n\n"
-            current_chunk += f"📊 **Summary:**\n"
+            current_chunk = "👥 <b>All Users in Database</b>\n\n"
+            current_chunk += f"📊 <b>Summary:</b>\n"
             current_chunk += f"• Total Users: {total_users}\n"
             current_chunk += f"• Authorized: {authorized_users}\n"
             current_chunk += f"• Admins: {admin_users}\n\n"
@@ -1728,8 +1727,7 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
                     username_display = "No username"
                 
                 if name != 'N/A' and name:
-                    # Escape special Markdown characters
-                    name_display = str(name).replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('`', '\\`')
+                    name_display = str(name).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 else:
                     name_display = "No name"
                 
@@ -1750,13 +1748,13 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
                     last_seen_display = "Unknown"
                 
                 user_entry = f"{idx:2d}. {status_icons}<b>{name_display}</b>\n"
-                user_entry += f"    ID: <a href=\"tg://user?id={user_id}\">{user_id}</a> | @{username_display.replace('@', '')}\n"
+                user_entry += f"    ID: <code>{user_id}</code> | {username_display}\n"
                 user_entry += f"    Last seen: {last_seen_display}\n\n"
                 
                 # Check if adding this user would exceed limit
                 if len(current_chunk + user_entry) > 4000:
                     chunks.append(current_chunk)
-                    current_chunk = f"👥 **All Users (Part {len(chunks) + 1})**\n\n"
+                    current_chunk = f"👥 <b>All Users (Part {len(chunks) + 1})</b>\n\n"
                 
                 current_chunk += user_entry
             
@@ -1766,23 +1764,23 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
             # Send each chunk
             for i, chunk in enumerate(chunks):
                 if i == len(chunks) - 1:  # Last chunk
-                    chunk += "**Usage:**\n"
-                    chunk += "• Use `/add_authorized_user <user_id>` to authorize a user\n"
-                    chunk += "• Use `/remove_authorized_user <user_id>` to remove authorization\n"
-                    chunk += "• Copy user IDs from this list for authorization commands"
+                    chunk += "<b>Usage:</b>\n"
+                    chunk += "• Use <code>/add_authorized_user &lt;user_id&gt;</code> to authorize\n"
+                    chunk += "• Use <code>/remove_authorized_user &lt;user_id&gt;</code> to remove\n"
+                    chunk += "• Tap on user IDs to copy them"
                 
-            try:
-                await update.message.reply_text(chunk, parse_mode="HTML")
-            except Exception as parse_error:
-                # Fallback to plain text if HTML parsing fails
-                plain_chunk = chunk.replace('<b>', '').replace('</b>', '').replace('<a href="tg://user?id=', '').replace('">', '').replace('</a>', '')
-                await update.message.reply_text(plain_chunk)
+                try:
+                    await update.message.reply_text(chunk, parse_mode="HTML")
+                except Exception as parse_error:
+                    # Fallback to plain text if HTML parsing fails
+                    plain_chunk = chunk.replace('<b>', '').replace('</b>', '').replace('<code>', '').replace('</code>', '').replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+                    await update.message.reply_text(plain_chunk)
         else:
             try:
                 await update.message.reply_text(user_list, parse_mode="HTML")
             except Exception as parse_error:
                 # Fallback to plain text if HTML parsing fails
-                plain_list = user_list.replace('<b>', '').replace('</b>', '').replace('<a href="tg://user?id=', '').replace('">', '').replace('</a>', '')
+                plain_list = user_list.replace('<b>', '').replace('</b>', '').replace('<code>', '').replace('</code>', '').replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
                 await update.message.reply_text(plain_list)
 
         # Log the action
@@ -1792,6 +1790,7 @@ async def admin_list_users(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text(f"❌ Error retrieving user list: {str(e)}")
         user_logger.error(f"Error in admin_list_users: {e}")
 
+        
 async def admin_list_commands(update: Update, context: CallbackContext) -> None:
     """Admin command to list all available admin commands"""
     user = update.effective_user
