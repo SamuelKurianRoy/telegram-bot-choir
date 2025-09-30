@@ -1474,6 +1474,7 @@ async def admin_view_authorized_users(update: Update, context: CallbackContext) 
 
 async def admin_add_authorized_user(update: Update, context: CallbackContext) -> None:
     """Admin command to add a user to the authorized list"""
+    global user_logger 
     user = update.effective_user
 
     # Check if user is admin
