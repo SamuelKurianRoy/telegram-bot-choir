@@ -1494,7 +1494,7 @@ async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             await update.message.reply_text(f"No tunes found for H-{hymn_no}.")
             return ConversationHandler.END
 
-        # Enhanced display with notation links
+        # Enhanced display with notation links - using plain text to avoid parsing errors
         result_lines = [f"🎵 Tunes for H-{hymn_no}:\n"]
         keyboard = []
 
@@ -1503,19 +1503,15 @@ async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             from utils.notation import find_tune_page_number, getNotation
             page_no, source = find_tune_page_number(tune_name, hymn_no, dfH, dfTH)
 
-            # Escape special characters in tune name for Markdown
-            safe_tune_name = tune_name.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)')
-            line = f"*{safe_tune_name}*"
+            line = f"♪ {tune_name}"
 
             if page_no:
                 notation_link = getNotation(page_no)
                 if notation_link and "http" in str(notation_link):
-                    line += f" - [📖 Notation]({notation_link})"
+                    line += f" - 📖 Notation: {notation_link}"
                 else:
                     line += f" - Page {page_no}"
-                # Escape source information
-                safe_source = str(source).replace('_', '\\_').replace('*', '\\*')
-                line += f" _(Found in: {safe_source})_"
+                line += f" (Found in: {source})"
             else:
                 line += " - 🔍 Notation search available"
                 # Add button for interactive notation finding
@@ -1530,7 +1526,6 @@ async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
         await update.message.reply_text(
             result,
-            parse_mode="Markdown",
             disable_web_page_preview=True,
             reply_markup=reply_markup
         )
