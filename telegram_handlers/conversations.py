@@ -1494,16 +1494,16 @@ async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             await update.message.reply_text(f"No tunes found for H-{hymn_no}.")
             return ConversationHandler.END
 
-        # Enhanced display with notation links - using plain text to avoid parsing errors
+        # Enhanced display with notation links and confirmation buttons
         result_lines = [f"🎵 Tunes for H-{hymn_no}:\n"]
         keyboard = []
 
-        for tune_name in tune_names:
+        for i, tune_name in enumerate(tune_names, 1):
             # Try to find notation for this tune using enhanced search
             from utils.notation import find_tune_page_number, getNotation
             page_no, source = find_tune_page_number(tune_name, hymn_no, dfH, dfTH)
 
-            line = f"♪ {tune_name}"
+            line = f"{i}. ♪ {tune_name}"
 
             if page_no:
                 notation_link = getNotation(page_no)
@@ -1512,6 +1512,11 @@ async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 else:
                     line += f" - Page {page_no}"
                 line += f" (Found in: {source})"
+
+                # Add confirmation button for each tune with notation
+                button_text = f"✅ Confirm {tune_name}"
+                callback_data = f"confirm_notation:{hymn_no}:{tune_name}:{page_no}:{source}"
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
             else:
                 line += " - 🔍 Notation search available"
                 # Add button for interactive notation finding
@@ -1520,6 +1525,11 @@ async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
 
             result_lines.append(line)
+
+        # Add additional options
+        result_lines.append("\n💡 Click the buttons below to:")
+        result_lines.append("• ✅ Confirm if a tune/notation is correct")
+        result_lines.append("• 🔍 Search for missing notation")
 
         result = "\n".join(result_lines)
         reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None

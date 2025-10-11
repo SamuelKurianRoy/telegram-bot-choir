@@ -282,3 +282,34 @@ async def try_next_notation_option(query, context: ContextTypes.DEFAULT_TYPE, hy
         f"Could not find suitable notation for **{tune_name}** in H-{hymn_no} or neighboring hymns.\n"
         f"Please contact an admin or try a different search."
     )
+
+async def handle_tune_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle confirmation of tune notation from /tune command."""
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        # Parse callback data: confirm_notation:hymn_no:tune_name:page_no:source
+        _, hymn_no, tune_name, page_no, source = query.data.split(":", 4)
+        hymn_no = int(hymn_no)
+        page_no = int(page_no)
+
+        # Save the confirmed result
+        save_confirmed_page_result(tune_name, hymn_no, page_no, source)
+
+        # Show confirmation message
+        await query.edit_message_text(
+            f"✅ **Confirmation Saved!**\n\n"
+            f"🎵 **Tune:** {tune_name}\n"
+            f"📖 **Hymn:** H-{hymn_no}\n"
+            f"📄 **Page:** {page_no}\n"
+            f"📍 **Source:** {source}\n\n"
+            f"Thank you for confirming! This will help improve future searches.\n\n"
+            f"💡 Use /tune again to search for more hymns."
+        )
+
+    except Exception as e:
+        await query.edit_message_text(
+            f"❌ Error saving confirmation: {str(e)}\n\n"
+            "Please try again with /tune."
+        )
