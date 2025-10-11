@@ -1482,11 +1482,34 @@ async def handle_page_number_input(update: Update, context: ContextTypes.DEFAULT
         # Get stored context
         page_context = context.user_data.get('awaiting_page_number')
         if not page_context:
-            await update.message.reply_text("❌ Error: Context lost. Please try again with /tune.")
-            return
+            # Try to find backup context
+            tune_confirmations = context.user_data.get('tune_confirmations', {})
+            backup_key = None
+            for key, value in tune_confirmations.items():
+                if key.startswith('page_input_'):
+                    backup_key = key
+                    page_context = {
+                        'hymn_no': value['hymn_no'],
+                        'tune_name': value['tune_name'],
+                        'tune_index': value['tune_index']
+                    }
+                    break
+
+            if not page_context:
+                await update.message.reply_text("❌ Error: Context lost. Please try again with /tune.")
+                return
 
         hymn_no = page_context['hymn_no']
         tune_name = page_context['tune_name']
+
+        # Show progress message
+        progress_msg = await update.message.reply_text(
+            f"💾 **Writing to database...**\n\n"
+            f"🎵 **Tune:** {tune_name}\n"
+            f"📖 **Hymn:** H-{hymn_no}\n"
+            f"📄 **Page:** {page_no}\n\n"
+            f"Please wait while we update the database..."
+        )
 
         # Save the corrected page number to dfTH
         from utils.enhanced_search import save_corrected_page_to_dfth
@@ -1496,34 +1519,47 @@ async def handle_page_number_input(update: Update, context: ContextTypes.DEFAULT
         from utils.notation import getNotation
         notation_link = getNotation(page_no)
 
+        # Update the progress message with results
         if success:
-            await update.message.reply_text(
+            await progress_msg.edit_text(
                 f"✅ **Page Number Updated!**\n\n"
                 f"🎵 **Tune:** {tune_name}\n"
                 f"📖 **Hymn:** H-{hymn_no}\n"
                 f"📄 **Corrected Page:** {page_no}\n"
                 f"📖 **Notation:** {notation_link}\n\n"
-                f"Thank you! The database has been updated with the correct page number.\n\n"
+                f"✅ **Database updated successfully!**\n"
+                f"The page number has been saved to dfTH Propabible_Pages_Result column.\n\n"
                 f"💡 Use /tune again to search for more hymns."
             )
         else:
-            await update.message.reply_text(
+            await progress_msg.edit_text(
                 f"⚠️ **Page Number Noted**\n\n"
                 f"🎵 **Tune:** {tune_name}\n"
                 f"📖 **Hymn:** H-{hymn_no}\n"
                 f"📄 **Corrected Page:** {page_no}\n"
                 f"📖 **Notation:** {notation_link}\n\n"
-                f"The correction has been noted but database update failed.\n"
+                f"❌ **Database update failed.**\n"
+                f"The correction has been noted locally but couldn't be saved to the database.\n"
                 f"Please contact an admin to update the database.\n\n"
                 f"💡 Use /tune again to search for more hymns."
             )
 
         # Clear the context
         context.user_data.pop('awaiting_page_number', None)
+        # Also clear backup context
+        if 'tune_confirmations' in context.user_data:
+            keys_to_remove = [k for k in context.user_data['tune_confirmations'].keys() if k.startswith('page_input_')]
+            for key in keys_to_remove:
+                context.user_data['tune_confirmations'].pop(key, None)
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error processing page number: {str(e)}")
         context.user_data.pop('awaiting_page_number', None)
+        # Also clear backup context
+        if 'tune_confirmations' in context.user_data:
+            keys_to_remove = [k for k in context.user_data['tune_confirmations'].keys() if k.startswith('page_input_')]
+            for key in keys_to_remove:
+                context.user_data['tune_confirmations'].pop(key, None)
 
 # Handle the actual search
 async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

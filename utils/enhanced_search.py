@@ -309,19 +309,42 @@ async def handle_tune_confirmation(update: Update, context: ContextTypes.DEFAULT
         tune_name = tune_info['tune_name']
         source = tune_info['source']
 
-        # Save the confirmed result
-        save_confirmed_page_result(tune_name, hymn_no, page_no, source)
-
-        # Show confirmation message
+        # Show progress message
         await query.edit_message_text(
-            f"✅ **Confirmation Saved!**\n\n"
+            f"💾 **Writing to database...**\n\n"
             f"🎵 **Tune:** {tune_name}\n"
             f"📖 **Hymn:** H-{hymn_no}\n"
             f"📄 **Page:** {page_no}\n"
             f"📍 **Source:** {source}\n\n"
-            f"Thank you for confirming! This will help improve future searches.\n\n"
-            f"💡 Use /tune again to search for more hymns."
+            f"Please wait while we update the database..."
         )
+
+        # Save the confirmed result
+        success = save_confirmed_page_result(tune_name, hymn_no, page_no, source)
+
+        # Show final confirmation message
+        if success:
+            await query.edit_message_text(
+                f"✅ **Confirmation Saved!**\n\n"
+                f"🎵 **Tune:** {tune_name}\n"
+                f"📖 **Hymn:** H-{hymn_no}\n"
+                f"📄 **Page:** {page_no}\n"
+                f"📍 **Source:** {source}\n\n"
+                f"✅ **Database updated successfully!**\n"
+                f"Thank you for confirming! This will help improve future searches.\n\n"
+                f"💡 Use /tune again to search for more hymns."
+            )
+        else:
+            await query.edit_message_text(
+                f"⚠️ **Confirmation Noted**\n\n"
+                f"🎵 **Tune:** {tune_name}\n"
+                f"📖 **Hymn:** H-{hymn_no}\n"
+                f"📄 **Page:** {page_no}\n"
+                f"📍 **Source:** {source}\n\n"
+                f"❌ **Database update failed.**\n"
+                f"The confirmation has been noted locally but couldn't be saved to the database.\n\n"
+                f"💡 Use /tune again to search for more hymns."
+            )
 
         # Clean up context data
         if 'tune_confirmations' in context.user_data:
@@ -408,13 +431,22 @@ async def handle_provide_page_number(update: Update, context: ContextTypes.DEFAU
 
         tune_name = tune_info['tune_name']
 
-        # Store the context for the page number input
+        # Store the context for the page number input - use a more persistent key
         context.user_data['awaiting_page_number'] = {
             'hymn_no': hymn_no,
             'tune_name': tune_name,
             'tune_index': tune_index,
             'message_id': query.message.message_id,
             'chat_id': query.message.chat_id
+        }
+
+        # Also store in tune_confirmations to ensure persistence
+        if 'tune_confirmations' not in context.user_data:
+            context.user_data['tune_confirmations'] = {}
+        context.user_data['tune_confirmations'][f"page_input_{hymn_no}_{tune_index}"] = {
+            'tune_name': tune_name,
+            'hymn_no': hymn_no,
+            'tune_index': tune_index
         }
 
         await query.edit_message_text(
