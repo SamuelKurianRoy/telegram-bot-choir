@@ -154,7 +154,9 @@ def check_tune_in_dfth_page_no(tune_name, hymn_no, dfTH):
 
     try:
         # Find rows matching hymn number and tune
-        mask = (dfTH["Hymn no"] == hymn_no) & (dfTH["Tune Index"].str.contains(tune_name, case=False, na=False))
+        import re
+        escaped_tune_name = re.escape(tune_name)
+        mask = (dfTH["Hymn no"] == hymn_no) & (dfTH["Tune Index"].str.contains(escaped_tune_name, case=False, na=False, regex=True))
         matching_rows = dfTH[mask]
 
         if not matching_rows.empty:
@@ -172,7 +174,9 @@ def check_tune_in_dfth_propable_result(tune_name, hymn_no, dfTH):
 
     try:
         # Find rows matching hymn number and tune
-        mask = (dfTH["Hymn no"] == hymn_no) & (dfTH["Tune Index"].str.contains(tune_name, case=False, na=False))
+        import re
+        escaped_tune_name = re.escape(tune_name)
+        mask = (dfTH["Hymn no"] == hymn_no) & (dfTH["Tune Index"].str.contains(escaped_tune_name, case=False, na=False, regex=True))
         matching_rows = dfTH[mask]
 
         if not matching_rows.empty:
