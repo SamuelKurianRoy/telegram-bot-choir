@@ -289,10 +289,25 @@ async def handle_tune_confirmation(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
 
     try:
-        # Parse callback data: confirm_notation:hymn_no:tune_name:page_no:source
-        _, hymn_no, tune_name, page_no, source = query.data.split(":", 4)
+        # Parse callback data: confirm:hymn_no:tune_index:page_no
+        _, hymn_no, tune_index, page_no = query.data.split(":", 3)
         hymn_no = int(hymn_no)
+        tune_index = int(tune_index)
         page_no = int(page_no)
+
+        # Retrieve full tune info from context
+        tune_key = f"{hymn_no}:{tune_index}"
+        tune_info = context.user_data.get('tune_confirmations', {}).get(tune_key)
+
+        if not tune_info:
+            await query.edit_message_text(
+                "❌ Error: Could not retrieve tune information.\n\n"
+                "Please try again with /tune."
+            )
+            return
+
+        tune_name = tune_info['tune_name']
+        source = tune_info['source']
 
         # Save the confirmed result
         save_confirmed_page_result(tune_name, hymn_no, page_no, source)
@@ -307,6 +322,10 @@ async def handle_tune_confirmation(update: Update, context: ContextTypes.DEFAULT
             f"Thank you for confirming! This will help improve future searches.\n\n"
             f"💡 Use /tune again to search for more hymns."
         )
+
+        # Clean up context data
+        if 'tune_confirmations' in context.user_data:
+            context.user_data['tune_confirmations'].pop(tune_key, None)
 
     except Exception as e:
         await query.edit_message_text(

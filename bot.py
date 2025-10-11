@@ -276,7 +276,7 @@ from utils.enhanced_search import handle_find_notation_callback, handle_notation
 app.add_handler(CallbackQueryHandler(handle_find_notation_callback, pattern="^find_notation:"))
 app.add_handler(CallbackQueryHandler(handle_notation_confirmation, pattern="^notation_confirm:"))
 app.add_handler(CallbackQueryHandler(handle_notation_confirmation, pattern="^notation_reject:"))
-app.add_handler(CallbackQueryHandler(handle_tune_confirmation, pattern="^confirm_notation:"))
+app.add_handler(CallbackQueryHandler(handle_tune_confirmation, pattern="^confirm:"))
 
 bot_should_run = True
 

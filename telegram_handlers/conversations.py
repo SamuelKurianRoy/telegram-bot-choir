@@ -1511,11 +1511,32 @@ async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                     line += f" - 📖 Notation: {notation_link}"
                 else:
                     line += f" - Page {page_no}"
-                line += f" (Found in: {source})"
+
+                # Add user-friendly source information
+                if "dfH_propabible" in str(source):
+                    line += " (not sure)"
+                elif "dfTH_page_no" in str(source):
+                    # Don't add anything - page number is correct
+                    pass
+                else:
+                    line += f" ({source})"
 
                 # Add confirmation button for each tune with notation
-                button_text = f"✅ Confirm {tune_name}"
-                callback_data = f"confirm_notation:{hymn_no}:{tune_name}:{page_no}:{source}"
+                # Shorten tune name for button text and callback data to avoid length limits
+                short_tune_name = tune_name[:15] + "..." if len(tune_name) > 15 else tune_name
+                button_text = f"✅ {short_tune_name}"
+
+                # Create shorter callback data (Telegram limit is 64 bytes)
+                callback_data = f"confirm:{hymn_no}:{i}:{page_no}"
+
+                # Store full tune info in context for later retrieval
+                if 'tune_confirmations' not in context.user_data:
+                    context.user_data['tune_confirmations'] = {}
+                context.user_data['tune_confirmations'][f"{hymn_no}:{i}"] = {
+                    'tune_name': tune_name,
+                    'source': source
+                }
+
                 keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
             else:
                 line += " - 🔍 Notation search available"
