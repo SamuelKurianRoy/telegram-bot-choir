@@ -1476,10 +1476,57 @@ async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         result = Tunenofinder(user_input)  # Your existing hymn number search
     elif method == "tune name":
         result_df = Hymn_Tune_no_Finder(dfTH, user_input, top_n=10)
-        result = "Top matching hymns:\n" + "\n".join(
-            f"H-{int(row['Hymn no'])}: Tune: {row['Tune Index']}, \t \t Similarity: {row['Similarity']:.2f}"
-            for _, row in result_df.iterrows()
+
+        # Enhanced display with notation links
+        result_lines = ["🎵 **Top matching hymns by tune name:**\n"]
+
+        for _, row in result_df.iterrows():
+            hymn_no = int(row['Hymn no'])
+            tune_name = row['Tune Index']
+            similarity = row['Similarity']
+
+            # Try to find notation for this tune
+            from utils.notation import find_tune_page_number, getNotation
+            page_no, source = find_tune_page_number(tune_name, hymn_no, dfH, dfTH)
+
+            line = f"**H-{hymn_no}**: {tune_name} (Similarity: {similarity:.2f})"
+
+            if page_no:
+                notation_link = getNotation(page_no)
+                if "http" in notation_link:
+                    line += f" - [📖 Notation]({notation_link})"
+                else:
+                    line += f" - Page {page_no}"
+            else:
+                line += " - 🔍 Notation search available"
+
+            result_lines.append(line)
+
+        result = "\n".join(result_lines)
+
+        # Create inline keyboard for tunes without notation
+        keyboard = []
+        for _, row in result_df.iterrows():
+            hymn_no = int(row['Hymn no'])
+            tune_name = row['Tune Index']
+
+            from utils.notation import find_tune_page_number
+            page_no, source = find_tune_page_number(tune_name, hymn_no, dfH, dfTH)
+
+            if not page_no:  # Only add button if no notation found
+                button_text = f"🔍 Find notation for {tune_name} (H-{hymn_no})"
+                callback_data = f"find_notation:{hymn_no}:{tune_name}"
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+
+        reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+
+        await update.message.reply_text(
+            result,
+            parse_mode="Markdown",
+            disable_web_page_preview=True,
+            reply_markup=reply_markup
         )
+        return ConversationHandler.END
     else:
         result = "Something went wrong. Please try again with /tune."
 
@@ -2092,35 +2139,9 @@ async def search_by_index(update: Update, context: CallbackContext) -> int:
 
     result = find_best_match(query, category)
 
-    # If result is an error message (string), return it directly
-    if isinstance(result, str):
-        await update.message.reply_text(result)
-        return ConversationHandler.END
-
-    matches, column_label = result
-
-    # Map category to prefix
-    prefix_map = {
-        "hymn": "H-",
-        "lyric": "L-",
-        "convention": "C-"
-    }
-
-    label_clean = category.capitalize()
-    prefix = prefix_map.get(category, "")
-
-    # Optional: Filter out zero similarity matches (if desired)
-    # matches = [m for m in matches if m[1] > 0]
-
-    reply_lines = [f"Top {len(matches)} matches for '{query}' in {category}:\n"]
-    for i, (num, score, context_text) in enumerate(matches, 1):
-        line = f"{i}. {prefix}{num}: {IndexFinder(f'{prefix}{num}')} (Similarity: {score:.3f})"
-        if context_text and str(context_text).strip().lower() != "none":
-            line += f" — {context_text.strip()}"
-        reply_lines.append(line)
-
-    reply = "\n".join(reply_lines)
-    await update.message.reply_text(reply)
+    # Use enhanced search results display
+    from utils.enhanced_search import show_search_results_with_notation
+    await show_search_results_with_notation(update, context, result, category)
 
     user_logger.info(
         f"{user.full_name} (@{user.username}, ID: {user.id}) searched by index: {query} in {category}"

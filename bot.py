@@ -271,6 +271,11 @@ app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"
 # Register the callback handler for 'Show all dates' button in /last
 app.add_handler(CallbackQueryHandler(last_show_all_dates_callback, pattern="^showalldates:"))
 
+# Register enhanced search notation callback handlers
+from utils.enhanced_search import handle_find_notation_callback, handle_notation_confirmation
+app.add_handler(CallbackQueryHandler(handle_find_notation_callback, pattern="^find_notation:"))
+app.add_handler(CallbackQueryHandler(handle_notation_confirmation, pattern="^confirm_notation:"))
+
 bot_should_run = True
 
 async def main():
