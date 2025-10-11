@@ -1587,6 +1587,9 @@ async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 elif "dfTH_page_no" in str(source):
                     # Don't add anything - page number is correct, no buttons needed
                     pass
+                elif "dfTH_propabible_result" in str(source):
+                    # This came from Propabible_Pages_Result column - show as confirmed
+                    pass
                 else:
                     line += f" ({source})"
                     needs_confirmation = True  # Other sources might need confirmation

@@ -109,11 +109,11 @@ def find_tune_page_number(tune_name, hymn_no, dfH, dfTH):
         if page_no:
             return page_no, "dfTH_page_no"
 
-        # 2. Check Propable_Page_Result in dfTH
-        if 'Propable_Page_Result' in dfTH.columns:
-            page_no = check_tune_in_dfth_propable_result(tune_name, hymn_no, dfTH)
+        # 2. Check Propabible_Pages_Result in dfTH
+        if 'Propabible_Pages_Result' in dfTH.columns:
+            page_no = check_tune_in_dfth_propabible_result(tune_name, hymn_no, dfTH)
             if page_no:
-                return page_no, "dfTH_propable_result"
+                return page_no, "dfTH_propabible_result"
 
         # 3. Check Propabible_Pages in dfH
         if 'Propabible_Pages' in dfH.columns:
@@ -130,11 +130,11 @@ def find_tune_page_number(tune_name, hymn_no, dfH, dfTH):
                 if page_no:
                     return page_no, f"neighbor_H{neighbor_hymn}_dfTH"
 
-                # Check dfTH Propable_Page_Result for neighbor
-                if 'Propable_Page_Result' in dfTH.columns:
-                    page_no = check_tune_in_dfth_propable_result(tune_name, neighbor_hymn, dfTH)
+                # Check dfTH Propabible_Pages_Result for neighbor
+                if 'Propabible_Pages_Result' in dfTH.columns:
+                    page_no = check_tune_in_dfth_propabible_result(tune_name, neighbor_hymn, dfTH)
                     if page_no:
-                        return page_no, f"neighbor_H{neighbor_hymn}_propable"
+                        return page_no, f"neighbor_H{neighbor_hymn}_propabible"
 
                 # Check dfH Propabible_Pages for neighbor
                 if 'Propabible_Pages' in dfH.columns:
@@ -168,9 +168,9 @@ def check_tune_in_dfth_page_no(tune_name, hymn_no, dfTH):
         pass
     return None
 
-def check_tune_in_dfth_propable_result(tune_name, hymn_no, dfTH):
-    """Check if tune exists in dfTH Propable_Page_Result column"""
-    if dfTH is None or dfTH.empty or 'Propable_Page_Result' not in dfTH.columns:
+def check_tune_in_dfth_propabible_result(tune_name, hymn_no, dfTH):
+    """Check if tune exists in dfTH Propabible_Pages_Result column"""
+    if dfTH is None or dfTH.empty or 'Propabible_Pages_Result' not in dfTH.columns:
         return None
 
     try:
@@ -181,7 +181,7 @@ def check_tune_in_dfth_propable_result(tune_name, hymn_no, dfTH):
         matching_rows = dfTH[mask]
 
         if not matching_rows.empty:
-            page_no = str(matching_rows.iloc[0]["Propable_Page_Result"]).split(',')[0].strip()
+            page_no = str(matching_rows.iloc[0]["Propabible_Pages_Result"]).split(',')[0].strip()
             if page_no.lower() not in ['nan', 'none', ''] and page_no.isdigit():
                 return int(page_no)
     except Exception:
@@ -215,8 +215,8 @@ def save_confirmed_page_result(tune_name, hymn_no, page_no, source):
             return False
 
         # Ensure columns exist
-        if 'Propable_Page_Result' not in dfTH.columns:
-            dfTH['Propable_Page_Result'] = ''
+        if 'Propabible_Pages_Result' not in dfTH.columns:
+            dfTH['Propabible_Pages_Result'] = ''
         if 'Page no' not in dfTH.columns:
             dfTH['Page no'] = ''
 
@@ -229,9 +229,9 @@ def save_confirmed_page_result(tune_name, hymn_no, page_no, source):
         if not matching_indices.empty:
             # Update based on source priority
             if "dfH_propabible" in str(source):
-                # If it came from propabible, update the Propable_Page_Result column
-                dfTH.loc[matching_indices[0], 'Propable_Page_Result'] = str(page_no)
-                print(f"Saved page {page_no} for tune '{tune_name}' in H-{hymn_no} to Propable_Page_Result")
+                # If it came from propabible, update the Propabible_Pages_Result column
+                dfTH.loc[matching_indices[0], 'Propabible_Pages_Result'] = str(page_no)
+                print(f"Saved page {page_no} for tune '{tune_name}' in H-{hymn_no} to Propabible_Pages_Result")
             else:
                 # Otherwise update the Page no column
                 dfTH.loc[matching_indices[0], 'Page no'] = str(page_no)
@@ -254,8 +254,8 @@ def save_corrected_page_to_dfth(tune_name, hymn_no, page_no):
             return False
 
         # Ensure the column exists
-        if 'Page no' not in dfTH.columns:
-            dfTH['Page no'] = ''
+        if 'Propabible_Pages_Result' not in dfTH.columns:
+            dfTH['Propabible_Pages_Result'] = ''
 
         # Find the row to update
         import re
@@ -264,9 +264,9 @@ def save_corrected_page_to_dfth(tune_name, hymn_no, page_no):
         matching_indices = dfTH[mask].index
 
         if not matching_indices.empty:
-            # Update the first matching row with the corrected page number
-            dfTH.loc[matching_indices[0], 'Page no'] = str(page_no)
-            print(f"Corrected page number for '{tune_name}' in H-{hymn_no} to page {page_no}")
+            # Update the first matching row with the corrected page number in Propabible_Pages_Result
+            dfTH.loc[matching_indices[0], 'Propabible_Pages_Result'] = str(page_no)
+            print(f"Corrected page number for '{tune_name}' in H-{hymn_no} to page {page_no} in Propabible_Pages_Result")
 
             # TODO: Save to Google Drive to persist the change
             # This would require updating the Google Sheets file
