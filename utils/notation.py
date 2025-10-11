@@ -3,6 +3,7 @@
 
 import re
 import pandas as pd
+from data.datasets import get_all_data
 
 def getNotation(p):
     try:
@@ -200,29 +201,77 @@ def get_propabible_pages(hymn_no, dfH):
         pass
     return []
 
-def save_confirmed_page_result(tune_name, hymn_no, page_no, dfTH):
+def save_confirmed_page_result(tune_name, hymn_no, page_no, source):
     """
-    Save the confirmed page number to Propable_Page_Result column in dfTH.
+    Save the confirmed page number to appropriate column in dfTH.
     This function would need to update the Google Drive file in a real implementation.
     For now, it just updates the local DataFrame.
     """
     try:
+        data = get_all_data()
+        dfTH = data["dfTH"]
+
+        if dfTH is None or dfTH.empty:
+            return False
+
+        # Ensure columns exist
+        if 'Propable_Page_Result' not in dfTH.columns:
+            dfTH['Propable_Page_Result'] = ''
+        if 'Page no' not in dfTH.columns:
+            dfTH['Page no'] = ''
+
+        # Find the row to update
+        import re
+        escaped_tune_name = re.escape(tune_name)
+        mask = (dfTH["Hymn no"] == int(hymn_no)) & (dfTH["Tune Index"].str.contains(escaped_tune_name, case=False, na=False, regex=True))
+        matching_indices = dfTH[mask].index
+
+        if not matching_indices.empty:
+            # Update based on source priority
+            if "dfH_propabible" in str(source):
+                # If it came from propabible, update the Propable_Page_Result column
+                dfTH.loc[matching_indices[0], 'Propable_Page_Result'] = str(page_no)
+                print(f"Saved page {page_no} for tune '{tune_name}' in H-{hymn_no} to Propable_Page_Result")
+            else:
+                # Otherwise update the Page no column
+                dfTH.loc[matching_indices[0], 'Page no'] = str(page_no)
+                print(f"Saved page {page_no} for tune '{tune_name}' in H-{hymn_no} to Page no")
+            return True
+    except Exception as e:
+        print(f"Error saving confirmed page result: {e}")
+    return False
+
+def save_corrected_page_to_dfth(tune_name, hymn_no, page_no):
+    """
+    Save user-corrected page number directly to dfTH Page no column.
+    This is for when users provide the correct page number after marking one as wrong.
+    """
+    try:
+        data = get_all_data()
+        dfTH = data["dfTH"]
+
         if dfTH is None or dfTH.empty:
             return False
 
         # Ensure the column exists
-        if 'Propable_Page_Result' not in dfTH.columns:
-            dfTH['Propable_Page_Result'] = ''
+        if 'Page no' not in dfTH.columns:
+            dfTH['Page no'] = ''
 
         # Find the row to update
-        mask = (dfTH["Hymn no"] == int(hymn_no)) & (dfTH["Tune Index"].str.contains(tune_name, case=False, na=False))
+        import re
+        escaped_tune_name = re.escape(tune_name)
+        mask = (dfTH["Hymn no"] == int(hymn_no)) & (dfTH["Tune Index"].str.contains(escaped_tune_name, case=False, na=False, regex=True))
         matching_indices = dfTH[mask].index
 
         if not matching_indices.empty:
-            # Update the first matching row
-            dfTH.loc[matching_indices[0], 'Propable_Page_Result'] = str(page_no)
-            print(f"Saved page {page_no} for tune '{tune_name}' in H-{hymn_no}")
+            # Update the first matching row with the corrected page number
+            dfTH.loc[matching_indices[0], 'Page no'] = str(page_no)
+            print(f"Corrected page number for '{tune_name}' in H-{hymn_no} to page {page_no}")
+
+            # TODO: Save to Google Drive to persist the change
+            # This would require updating the Google Sheets file
+
             return True
     except Exception as e:
-        print(f"Error saving confirmed page result: {e}")
+        print(f"Error saving corrected page number: {e}")
     return False

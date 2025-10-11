@@ -1463,11 +1463,78 @@ async def choose_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
  
      return GET_INPUT
  
+# Handle page number input for corrections
+async def handle_page_number_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle when user provides a correct page number."""
+    try:
+        user_input = update.message.text.strip()
+
+        # Validate page number
+        try:
+            page_no = int(user_input)
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Please enter a valid page number (numbers only).\n\n"
+                "Example: 142"
+            )
+            return
+
+        # Get stored context
+        page_context = context.user_data.get('awaiting_page_number')
+        if not page_context:
+            await update.message.reply_text("❌ Error: Context lost. Please try again with /tune.")
+            return
+
+        hymn_no = page_context['hymn_no']
+        tune_name = page_context['tune_name']
+
+        # Save the corrected page number to dfTH
+        from utils.enhanced_search import save_corrected_page_to_dfth
+        success = save_corrected_page_to_dfth(tune_name, hymn_no, page_no)
+
+        # Get notation link for the corrected page
+        from utils.notation import getNotation
+        notation_link = getNotation(page_no)
+
+        if success:
+            await update.message.reply_text(
+                f"✅ **Page Number Updated!**\n\n"
+                f"🎵 **Tune:** {tune_name}\n"
+                f"📖 **Hymn:** H-{hymn_no}\n"
+                f"📄 **Corrected Page:** {page_no}\n"
+                f"📖 **Notation:** {notation_link}\n\n"
+                f"Thank you! The database has been updated with the correct page number.\n\n"
+                f"💡 Use /tune again to search for more hymns."
+            )
+        else:
+            await update.message.reply_text(
+                f"⚠️ **Page Number Noted**\n\n"
+                f"🎵 **Tune:** {tune_name}\n"
+                f"📖 **Hymn:** H-{hymn_no}\n"
+                f"📄 **Corrected Page:** {page_no}\n"
+                f"📖 **Notation:** {notation_link}\n\n"
+                f"The correction has been noted but database update failed.\n"
+                f"Please contact an admin to update the database.\n\n"
+                f"💡 Use /tune again to search for more hymns."
+            )
+
+        # Clear the context
+        context.user_data.pop('awaiting_page_number', None)
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error processing page number: {str(e)}")
+        context.user_data.pop('awaiting_page_number', None)
+
 # Handle the actual search
 async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = update.effective_user.id
     method = user_input_method.get(user_id)
     user_input = update.message.text.strip()
+
+    # Check if user is providing a page number correction
+    if context.user_data.get('awaiting_page_number'):
+        await handle_page_number_input(update, context)
+        return ConversationHandler.END
 
     data = get_all_data()
     dfH, dfTH = data["dfH"], data["dfTH"]

@@ -359,18 +359,17 @@ async def handle_tune_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tune_name = tune_info['tune_name']
         source = tune_info['source']
 
-        # Save the rejection feedback (could be used to improve the system)
-        # For now, just acknowledge and offer to search for correct notation
+        # Save the rejection feedback and offer options for correction
         await query.edit_message_text(
             f"❌ **Notation Marked as Wrong**\n\n"
             f"🎵 **Tune:** {tune_name}\n"
             f"📖 **Hymn:** H-{hymn_no}\n"
             f"📄 **Incorrect Page:** {page_no}\n"
             f"📍 **Source:** {source}\n\n"
-            f"Thank you for the feedback! This helps improve our system.\n\n"
-            f"🔍 Would you like to search for the correct notation?",
+            f"What would you like to do next?",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔍 Find correct notation", callback_data=f"find_notation:{hymn_no}:{tune_name}")],
+                [InlineKeyboardButton("📝 Provide correct page number", callback_data=f"provide_page:{hymn_no}:{tune_index}")],
+                [InlineKeyboardButton("🔍 Search for notation", callback_data=f"find_notation:{hymn_no}:{tune_name}")],
                 [InlineKeyboardButton("🏠 Back to /tune", callback_data="back_to_tune")]
             ])
         )
@@ -382,6 +381,53 @@ async def handle_tune_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await query.edit_message_text(
             f"❌ Error processing feedback: {str(e)}\n\n"
+            "Please try again with /tune."
+        )
+
+async def handle_provide_page_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle when user wants to provide correct page number."""
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        # Parse callback data: provide_page:hymn_no:tune_index
+        _, hymn_no, tune_index = query.data.split(":", 2)
+        hymn_no = int(hymn_no)
+        tune_index = int(tune_index)
+
+        # Retrieve tune info from context
+        tune_key = f"{hymn_no}:{tune_index}"
+        tune_info = context.user_data.get('tune_confirmations', {}).get(tune_key)
+
+        if not tune_info:
+            await query.edit_message_text(
+                "❌ Error: Could not retrieve tune information.\n\n"
+                "Please try again with /tune."
+            )
+            return
+
+        tune_name = tune_info['tune_name']
+
+        # Store the context for the page number input
+        context.user_data['awaiting_page_number'] = {
+            'hymn_no': hymn_no,
+            'tune_name': tune_name,
+            'tune_index': tune_index,
+            'message_id': query.message.message_id,
+            'chat_id': query.message.chat_id
+        }
+
+        await query.edit_message_text(
+            f"📝 **Provide Correct Page Number**\n\n"
+            f"🎵 **Tune:** {tune_name}\n"
+            f"📖 **Hymn:** H-{hymn_no}\n\n"
+            f"Please reply with the correct page number for this tune.\n\n"
+            f"💡 Just type the page number (e.g., 142) and send it."
+        )
+
+    except Exception as e:
+        await query.edit_message_text(
+            f"❌ Error: {str(e)}\n\n"
             "Please try again with /tune."
         )
 
