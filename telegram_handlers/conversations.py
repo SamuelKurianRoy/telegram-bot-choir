@@ -1470,10 +1470,68 @@ async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_input = update.message.text.strip()
 
     data = get_all_data()
-    dfTH = data["dfTH"]
+    dfH, dfTH = data["dfH"], data["dfTH"]
 
     if method == "hymn number":
-        result = Tunenofinder(user_input)  # Your existing hymn number search
+        # Enhanced hymn number search with notation finding
+        tune_result = Tunenofinder(user_input)
+
+        if tune_result in ["Index must be an integer.", "Invalid hymn index.", "Tune Index not found."]:
+            await update.message.reply_text(tune_result)
+            return ConversationHandler.END
+
+        # Parse the hymn number
+        try:
+            hymn_no = int(user_input)
+        except ValueError:
+            await update.message.reply_text("Please enter a valid hymn number.")
+            return ConversationHandler.END
+
+        # Get tune names
+        tune_names = [tune.strip() for tune in tune_result.split('\n') if tune.strip()]
+
+        if not tune_names:
+            await update.message.reply_text(f"No tunes found for H-{hymn_no}.")
+            return ConversationHandler.END
+
+        # Enhanced display with notation links
+        result_lines = [f"🎵 **Tunes for H-{hymn_no}:**\n"]
+        keyboard = []
+
+        for tune_name in tune_names:
+            # Try to find notation for this tune using enhanced search
+            from utils.notation import find_tune_page_number, getNotation
+            page_no, source = find_tune_page_number(tune_name, hymn_no, dfH, dfTH)
+
+            line = f"**{tune_name}**"
+
+            if page_no:
+                notation_link = getNotation(page_no)
+                if "http" in notation_link:
+                    line += f" - [📖 Notation]({notation_link})"
+                else:
+                    line += f" - Page {page_no}"
+                line += f" _(Found in: {source})_"
+            else:
+                line += " - 🔍 Notation search available"
+                # Add button for interactive notation finding
+                button_text = f"🔍 Find notation for {tune_name}"
+                callback_data = f"find_notation:{hymn_no}:{tune_name}"
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+
+            result_lines.append(line)
+
+        result = "\n".join(result_lines)
+        reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+
+        await update.message.reply_text(
+            result,
+            parse_mode="Markdown",
+            disable_web_page_preview=True,
+            reply_markup=reply_markup
+        )
+        return ConversationHandler.END
+
     elif method == "tune name":
         result_df = Hymn_Tune_no_Finder(dfTH, user_input, top_n=10)
 
