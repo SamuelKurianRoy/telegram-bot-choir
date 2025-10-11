@@ -272,11 +272,13 @@ app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"
 app.add_handler(CallbackQueryHandler(last_show_all_dates_callback, pattern="^showalldates:"))
 
 # Register enhanced search notation callback handlers
-from utils.enhanced_search import handle_find_notation_callback, handle_notation_confirmation, handle_tune_confirmation
+from utils.enhanced_search import handle_find_notation_callback, handle_notation_confirmation, handle_tune_confirmation, handle_tune_wrong, handle_back_to_tune
 app.add_handler(CallbackQueryHandler(handle_find_notation_callback, pattern="^find_notation:"))
 app.add_handler(CallbackQueryHandler(handle_notation_confirmation, pattern="^notation_confirm:"))
 app.add_handler(CallbackQueryHandler(handle_notation_confirmation, pattern="^notation_reject:"))
 app.add_handler(CallbackQueryHandler(handle_tune_confirmation, pattern="^confirm:"))
+app.add_handler(CallbackQueryHandler(handle_tune_wrong, pattern="^wrong:"))
+app.add_handler(CallbackQueryHandler(handle_back_to_tune, pattern="^back_to_tune$"))
 
 bot_should_run = True
 

@@ -1512,32 +1512,39 @@ async def get_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 else:
                     line += f" - Page {page_no}"
 
-                # Add user-friendly source information
+                # Add user-friendly source information and determine if buttons are needed
+                needs_confirmation = False
                 if "dfH_propabible" in str(source):
                     line += " (not sure)"
+                    needs_confirmation = True  # Uncertain results need confirmation
                 elif "dfTH_page_no" in str(source):
-                    # Don't add anything - page number is correct
+                    # Don't add anything - page number is correct, no buttons needed
                     pass
                 else:
                     line += f" ({source})"
+                    needs_confirmation = True  # Other sources might need confirmation
 
-                # Add confirmation button for each tune with notation
-                # Shorten tune name for button text and callback data to avoid length limits
-                short_tune_name = tune_name[:15] + "..." if len(tune_name) > 15 else tune_name
-                button_text = f"✅ {short_tune_name}"
+                # Only add confirmation buttons for uncertain results
+                if needs_confirmation:
+                    # Shorten tune name for button text and callback data to avoid length limits
+                    short_tune_name = tune_name[:12] + "..." if len(tune_name) > 12 else tune_name
 
-                # Create shorter callback data (Telegram limit is 64 bytes)
-                callback_data = f"confirm:{hymn_no}:{i}:{page_no}"
+                    # Create shorter callback data (Telegram limit is 64 bytes)
+                    confirm_callback = f"confirm:{hymn_no}:{i}:{page_no}"
+                    wrong_callback = f"wrong:{hymn_no}:{i}:{page_no}"
 
-                # Store full tune info in context for later retrieval
-                if 'tune_confirmations' not in context.user_data:
-                    context.user_data['tune_confirmations'] = {}
-                context.user_data['tune_confirmations'][f"{hymn_no}:{i}"] = {
-                    'tune_name': tune_name,
-                    'source': source
-                }
+                    # Store full tune info in context for later retrieval
+                    if 'tune_confirmations' not in context.user_data:
+                        context.user_data['tune_confirmations'] = {}
+                    context.user_data['tune_confirmations'][f"{hymn_no}:{i}"] = {
+                        'tune_name': tune_name,
+                        'source': source
+                    }
 
-                keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+                    # Add both confirm and wrong buttons in the same row
+                    confirm_button = InlineKeyboardButton(f"✅ {short_tune_name}", callback_data=confirm_callback)
+                    wrong_button = InlineKeyboardButton(f"❌ Wrong", callback_data=wrong_callback)
+                    keyboard.append([confirm_button, wrong_button])
             else:
                 line += " - 🔍 Notation search available"
                 # Add button for interactive notation finding

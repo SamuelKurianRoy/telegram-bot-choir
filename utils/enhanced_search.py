@@ -332,3 +332,69 @@ async def handle_tune_confirmation(update: Update, context: ContextTypes.DEFAULT
             f"❌ Error saving confirmation: {str(e)}\n\n"
             "Please try again with /tune."
         )
+
+async def handle_tune_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle when user marks tune notation as wrong."""
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        # Parse callback data: wrong:hymn_no:tune_index:page_no
+        _, hymn_no, tune_index, page_no = query.data.split(":", 3)
+        hymn_no = int(hymn_no)
+        tune_index = int(tune_index)
+        page_no = int(page_no)
+
+        # Retrieve full tune info from context
+        tune_key = f"{hymn_no}:{tune_index}"
+        tune_info = context.user_data.get('tune_confirmations', {}).get(tune_key)
+
+        if not tune_info:
+            await query.edit_message_text(
+                "❌ Error: Could not retrieve tune information.\n\n"
+                "Please try again with /tune."
+            )
+            return
+
+        tune_name = tune_info['tune_name']
+        source = tune_info['source']
+
+        # Save the rejection feedback (could be used to improve the system)
+        # For now, just acknowledge and offer to search for correct notation
+        await query.edit_message_text(
+            f"❌ **Notation Marked as Wrong**\n\n"
+            f"🎵 **Tune:** {tune_name}\n"
+            f"📖 **Hymn:** H-{hymn_no}\n"
+            f"📄 **Incorrect Page:** {page_no}\n"
+            f"📍 **Source:** {source}\n\n"
+            f"Thank you for the feedback! This helps improve our system.\n\n"
+            f"🔍 Would you like to search for the correct notation?",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔍 Find correct notation", callback_data=f"find_notation:{hymn_no}:{tune_name}")],
+                [InlineKeyboardButton("🏠 Back to /tune", callback_data="back_to_tune")]
+            ])
+        )
+
+        # Clean up context data
+        if 'tune_confirmations' in context.user_data:
+            context.user_data['tune_confirmations'].pop(tune_key, None)
+
+    except Exception as e:
+        await query.edit_message_text(
+            f"❌ Error processing feedback: {str(e)}\n\n"
+            "Please try again with /tune."
+        )
+
+async def handle_back_to_tune(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle back to tune button."""
+    query = update.callback_query
+    await query.answer()
+
+    await query.edit_message_text(
+        "🎵 **Back to Tune Search**\n\n"
+        "Use /tune to search for hymn tunes and notation.\n\n"
+        "💡 You can search by:\n"
+        "• Hymn Number\n"
+        "• Tune Name\n"
+        "• First Line"
+    )
