@@ -6,6 +6,7 @@ import sys
 import json
 import logging
 import datetime
+import hashlib
 from pathlib import Path
 from run_bot import start_bot_in_background, stop_bot_in_background, stop_all_bot_instances
 from googleapiclient.discovery import build
@@ -21,8 +22,71 @@ from telegram_handlers.utils import get_wordproject_url_from_input, extract_bibl
 # Add at the top of the file
 STOP_SIGNAL_FILE = "/tmp/telegram_bot_stop_signal"
 
+# Bot control password (can be set via environment variable)
+BOT_CONTROL_PASSWORD = os.getenv("BOT_CONTROL_PASSWORD", "ChoirBot2024!")  # Default password, change via env var
+
 # Disable file watching to avoid inotify limits
 os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
+
+# Authentication functions
+def check_password():
+    """Returns True if the user has entered the correct password."""
+
+    # Session timeout (30 minutes)
+    SESSION_TIMEOUT = 30 * 60  # 30 minutes in seconds
+
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if st.session_state["password"] == BOT_CONTROL_PASSWORD:
+            st.session_state["password_correct"] = True
+            st.session_state["login_time"] = time.time()
+            del st.session_state["password"]  # Don't store password
+        else:
+            st.session_state["password_correct"] = False
+
+    # Check session timeout
+    if "login_time" in st.session_state:
+        if time.time() - st.session_state["login_time"] > SESSION_TIMEOUT:
+            st.session_state["password_correct"] = False
+            del st.session_state["login_time"]
+            st.warning("⏰ Session expired. Please login again.")
+
+    if "password_correct" not in st.session_state:
+        # First run, show input for password
+        st.markdown("### 🎶 Railway Choir Bot Control Panel")
+        st.markdown("🔒 **Authentication Required**")
+        st.text_input(
+            "🔐 Enter Bot Control Password",
+            type="password",
+            on_change=password_entered,
+            key="password",
+            help="Enter the password to access bot control functions",
+            placeholder="Enter password..."
+        )
+        st.info("🔒 Please enter the password to access bot control functions.")
+        st.markdown("---")
+        st.markdown("**Security Features:**")
+        st.markdown("- 🔐 Password protected access")
+        st.markdown("- ⏰ 30-minute session timeout")
+        st.markdown("- 🔓 Manual logout option")
+        st.markdown("---")
+        st.markdown(f"**Debug Info:** Password required = `{BOT_CONTROL_PASSWORD[:3]}...`")
+        return False
+    elif not st.session_state["password_correct"]:
+        # Password not correct, show input + error
+        st.markdown("### 🎶 Railway Choir Bot Control Panel")
+        st.text_input(
+            "🔐 Enter Bot Control Password",
+            type="password",
+            on_change=password_entered,
+            key="password",
+            help="Enter the password to access bot control functions"
+        )
+        st.error("❌ Password incorrect. Please try again.")
+        return False
+    else:
+        # Password correct
+        return True
 
 # Set page config
 st.set_page_config(
@@ -508,6 +572,50 @@ def create_bible_question(difficulty, language='english'):
 
 # Initialize logging
 bot_logger, user_logger = setup_logging()
+
+# Add a debug option to reset authentication (remove this in production)
+if st.query_params.get("reset_auth") == "true":
+    for key in ["password_correct", "login_time"]:
+        if key in st.session_state:
+            del st.session_state[key]
+    st.info("🔄 Authentication reset. Please refresh the page.")
+    st.stop()
+
+# Check authentication before showing main content
+if not check_password():
+    # Force stop execution if not authenticated
+    st.stop()
+
+# Add a header to confirm authentication worked
+st.markdown("### 🎶 Railway Choir Bot Control Panel")
+st.markdown("✅ **Authenticated** - You have access to bot controls")
+
+# Debug info (remove in production)
+with st.expander("🔍 Debug Info"):
+    st.write("Session State Keys:", list(st.session_state.keys()))
+    st.write("Password Correct:", st.session_state.get("password_correct", "Not Set"))
+    st.write("Login Time:", st.session_state.get("login_time", "Not Set"))
+    if st.button("🔄 Reset Authentication"):
+        for key in ["password_correct", "login_time"]:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.rerun()
+
+# Show logout option in sidebar after authentication
+with st.sidebar:
+    st.markdown("---")
+    # Show session info
+    if "login_time" in st.session_state:
+        session_duration = int(time.time() - st.session_state["login_time"])
+        session_remaining = max(0, 30*60 - session_duration)  # 30 min timeout
+        st.markdown(f"🔐 **Session:** {session_remaining//60}m {session_remaining%60}s left")
+
+    if st.button("🔓 Logout", help="Logout and require password again"):
+        st.session_state["password_correct"] = False
+        if "login_time" in st.session_state:
+            del st.session_state["login_time"]
+        st.rerun()
+    st.markdown("---")
 
 # Sidebar
 with st.sidebar:
