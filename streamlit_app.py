@@ -130,13 +130,6 @@ def check_password():
         st.markdown("- ⏰ 30-minute session timeout")
         st.markdown("- 🔓 Manual logout option")
 
-        # Show available users (for demo purposes - remove in production)
-        with st.expander("👥 Available Users (Demo)"):
-            st.markdown("**Default Users:**")
-            for username in BOT_USERS.keys():
-                st.markdown(f"- `{username}`")
-            st.markdown("*Note: Remove this section in production for security*")
-
         return False
     elif not st.session_state["password_correct"]:
         # Credentials not correct, show login form + error
