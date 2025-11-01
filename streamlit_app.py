@@ -37,14 +37,15 @@ DEFAULT_USERS = {
 # Load users from environment variable or use defaults
 def load_users():
     """Load user credentials from environment or use defaults"""
+    import json
     # Try to load from environment variable (JSON format)
     users_json = os.getenv("BOT_USERS")
     if users_json:
         try:
-            import json
             return json.loads(users_json)
         except json.JSONDecodeError:
             st.error("❌ Invalid BOT_USERS environment variable format")
+            return DEFAULT_USERS
 
     # Use default users
     return DEFAULT_USERS
@@ -117,6 +118,8 @@ def check_password():
                 st.success(f"✅ Welcome, {st.session_state['current_user']}!")
                 time.sleep(1)
                 st.rerun()
+            else:
+                st.error("❌ Login failed. Please check your credentials.")
 
         if st.session_state.get("login_error"):
             st.error("❌ Invalid username or password. Please try again.")
@@ -159,6 +162,8 @@ def check_password():
                 st.success(f"✅ Welcome, {st.session_state['current_user']}!")
                 time.sleep(1)
                 st.rerun()
+            else:
+                st.error("❌ Login failed. Please check your credentials.")
 
         st.error("❌ Invalid username or password. Please try again.")
         return False
