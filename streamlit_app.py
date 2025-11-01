@@ -23,7 +23,7 @@ from telegram_handlers.utils import get_wordproject_url_from_input, extract_bibl
 STOP_SIGNAL_FILE = "/tmp/telegram_bot_stop_signal"
 
 # Bot control password (can be set via environment variable)
-BOT_CONTROL_PASSWORD = os.getenv("BOT_CONTROL_PASSWORD", "ChoirBot2024!")  # Default password, change via env var
+BOT_CONTROL_PASSWORD = os.getenv("BOT_CONTROL_PASSWORD", "YourNewPassword123!")  # Change this default password
 
 # Disable file watching to avoid inotify limits
 os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
