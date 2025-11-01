@@ -152,6 +152,33 @@ def check_password():
             st.write("**Current Users:**", list(BOT_USERS.keys()))
             st.write("**Environment Variable BOT_USERS:**", os.getenv("BOT_USERS", "Not Set"))
             st.write("**Using Default Users:**", os.getenv("BOT_USERS") is None)
+            st.write("**User Details:**")
+            for user, pwd in BOT_USERS.items():
+                st.write(f"  - '{user}' → '{pwd}' (len: {len(user)}, pwd_len: {len(pwd)})")
+
+            # Quick test buttons for each user
+            st.write("**Quick Test Login:**")
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                if st.button("Test Henel"):
+                    st.session_state["username"] = "Henel"
+                    st.session_state["password"] = "John 3:16"
+                    credentials_entered()
+            with col2:
+                if st.button("Test Leon"):
+                    st.session_state["username"] = "Leon"
+                    st.session_state["password"] = "John 3:16"
+                    credentials_entered()
+            with col3:
+                if st.button("Test Samuel"):
+                    st.session_state["username"] = "Samuel"
+                    st.session_state["password"] = "John 3:16"
+                    credentials_entered()
+            with col4:
+                if st.button("Test Joel"):
+                    st.session_state["username"] = "Joel"
+                    st.session_state["password"] = "John 3:16"
+                    credentials_entered()
 
         return False
     elif not st.session_state["password_correct"]:
