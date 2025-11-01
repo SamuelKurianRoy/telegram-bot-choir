@@ -42,21 +42,14 @@ def load_users():
     if users_json:
         try:
             import json
-            loaded_users = json.loads(users_json)
-            print(f"✅ Loaded {len(loaded_users)} users from environment variable")
-            return loaded_users
-        except json.JSONDecodeError as e:
-            print(f"❌ Invalid BOT_USERS environment variable format: {e}")
+            return json.loads(users_json)
+        except json.JSONDecodeError:
             st.error("❌ Invalid BOT_USERS environment variable format")
-    else:
-        print("⚠️ No BOT_USERS environment variable found, using defaults")
 
     # Use default users
-    print(f"📋 Using {len(DEFAULT_USERS)} default users")
     return DEFAULT_USERS
 
 BOT_USERS = load_users()
-print(f"🔑 Available users: {list(BOT_USERS.keys())}")
 
 # Disable file watching to avoid inotify limits
 os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
@@ -73,19 +66,10 @@ def check_password():
         username = st.session_state.get("username", "").strip()
         password = st.session_state.get("password", "")
 
-        # Debug information
-        print(f"🔍 Login attempt - Username: '{username}', Password: '{password}'")
-        print(f"🔑 Available users: {list(BOT_USERS.keys())}")
-        print(f"🔍 Username in users: {username in BOT_USERS}")
-        if username in BOT_USERS:
-            print(f"🔍 Password match: {BOT_USERS[username] == password}")
-            print(f"🔍 Expected password: '{BOT_USERS[username]}'")
-
         if username in BOT_USERS and BOT_USERS[username] == password:
             st.session_state["password_correct"] = True
             st.session_state["current_user"] = username
             st.session_state["login_time"] = time.time()
-            print(f"✅ Login successful for user: {username}")
             # Clear credentials from session state
             if "username" in st.session_state:
                 del st.session_state["username"]
@@ -94,7 +78,6 @@ def check_password():
         else:
             st.session_state["password_correct"] = False
             st.session_state["login_error"] = True
-            print(f"❌ Login failed for user: {username}")
 
     # Check session timeout
     if "login_time" in st.session_state:
@@ -146,39 +129,6 @@ def check_password():
         st.markdown("- 🔐 Individual user passwords")
         st.markdown("- ⏰ 30-minute session timeout")
         st.markdown("- 🔓 Manual logout option")
-
-        # Debug section to show loaded users
-        with st.expander("🔍 Debug: Loaded Users"):
-            st.write("**Current Users:**", list(BOT_USERS.keys()))
-            st.write("**Environment Variable BOT_USERS:**", os.getenv("BOT_USERS", "Not Set"))
-            st.write("**Using Default Users:**", os.getenv("BOT_USERS") is None)
-            st.write("**User Details:**")
-            for user, pwd in BOT_USERS.items():
-                st.write(f"  - '{user}' → '{pwd}' (len: {len(user)}, pwd_len: {len(pwd)})")
-
-            # Quick test buttons for each user
-            st.write("**Quick Test Login:**")
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                if st.button("Test Henel"):
-                    st.session_state["username"] = "Henel"
-                    st.session_state["password"] = "John 3:16"
-                    credentials_entered()
-            with col2:
-                if st.button("Test Leon"):
-                    st.session_state["username"] = "Leon"
-                    st.session_state["password"] = "John 3:16"
-                    credentials_entered()
-            with col3:
-                if st.button("Test Samuel"):
-                    st.session_state["username"] = "Samuel"
-                    st.session_state["password"] = "John 3:16"
-                    credentials_entered()
-            with col4:
-                if st.button("Test Joel"):
-                    st.session_state["username"] = "Joel"
-                    st.session_state["password"] = "John 3:16"
-                    credentials_entered()
 
         return False
     elif not st.session_state["password_correct"]:
@@ -718,18 +668,6 @@ if not check_password():
 current_user = st.session_state.get("current_user", "Unknown")
 st.markdown("### 🎶 Railway Choir Bot Control Panel")
 st.markdown(f"✅ **Welcome, {current_user.title()}!** - You have access to bot controls")
-
-# Debug info (remove in production)
-with st.expander("🔍 Debug Info"):
-    st.write("Session State Keys:", list(st.session_state.keys()))
-    st.write("Password Correct:", st.session_state.get("password_correct", "Not Set"))
-    st.write("Current User:", st.session_state.get("current_user", "Not Set"))
-    st.write("Login Time:", st.session_state.get("login_time", "Not Set"))
-    if st.button("🔄 Reset Authentication"):
-        for key in ["password_correct", "login_time", "current_user"]:
-            if key in st.session_state:
-                del st.session_state[key]
-        st.rerun()
 
 # Show user info and logout option in sidebar after authentication
 with st.sidebar:
