@@ -42,14 +42,21 @@ def load_users():
     if users_json:
         try:
             import json
-            return json.loads(users_json)
-        except json.JSONDecodeError:
+            loaded_users = json.loads(users_json)
+            print(f"✅ Loaded {len(loaded_users)} users from environment variable")
+            return loaded_users
+        except json.JSONDecodeError as e:
+            print(f"❌ Invalid BOT_USERS environment variable format: {e}")
             st.error("❌ Invalid BOT_USERS environment variable format")
+    else:
+        print("⚠️ No BOT_USERS environment variable found, using defaults")
 
     # Use default users
+    print(f"📋 Using {len(DEFAULT_USERS)} default users")
     return DEFAULT_USERS
 
 BOT_USERS = load_users()
+print(f"🔑 Available users: {list(BOT_USERS.keys())}")
 
 # Disable file watching to avoid inotify limits
 os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
@@ -63,13 +70,22 @@ def check_password():
 
     def credentials_entered():
         """Checks whether username and password entered by the user are correct."""
-        username = st.session_state.get("username", "").strip().lower()
+        username = st.session_state.get("username", "").strip()
         password = st.session_state.get("password", "")
+
+        # Debug information
+        print(f"🔍 Login attempt - Username: '{username}', Password: '{password}'")
+        print(f"🔑 Available users: {list(BOT_USERS.keys())}")
+        print(f"🔍 Username in users: {username in BOT_USERS}")
+        if username in BOT_USERS:
+            print(f"🔍 Password match: {BOT_USERS[username] == password}")
+            print(f"🔍 Expected password: '{BOT_USERS[username]}'")
 
         if username in BOT_USERS and BOT_USERS[username] == password:
             st.session_state["password_correct"] = True
             st.session_state["current_user"] = username
             st.session_state["login_time"] = time.time()
+            print(f"✅ Login successful for user: {username}")
             # Clear credentials from session state
             if "username" in st.session_state:
                 del st.session_state["username"]
@@ -78,6 +94,7 @@ def check_password():
         else:
             st.session_state["password_correct"] = False
             st.session_state["login_error"] = True
+            print(f"❌ Login failed for user: {username}")
 
     # Check session timeout
     if "login_time" in st.session_state:
@@ -129,6 +146,12 @@ def check_password():
         st.markdown("- 🔐 Individual user passwords")
         st.markdown("- ⏰ 30-minute session timeout")
         st.markdown("- 🔓 Manual logout option")
+
+        # Debug section to show loaded users
+        with st.expander("🔍 Debug: Loaded Users"):
+            st.write("**Current Users:**", list(BOT_USERS.keys()))
+            st.write("**Environment Variable BOT_USERS:**", os.getenv("BOT_USERS", "Not Set"))
+            st.write("**Using Default Users:**", os.getenv("BOT_USERS") is None)
 
         return False
     elif not st.session_state["password_correct"]:
