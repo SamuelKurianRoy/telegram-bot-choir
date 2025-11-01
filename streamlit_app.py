@@ -69,8 +69,6 @@ def check_password():
         st.markdown("- 🔐 Password protected access")
         st.markdown("- ⏰ 30-minute session timeout")
         st.markdown("- 🔓 Manual logout option")
-        st.markdown("---")
-        st.markdown(f"**Debug Info:** Password required = `{BOT_CONTROL_PASSWORD[:3]}...`")
         return False
     elif not st.session_state["password_correct"]:
         # Password not correct, show input + error
