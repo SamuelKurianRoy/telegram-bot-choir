@@ -128,7 +128,7 @@ def check_google_sheets_credentials():
     """Check if all required Google Sheets credentials are available"""
     required_keys = [
         "BOT_OPERATIONS_SHEET_ID",
-        "type", "project_id", "private_key_id", "private_key",
+        "type", "project_id", "private_key_id",
         "client_email", "client_id", "auth_uri", "token_uri",
         "auth_provider_x509_cert_url", "client_x509_cert_url"
     ]
@@ -137,6 +137,11 @@ def check_google_sheets_credentials():
     for key in required_keys:
         if key not in st.secrets:
             missing_keys.append(key)
+
+    # Check if private key lines are available (l1, l2, l3, etc.)
+    private_key_lines = [st.secrets.get(f"l{i}") for i in range(1, 29)]
+    if not any(private_key_lines):
+        missing_keys.append("l1-l28 (private key lines)")
 
     return len(missing_keys) == 0, missing_keys
 
@@ -149,12 +154,16 @@ def sync_operation_to_google_sheet(operation):
             print(f"Google Sheets sync skipped - missing keys: {missing_keys}")
             return False
 
+        # Reconstruct private key from split lines (same as existing codebase)
+        lines = [st.secrets.get(f"l{i}") for i in range(1, 29)]
+        private_key = "\n".join([l for l in lines if l])
+
         # Setup Google Sheets service
         credentials_info = {
             "type": st.secrets["type"],
             "project_id": st.secrets["project_id"],
             "private_key_id": st.secrets["private_key_id"],
-            "private_key": st.secrets["private_key"],
+            "private_key": private_key,
             "client_email": st.secrets["client_email"],
             "client_id": st.secrets["client_id"],
             "auth_uri": st.secrets["auth_uri"],
@@ -205,12 +214,16 @@ def sync_all_operations_to_google_sheet():
             st.info("💡 Please add all required Google service account credentials to your Streamlit secrets")
             return False
 
+        # Reconstruct private key from split lines (same as existing codebase)
+        lines = [st.secrets.get(f"l{i}") for i in range(1, 29)]
+        private_key = "\n".join([l for l in lines if l])
+
         # Setup Google Sheets service
         credentials_info = {
             "type": st.secrets["type"],
             "project_id": st.secrets["project_id"],
             "private_key_id": st.secrets["private_key_id"],
-            "private_key": st.secrets["private_key"],
+            "private_key": private_key,
             "client_email": st.secrets["client_email"],
             "client_id": st.secrets["client_id"],
             "auth_uri": st.secrets["auth_uri"],
@@ -1128,17 +1141,23 @@ if page == "Dashboard":
 # Google Sheets Configuration
 BOT_OPERATIONS_SHEET_ID = "your_google_sheet_id_here"
 
-# Google Service Account Credentials
+# Google Service Account Credentials (same as existing bot credentials)
 type = "service_account"
 project_id = "your-project-id"
 private_key_id = "your-private-key-id"
-private_key = "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n"
 client_email = "your-service-account@your-project.iam.gserviceaccount.com"
 client_id = "your-client-id"
 auth_uri = "https://accounts.google.com/o/oauth2/auth"
 token_uri = "https://oauth2.googleapis.com/token"
 auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
 client_x509_cert_url = "https://www.googleapis.com/robot/v1/metadata/x509/your-service-account%40your-project.iam.gserviceaccount.com"
+
+# Private key split into lines (l1, l2, l3, ... l28)
+l1 = "-----BEGIN PRIVATE KEY-----"
+l2 = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC..."
+l3 = "..."
+# ... continue for all lines of the private key
+l28 = "-----END PRIVATE KEY-----"
             """, language="toml")
     
     # Add Emergency Stop button
