@@ -1089,76 +1089,7 @@ if page == "Dashboard":
             unsafe_allow_html=True
         )
 
-    # Bot Operation History
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.markdown("<h2 class='sub-header'>Recent Operations</h2>", unsafe_allow_html=True)
-    with col2:
-        if st.button("📊 Sync to Google Sheets", help="Sync all operations to Google Sheets"):
-            with st.spinner("Syncing to Google Sheets..."):
-                if sync_all_operations_to_google_sheet():
-                    st.success("✅ Successfully synced to Google Sheets!")
-                else:
-                    st.error("❌ Failed to sync to Google Sheets")
 
-    recent_ops = get_recent_operations(10)
-    if recent_ops:
-        for op in reversed(recent_ops):  # Show most recent first
-            timestamp = datetime.datetime.fromisoformat(op["timestamp"]).strftime('%Y-%m-%d %H:%M:%S')
-            action = op["action"].title()
-            user = op["user"]
-            success = "✅" if op["success"] else "❌"
-            details = op.get("details", "")
-
-            with st.expander(f"{success} {action} by {user} at {timestamp}"):
-                st.write(f"**Action:** {action}")
-                st.write(f"**User:** {user}")
-                st.write(f"**Success:** {'Yes' if op['success'] else 'No'}")
-                st.write(f"**Time:** {timestamp}")
-                if details:
-                    st.write(f"**Details:** {details}")
-    else:
-        st.info("No recent operations recorded.")
-
-    # Show Google Sheets integration status
-    credentials_available, missing_keys = check_google_sheets_credentials()
-
-    if credentials_available:
-        st.success("📊 Google Sheets integration: **Fully Configured**")
-        st.info(f"🔗 Operations are automatically synced to your Google Sheet")
-        sheet_id = st.secrets["BOT_OPERATIONS_SHEET_ID"]
-        st.code(f"Sheet ID: {sheet_id[:20]}...{sheet_id[-10:]}")
-    elif "BOT_OPERATIONS_SHEET_ID" in st.secrets:
-        st.warning("📊 Google Sheets integration: **Partially Configured**")
-        st.error(f"❌ Missing credentials: {', '.join(missing_keys)}")
-        st.info("💡 Please add all Google service account credentials to your Streamlit secrets")
-    else:
-        st.warning("📊 Google Sheets integration: **Not Configured**")
-        st.info("💡 Add BOT_OPERATIONS_SHEET_ID and Google service account credentials to secrets")
-
-        with st.expander("📋 Required Secrets for Google Sheets Integration"):
-            st.code("""
-# Google Sheets Configuration
-BOT_OPERATIONS_SHEET_ID = "your_google_sheet_id_here"
-
-# Google Service Account Credentials (same as existing bot credentials)
-type = "service_account"
-project_id = "your-project-id"
-private_key_id = "your-private-key-id"
-client_email = "your-service-account@your-project.iam.gserviceaccount.com"
-client_id = "your-client-id"
-auth_uri = "https://accounts.google.com/o/oauth2/auth"
-token_uri = "https://oauth2.googleapis.com/token"
-auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
-client_x509_cert_url = "https://www.googleapis.com/robot/v1/metadata/x509/your-service-account%40your-project.iam.gserviceaccount.com"
-
-# Private key split into lines (l1, l2, l3, ... l28)
-l1 = "-----BEGIN PRIVATE KEY-----"
-l2 = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC..."
-l3 = "..."
-# ... continue for all lines of the private key
-l28 = "-----END PRIVATE KEY-----"
-            """, language="toml")
     
     # Add Emergency Stop button
     st.markdown("<h2 class='sub-header'>Emergency Controls</h2>", unsafe_allow_html=True)
