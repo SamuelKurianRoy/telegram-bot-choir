@@ -124,11 +124,29 @@ def get_recent_operations(limit=10):
     log_data = load_bot_log()
     return log_data["operations"][-limit:] if log_data["operations"] else []
 
+def check_google_sheets_credentials():
+    """Check if all required Google Sheets credentials are available"""
+    required_keys = [
+        "BOT_OPERATIONS_SHEET_ID",
+        "type", "project_id", "private_key_id", "private_key",
+        "client_email", "client_id", "auth_uri", "token_uri",
+        "auth_provider_x509_cert_url", "client_x509_cert_url"
+    ]
+
+    missing_keys = []
+    for key in required_keys:
+        if key not in st.secrets:
+            missing_keys.append(key)
+
+    return len(missing_keys) == 0, missing_keys
+
 def sync_operation_to_google_sheet(operation):
     """Sync a single operation to Google Sheets"""
     try:
-        # Check if Google Sheets credentials are available
-        if "BOT_OPERATIONS_SHEET_ID" not in st.secrets:
+        # Check if all required credentials are available
+        credentials_available, missing_keys = check_google_sheets_credentials()
+        if not credentials_available:
+            print(f"Google Sheets sync skipped - missing keys: {missing_keys}")
             return False
 
         # Setup Google Sheets service
@@ -180,8 +198,11 @@ def sync_operation_to_google_sheet(operation):
 def sync_all_operations_to_google_sheet():
     """Sync all operations to Google Sheets (one-time setup)"""
     try:
-        if "BOT_OPERATIONS_SHEET_ID" not in st.secrets:
-            st.error("❌ BOT_OPERATIONS_SHEET_ID not found in secrets")
+        # Check if all required credentials are available
+        credentials_available, missing_keys = check_google_sheets_credentials()
+        if not credentials_available:
+            st.error(f"❌ Missing Google Sheets credentials: {', '.join(missing_keys)}")
+            st.info("💡 Please add all required Google service account credentials to your Streamlit secrets")
             return False
 
         # Setup Google Sheets service
@@ -1087,12 +1108,38 @@ if page == "Dashboard":
         st.info("No recent operations recorded.")
 
     # Show Google Sheets integration status
-    if "BOT_OPERATIONS_SHEET_ID" in st.secrets:
-        st.success("📊 Google Sheets integration: **Enabled**")
+    credentials_available, missing_keys = check_google_sheets_credentials()
+
+    if credentials_available:
+        st.success("📊 Google Sheets integration: **Fully Configured**")
         st.info(f"🔗 Operations are automatically synced to your Google Sheet")
+        sheet_id = st.secrets["BOT_OPERATIONS_SHEET_ID"]
+        st.code(f"Sheet ID: {sheet_id[:20]}...{sheet_id[-10:]}")
+    elif "BOT_OPERATIONS_SHEET_ID" in st.secrets:
+        st.warning("📊 Google Sheets integration: **Partially Configured**")
+        st.error(f"❌ Missing credentials: {', '.join(missing_keys)}")
+        st.info("💡 Please add all Google service account credentials to your Streamlit secrets")
     else:
-        st.warning("📊 Google Sheets integration: **Not configured**")
-        st.info("💡 Add BOT_OPERATIONS_SHEET_ID to secrets to enable automatic syncing")
+        st.warning("📊 Google Sheets integration: **Not Configured**")
+        st.info("💡 Add BOT_OPERATIONS_SHEET_ID and Google service account credentials to secrets")
+
+        with st.expander("📋 Required Secrets for Google Sheets Integration"):
+            st.code("""
+# Google Sheets Configuration
+BOT_OPERATIONS_SHEET_ID = "your_google_sheet_id_here"
+
+# Google Service Account Credentials
+type = "service_account"
+project_id = "your-project-id"
+private_key_id = "your-private-key-id"
+private_key = "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n"
+client_email = "your-service-account@your-project.iam.gserviceaccount.com"
+client_id = "your-client-id"
+auth_uri = "https://accounts.google.com/o/oauth2/auth"
+token_uri = "https://oauth2.googleapis.com/token"
+auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+client_x509_cert_url = "https://www.googleapis.com/robot/v1/metadata/x509/your-service-account%40your-project.iam.gserviceaccount.com"
+            """, language="toml")
     
     # Add Emergency Stop button
     st.markdown("<h2 class='sub-header'>Emergency Controls</h2>", unsafe_allow_html=True)
