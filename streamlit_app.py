@@ -52,6 +52,236 @@ def load_users():
 
 BOT_USERS = load_users()
 
+# Bot operation logging system
+BOT_LOG_FILE = "bot_operations.json"
+
+def load_bot_log():
+    """Load bot operation log from file"""
+    if os.path.exists(BOT_LOG_FILE):
+        try:
+            with open(BOT_LOG_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            return {"operations": [], "current_status": {"running": False, "started_by": None, "started_at": None}}
+    return {"operations": [], "current_status": {"running": False, "started_by": None, "started_at": None}}
+
+def save_bot_log(log_data):
+    """Save bot operation log to file"""
+    try:
+        with open(BOT_LOG_FILE, 'w') as f:
+            json.dump(log_data, f, indent=2)
+    except Exception as e:
+        st.error(f"❌ Failed to save bot log: {e}")
+
+def log_bot_operation(user, action, success=True, details=None):
+    """Log a bot operation (start/stop) and sync to Google Sheets"""
+    log_data = load_bot_log()
+
+    operation = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "user": user,
+        "action": action,  # "start" or "stop"
+        "success": success,
+        "details": details or ""
+    }
+
+    log_data["operations"].append(operation)
+
+    # Update current status
+    if success:
+        if action == "start":
+            log_data["current_status"] = {
+                "running": True,
+                "started_by": user,
+                "started_at": operation["timestamp"]
+            }
+        elif action == "stop":
+            log_data["current_status"] = {
+                "running": False,
+                "started_by": None,
+                "started_at": None
+            }
+
+    # Keep only last 100 operations to prevent file from growing too large
+    if len(log_data["operations"]) > 100:
+        log_data["operations"] = log_data["operations"][-100:]
+
+    save_bot_log(log_data)
+
+    # Sync to Google Sheets if successful operation
+    if success:
+        sync_operation_to_google_sheet(operation)
+
+    return operation
+
+def get_bot_status():
+    """Get current bot status from log"""
+    log_data = load_bot_log()
+    return log_data["current_status"]
+
+def get_recent_operations(limit=10):
+    """Get recent bot operations"""
+    log_data = load_bot_log()
+    return log_data["operations"][-limit:] if log_data["operations"] else []
+
+def check_google_sheets_credentials():
+    """Check if all required Google Sheets credentials are available"""
+    required_keys = [
+        "BOT_OPERATIONS_SHEET_ID",
+        "type", "project_id", "private_key_id",
+        "client_email", "client_id", "auth_uri", "token_uri",
+        "auth_provider_x509_cert_url", "client_x509_cert_url"
+    ]
+
+    missing_keys = []
+    for key in required_keys:
+        if key not in st.secrets:
+            missing_keys.append(key)
+
+    # Check if private key lines are available (l1, l2, l3, etc.)
+    private_key_lines = [st.secrets.get(f"l{i}") for i in range(1, 29)]
+    if not any(private_key_lines):
+        missing_keys.append("l1-l28 (private key lines)")
+
+    return len(missing_keys) == 0, missing_keys
+
+def sync_operation_to_google_sheet(operation):
+    """Sync a single operation to Google Sheets"""
+    try:
+        # Check if all required credentials are available
+        credentials_available, missing_keys = check_google_sheets_credentials()
+        if not credentials_available:
+            print(f"Google Sheets sync skipped - missing keys: {missing_keys}")
+            return False
+
+        # Reconstruct private key from split lines (same as existing codebase)
+        lines = [st.secrets.get(f"l{i}") for i in range(1, 29)]
+        private_key = "\n".join([l for l in lines if l])
+
+        # Setup Google Sheets service
+        credentials_info = {
+            "type": st.secrets["type"],
+            "project_id": st.secrets["project_id"],
+            "private_key_id": st.secrets["private_key_id"],
+            "private_key": private_key,
+            "client_email": st.secrets["client_email"],
+            "client_id": st.secrets["client_id"],
+            "auth_uri": st.secrets["auth_uri"],
+            "token_uri": st.secrets["token_uri"],
+            "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
+            "client_x509_cert_url": st.secrets["client_x509_cert_url"]
+        }
+
+        credentials = service_account.Credentials.from_service_account_info(credentials_info)
+        service = build('sheets', 'v4', credentials=credentials)
+
+        # Prepare the data row
+        timestamp = datetime.datetime.fromisoformat(operation["timestamp"]).strftime('%Y-%m-%d %H:%M:%S')
+        user = operation["user"]
+        status = operation["action"].title()  # "Start" or "Stop"
+
+        # Data to append
+        values = [[user, timestamp, status]]
+
+        # Append to the sheet
+        sheet_id = st.secrets["BOT_OPERATIONS_SHEET_ID"]
+        range_name = "Sheet1!A:C"  # Assuming columns A, B, C for User, Time, Status
+
+        body = {
+            'values': values
+        }
+
+        result = service.spreadsheets().values().append(
+            spreadsheetId=sheet_id,
+            range=range_name,
+            valueInputOption='RAW',
+            body=body
+        ).execute()
+
+        return True
+
+    except Exception as e:
+        print(f"Failed to sync to Google Sheets: {e}")
+        return False
+
+def sync_all_operations_to_google_sheet():
+    """Sync all operations to Google Sheets (one-time setup)"""
+    try:
+        # Check if all required credentials are available
+        credentials_available, missing_keys = check_google_sheets_credentials()
+        if not credentials_available:
+            st.error(f"❌ Missing Google Sheets credentials: {', '.join(missing_keys)}")
+            st.info("💡 Please add all required Google service account credentials to your Streamlit secrets")
+            return False
+
+        # Reconstruct private key from split lines (same as existing codebase)
+        lines = [st.secrets.get(f"l{i}") for i in range(1, 29)]
+        private_key = "\n".join([l for l in lines if l])
+
+        # Setup Google Sheets service
+        credentials_info = {
+            "type": st.secrets["type"],
+            "project_id": st.secrets["project_id"],
+            "private_key_id": st.secrets["private_key_id"],
+            "private_key": private_key,
+            "client_email": st.secrets["client_email"],
+            "client_id": st.secrets["client_id"],
+            "auth_uri": st.secrets["auth_uri"],
+            "token_uri": st.secrets["token_uri"],
+            "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
+            "client_x509_cert_url": st.secrets["client_x509_cert_url"]
+        }
+
+        credentials = service_account.Credentials.from_service_account_info(credentials_info)
+        service = build('sheets', 'v4', credentials=credentials)
+
+        # Get all operations
+        log_data = load_bot_log()
+        operations = log_data["operations"]
+
+        if not operations:
+            st.info("No operations to sync")
+            return True
+
+        # Prepare header and data
+        header = [["User", "Time", "Status"]]
+        data_rows = []
+
+        for op in operations:
+            timestamp = datetime.datetime.fromisoformat(op["timestamp"]).strftime('%Y-%m-%d %H:%M:%S')
+            user = op["user"]
+            status = op["action"].title()
+            data_rows.append([user, timestamp, status])
+
+        # Clear existing data and add header + data
+        sheet_id = st.secrets["BOT_OPERATIONS_SHEET_ID"]
+
+        # Clear the sheet first
+        service.spreadsheets().values().clear(
+            spreadsheetId=sheet_id,
+            range="Sheet1!A:C"
+        ).execute()
+
+        # Add header and data
+        all_data = header + data_rows
+        body = {
+            'values': all_data
+        }
+
+        result = service.spreadsheets().values().update(
+            spreadsheetId=sheet_id,
+            range="Sheet1!A1",
+            valueInputOption='RAW',
+            body=body
+        ).execute()
+
+        st.success(f"✅ Synced {len(data_rows)} operations to Google Sheets")
+        return True
+
+    except Exception as e:
+        st.error(f"❌ Failed to sync to Google Sheets: {e}")
+        return False
+
 # Disable file watching to avoid inotify limits
 os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
 
@@ -393,73 +623,131 @@ def get_log_content(log_path, max_lines=100):
         return f"Error reading log: {str(e)}"
 
 def stop_bot():
-    """Stop the bot process"""
+    """Stop the bot process with logging"""
+    current_user = st.session_state.get("current_user", "Unknown")
+
+    # Check if bot is actually running according to our log
+    bot_status = get_bot_status()
+    if not bot_status["running"]:
+        st.warning("⚠️ Bot is not currently running according to our records.")
+        return False
+
     if st.session_state.get("bot_started", False):
         try:
             # Create a stop signal file
             with open(STOP_SIGNAL_FILE, 'w') as f:
                 f.write(str(datetime.datetime.now()))
-            
+
             # Call the stop function from run_bot.py
             success = stop_bot_in_background()
-            
+
             # Update session state
             st.session_state["bot_started"] = False
             st.session_state["last_stopped"] = datetime.datetime.now()
-            
+
             # Log the stop event
             bot_logger, _ = setup_logging()
-            bot_logger.info("Bot stopped from Streamlit interface")
-            
+            bot_logger.info(f"Bot stopped from Streamlit interface by user: {current_user}")
+
+            if success:
+                st.success(f"✅ Bot stopped successfully by **{current_user}**")
+
+                # Log the successful stop operation
+                log_bot_operation(current_user, "stop", success=True,
+                                details="Bot stopped normally")
+            else:
+                st.warning("⚠️ Bot stop command sent, but success not confirmed")
+
+                # Log the potentially failed stop operation
+                log_bot_operation(current_user, "stop", success=False,
+                                details="Bot stop command sent but success not confirmed")
+
             # Upload logs to Google Drive
             if "BFILE_ID" in st.secrets and "UFILE_ID" in st.secrets:
                 upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
                 upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
-            
+
             # Force a rerun to update the UI
             time.sleep(1)
             st.rerun()
-            
+
             return success
         except Exception as e:
             st.error(f"Failed to stop bot: {e}")
+
+            # Log the failed stop operation
+            log_bot_operation(current_user, "stop", success=False,
+                            details=f"Exception: {str(e)}")
     return False
 
 def start_bot():
-    """Start the bot"""
+    """Start the bot with logging and status checking"""
+    current_user = st.session_state.get("current_user", "Unknown")
+
+    # Check if bot is already running according to our log
+    bot_status = get_bot_status()
+    if bot_status["running"]:
+        started_by = bot_status["started_by"]
+        started_at = datetime.datetime.fromisoformat(bot_status["started_at"]).strftime("%Y-%m-%d %H:%M:%S")
+
+        if started_by == current_user:
+            st.warning(f"⚠️ Bot is already running! You started it at {started_at}")
+        else:
+            st.error(f"❌ Bot is already running! Started by **{started_by}** at {started_at}")
+            st.info("💡 Please coordinate with the other user or use the Emergency Stop if needed.")
+
+        return False
+
     try:
         # First check if there are any existing bot instances and terminate them
-        st.info("Stopping any existing bot instances...")
+        st.info("Checking for existing bot instances...")
         emergency_stop_bot()
-        
+
         # Initialize logging
         bot_logger, _ = setup_logging()
-        bot_logger.info("Starting bot from Streamlit interface")
-        
+        bot_logger.info(f"Starting bot from Streamlit interface by user: {current_user}")
+
         # Initialize Google Drive service
         st.info("Initializing Google Drive service...")
         drive_service, success, message = setup_google_drive()
         if not success:
             st.error(message)
+            # Log the failed start operation
+            log_bot_operation(current_user, "start", success=False,
+                            details=f"Google Drive initialization failed: {message}")
             return False
-        
+
         # Get log upload interval from session state (default to 60 minutes)
         log_upload_interval = st.session_state.get("log_upload_interval", 60)
-        
+
         # Start the bot
         st.info(f"Starting bot with log upload interval of {log_upload_interval} minutes...")
         success = start_bot_in_background(log_upload_interval)
         if not success:
             st.warning("Failed to start the bot. Check the logs for details.")
+            # Log the failed start operation
+            log_bot_operation(current_user, "start", success=False,
+                            details="Bot background process failed to start")
             return False
-            
+
         st.session_state["bot_started"] = True
         st.session_state["last_started"] = datetime.datetime.now()
-        
-        bot_logger.info(f"Bot started successfully with log upload interval of {log_upload_interval} minutes")
+
+        st.success(f"✅ Bot started successfully by **{current_user}**")
+        bot_logger.info(f"Bot started successfully with log upload interval of {log_upload_interval} minutes by user: {current_user}")
+
+        # Log the successful start operation
+        log_bot_operation(current_user, "start", success=True,
+                        details=f"Bot started with log upload interval of {log_upload_interval} minutes")
+
         return True
     except Exception as e:
         st.error(f"Failed to start bot: {e}")
+
+        # Log the failed start operation
+        log_bot_operation(current_user, "start", success=False,
+                        details=f"Exception: {str(e)}")
+
         return False
 
 # Add this function to forcefully terminate any running bot instances
@@ -750,44 +1038,58 @@ with st.sidebar:
 if page == "Dashboard":
     st.markdown("<h1 class='main-header'>🎶 Railway Choir Bot Control Panel</h1>", unsafe_allow_html=True)
     
-    # Status card
-    st.markdown("<h2 class='sub-header'>Bot Status</h2>", unsafe_allow_html=True)
-    
+    # Enhanced Status card with logging information
+    st.markdown("<h2 class='sub-header'>Bot Status & Control</h2>", unsafe_allow_html=True)
+
+    # Get current bot status from log
+    bot_status = get_bot_status()
+
     col1, col2 = st.columns([1, 2])
-    
+
     with col1:
-        if st.session_state["bot_started"]:
+        # Show status from our logging system
+        if bot_status["running"]:
             st.markdown("<p class='status-running'>🟢 Running</p>", unsafe_allow_html=True)
+            started_by = bot_status["started_by"]
+            started_at = datetime.datetime.fromisoformat(bot_status["started_at"]).strftime('%Y-%m-%d %H:%M:%S')
+            st.info(f"👤 Started by: **{started_by}**")
+            st.info(f"⏰ Started at: {started_at}")
+
             if st.button("Stop Bot", type="primary", key="main_stop"):
                 if stop_bot():
                     st.success("Bot stopped successfully!")
                     time.sleep(1)
                     st.rerun()
-                    
-            if st.session_state["last_started"]:
-                st.info(f"Started at: {st.session_state['last_started'].strftime('%Y-%m-%d %H:%M:%S')}")
         else:
             st.markdown("<p class='status-stopped'>🔴 Stopped</p>", unsafe_allow_html=True)
+            st.info("Bot is currently not running")
+
             if st.button("Start Bot", type="primary", key="main_start"):
                 if start_bot():
                     st.success("Bot started successfully!")
                     time.sleep(1)
                     st.rerun()
-                    
-            if st.session_state["last_stopped"]:
-                st.info(f"Stopped at: {st.session_state['last_stopped'].strftime('%Y-%m-%d %H:%M:%S')}")
-    
+
     with col2:
         st.markdown(
             "<div class='info-box'>"
-            "<h3>Control Panel</h3>"
-            "<p>This dashboard allows you to manage the Railway Choir Telegram Bot. "
-            "Use the controls to start or stop the bot service.</p>"
+            "<h3>Multi-User Control Panel</h3>"
+            "<p>This dashboard allows authorized users to manage the Railway Choir Telegram Bot. "
+            "The system tracks who starts and stops the bot to prevent conflicts.</p>"
             "<p>The bot provides search capabilities for hymns, lyrics, and convention songs "
             "through a Telegram interface.</p>"
+            "<p><strong>Security Features:</strong></p>"
+            "<ul>"
+            "<li>👤 User authentication and tracking</li>"
+            "<li>📝 Operation logging and history</li>"
+            "<li>🚫 Prevention of multiple bot instances</li>"
+            "<li>⚠️ Emergency stop capabilities</li>"
+            "</ul>"
             "</div>",
             unsafe_allow_html=True
         )
+
+
     
     # Add Emergency Stop button
     st.markdown("<h2 class='sub-header'>Emergency Controls</h2>", unsafe_allow_html=True)
