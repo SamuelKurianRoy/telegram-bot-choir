@@ -74,7 +74,7 @@ def save_bot_log(log_data):
         st.error(f"❌ Failed to save bot log: {e}")
 
 def log_bot_operation(user, action, success=True, details=None):
-    """Log a bot operation (start/stop)"""
+    """Log a bot operation (start/stop) and sync to Google Sheets"""
     log_data = load_bot_log()
 
     operation = {
@@ -107,6 +107,11 @@ def log_bot_operation(user, action, success=True, details=None):
         log_data["operations"] = log_data["operations"][-100:]
 
     save_bot_log(log_data)
+
+    # Sync to Google Sheets if successful operation
+    if success:
+        sync_operation_to_google_sheet(operation)
+
     return operation
 
 def get_bot_status():
@@ -118,6 +123,130 @@ def get_recent_operations(limit=10):
     """Get recent bot operations"""
     log_data = load_bot_log()
     return log_data["operations"][-limit:] if log_data["operations"] else []
+
+def sync_operation_to_google_sheet(operation):
+    """Sync a single operation to Google Sheets"""
+    try:
+        # Check if Google Sheets credentials are available
+        if "BOT_OPERATIONS_SHEET_ID" not in st.secrets:
+            return False
+
+        # Setup Google Sheets service
+        credentials_info = {
+            "type": st.secrets["type"],
+            "project_id": st.secrets["project_id"],
+            "private_key_id": st.secrets["private_key_id"],
+            "private_key": st.secrets["private_key"],
+            "client_email": st.secrets["client_email"],
+            "client_id": st.secrets["client_id"],
+            "auth_uri": st.secrets["auth_uri"],
+            "token_uri": st.secrets["token_uri"],
+            "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
+            "client_x509_cert_url": st.secrets["client_x509_cert_url"]
+        }
+
+        credentials = service_account.Credentials.from_service_account_info(credentials_info)
+        service = build('sheets', 'v4', credentials=credentials)
+
+        # Prepare the data row
+        timestamp = datetime.datetime.fromisoformat(operation["timestamp"]).strftime('%Y-%m-%d %H:%M:%S')
+        user = operation["user"]
+        status = operation["action"].title()  # "Start" or "Stop"
+
+        # Data to append
+        values = [[user, timestamp, status]]
+
+        # Append to the sheet
+        sheet_id = st.secrets["BOT_OPERATIONS_SHEET_ID"]
+        range_name = "Sheet1!A:C"  # Assuming columns A, B, C for User, Time, Status
+
+        body = {
+            'values': values
+        }
+
+        result = service.spreadsheets().values().append(
+            spreadsheetId=sheet_id,
+            range=range_name,
+            valueInputOption='RAW',
+            body=body
+        ).execute()
+
+        return True
+
+    except Exception as e:
+        print(f"Failed to sync to Google Sheets: {e}")
+        return False
+
+def sync_all_operations_to_google_sheet():
+    """Sync all operations to Google Sheets (one-time setup)"""
+    try:
+        if "BOT_OPERATIONS_SHEET_ID" not in st.secrets:
+            st.error("❌ BOT_OPERATIONS_SHEET_ID not found in secrets")
+            return False
+
+        # Setup Google Sheets service
+        credentials_info = {
+            "type": st.secrets["type"],
+            "project_id": st.secrets["project_id"],
+            "private_key_id": st.secrets["private_key_id"],
+            "private_key": st.secrets["private_key"],
+            "client_email": st.secrets["client_email"],
+            "client_id": st.secrets["client_id"],
+            "auth_uri": st.secrets["auth_uri"],
+            "token_uri": st.secrets["token_uri"],
+            "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
+            "client_x509_cert_url": st.secrets["client_x509_cert_url"]
+        }
+
+        credentials = service_account.Credentials.from_service_account_info(credentials_info)
+        service = build('sheets', 'v4', credentials=credentials)
+
+        # Get all operations
+        log_data = load_bot_log()
+        operations = log_data["operations"]
+
+        if not operations:
+            st.info("No operations to sync")
+            return True
+
+        # Prepare header and data
+        header = [["User", "Time", "Status"]]
+        data_rows = []
+
+        for op in operations:
+            timestamp = datetime.datetime.fromisoformat(op["timestamp"]).strftime('%Y-%m-%d %H:%M:%S')
+            user = op["user"]
+            status = op["action"].title()
+            data_rows.append([user, timestamp, status])
+
+        # Clear existing data and add header + data
+        sheet_id = st.secrets["BOT_OPERATIONS_SHEET_ID"]
+
+        # Clear the sheet first
+        service.spreadsheets().values().clear(
+            spreadsheetId=sheet_id,
+            range="Sheet1!A:C"
+        ).execute()
+
+        # Add header and data
+        all_data = header + data_rows
+        body = {
+            'values': all_data
+        }
+
+        result = service.spreadsheets().values().update(
+            spreadsheetId=sheet_id,
+            range="Sheet1!A1",
+            valueInputOption='RAW',
+            body=body
+        ).execute()
+
+        st.success(f"✅ Synced {len(data_rows)} operations to Google Sheets")
+        return True
+
+    except Exception as e:
+        st.error(f"❌ Failed to sync to Google Sheets: {e}")
+        return False
 
 # Disable file watching to avoid inotify limits
 os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
@@ -927,7 +1056,16 @@ if page == "Dashboard":
         )
 
     # Bot Operation History
-    st.markdown("<h2 class='sub-header'>Recent Operations</h2>", unsafe_allow_html=True)
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown("<h2 class='sub-header'>Recent Operations</h2>", unsafe_allow_html=True)
+    with col2:
+        if st.button("📊 Sync to Google Sheets", help="Sync all operations to Google Sheets"):
+            with st.spinner("Syncing to Google Sheets..."):
+                if sync_all_operations_to_google_sheet():
+                    st.success("✅ Successfully synced to Google Sheets!")
+                else:
+                    st.error("❌ Failed to sync to Google Sheets")
 
     recent_ops = get_recent_operations(10)
     if recent_ops:
@@ -947,6 +1085,14 @@ if page == "Dashboard":
                     st.write(f"**Details:** {details}")
     else:
         st.info("No recent operations recorded.")
+
+    # Show Google Sheets integration status
+    if "BOT_OPERATIONS_SHEET_ID" in st.secrets:
+        st.success("📊 Google Sheets integration: **Enabled**")
+        st.info(f"🔗 Operations are automatically synced to your Google Sheet")
+    else:
+        st.warning("📊 Google Sheets integration: **Not configured**")
+        st.info("💡 Add BOT_OPERATIONS_SHEET_ID to secrets to enable automatic syncing")
     
     # Add Emergency Stop button
     st.markdown("<h2 class='sub-header'>Emergency Controls</h2>", unsafe_allow_html=True)
