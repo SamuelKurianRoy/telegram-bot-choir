@@ -6,6 +6,7 @@ import sys
 import json
 import logging
 import datetime
+from zoneinfo import ZoneInfo
 import hashlib
 from pathlib import Path
 from run_bot import start_bot_in_background, stop_bot_in_background, stop_all_bot_instances
@@ -33,6 +34,26 @@ DEFAULT_USERS = {
     "assistant": "Assistant345!",
     "guest": "GuestUser678!"
 }
+
+# Helper function to convert timestamp to IST
+def convert_to_ist(timestamp_str):
+    """Convert ISO timestamp to IST (Indian Standard Time)"""
+    try:
+        # Parse the ISO timestamp (assumes UTC if no timezone info)
+        dt = datetime.datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+
+        # If no timezone info, assume UTC
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo('UTC'))
+
+        # Convert to IST
+        ist_dt = dt.astimezone(ZoneInfo('Asia/Kolkata'))
+
+        # Return formatted string
+        return ist_dt.strftime('%Y-%m-%d %H:%M:%S IST')
+    except Exception as e:
+        # Fallback to original timestamp if conversion fails
+        return timestamp_str
 
 # Load users from environment variable or use defaults
 def load_users():
@@ -688,12 +709,12 @@ def start_bot():
     bot_status = get_bot_status()
     if bot_status["running"]:
         started_by = bot_status["started_by"]
-        started_at = datetime.datetime.fromisoformat(bot_status["started_at"]).strftime("%Y-%m-%d %H:%M:%S")
+        started_at_ist = convert_to_ist(bot_status["started_at"])
 
         if started_by == current_user:
-            st.warning(f"⚠️ Bot is already running! You started it at {started_at}")
+            st.warning(f"⚠️ Bot is already running! You started it at {started_at_ist}")
         else:
-            st.error(f"❌ Bot is already running! Started by **{started_by}** at {started_at}")
+            st.error(f"❌ Bot is already running! Started by **{started_by}** at {started_at_ist}")
             st.info("💡 Please coordinate with the other user or use the Emergency Stop if needed.")
 
         return False
@@ -1051,9 +1072,9 @@ if page == "Dashboard":
         if bot_status["running"]:
             st.markdown("<p class='status-running'>🟢 Running</p>", unsafe_allow_html=True)
             started_by = bot_status["started_by"]
-            started_at = datetime.datetime.fromisoformat(bot_status["started_at"]).strftime('%Y-%m-%d %H:%M:%S')
+            started_at_ist = convert_to_ist(bot_status["started_at"])
             st.info(f"👤 Started by: **{started_by}**")
-            st.info(f"⏰ Started at: {started_at}")
+            st.info(f"⏰ Started at: {started_at_ist}")
 
             if st.button("Stop Bot", type="primary", key="main_stop"):
                 if stop_bot():
