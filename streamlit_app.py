@@ -644,7 +644,7 @@ def get_log_content(log_path, max_lines=100):
         return f"Error reading log: {str(e)}"
 
 def stop_bot():
-    """Stop the bot process with logging"""
+    """Stop the bot process with logging - works from any session/tab"""
     current_user = st.session_state.get("current_user", "Unknown")
 
     # Check if bot is actually running according to our log
@@ -653,53 +653,53 @@ def stop_bot():
         st.warning("⚠️ Bot is not currently running according to our records.")
         return False
 
-    if st.session_state.get("bot_started", False):
-        try:
-            # Create a stop signal file
-            with open(STOP_SIGNAL_FILE, 'w') as f:
-                f.write(str(datetime.datetime.now()))
+    try:
+        # Create a stop signal file
+        with open(STOP_SIGNAL_FILE, 'w') as f:
+            f.write(str(datetime.datetime.now()))
 
-            # Call the stop function from run_bot.py
-            success = stop_bot_in_background()
+        # Call the stop function from run_bot.py
+        success = stop_bot_in_background()
 
-            # Update session state
+        # Update session state (if it exists)
+        if "bot_started" in st.session_state:
             st.session_state["bot_started"] = False
-            st.session_state["last_stopped"] = datetime.datetime.now()
+        st.session_state["last_stopped"] = datetime.datetime.now()
 
-            # Log the stop event
-            bot_logger, _ = setup_logging()
-            bot_logger.info(f"Bot stopped from Streamlit interface by user: {current_user}")
+        # Log the stop event
+        bot_logger, _ = setup_logging()
+        bot_logger.info(f"Bot stopped from Streamlit interface by user: {current_user}")
 
-            if success:
-                st.success(f"✅ Bot stopped successfully by **{current_user}**")
+        if success:
+            st.success(f"✅ Bot stopped successfully by **{current_user}**")
 
-                # Log the successful stop operation
-                log_bot_operation(current_user, "stop", success=True,
-                                details="Bot stopped normally")
-            else:
-                st.warning("⚠️ Bot stop command sent, but success not confirmed")
+            # Log the successful stop operation
+            log_bot_operation(current_user, "stop", success=True,
+                            details="Bot stopped normally")
+        else:
+            st.warning("⚠️ Bot stop command sent, but success not confirmed")
 
-                # Log the potentially failed stop operation
-                log_bot_operation(current_user, "stop", success=False,
-                                details="Bot stop command sent but success not confirmed")
-
-            # Upload logs to Google Drive
-            if "BFILE_ID" in st.secrets and "UFILE_ID" in st.secrets:
-                upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
-                upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
-
-            # Force a rerun to update the UI
-            time.sleep(1)
-            st.rerun()
-
-            return success
-        except Exception as e:
-            st.error(f"Failed to stop bot: {e}")
-
-            # Log the failed stop operation
+            # Log the potentially failed stop operation
             log_bot_operation(current_user, "stop", success=False,
-                            details=f"Exception: {str(e)}")
-    return False
+                            details="Bot stop command sent but success not confirmed")
+
+        # Upload logs to Google Drive
+        if "BFILE_ID" in st.secrets and "UFILE_ID" in st.secrets:
+            upload_log_to_google_doc(st.secrets["BFILE_ID"], "bot_log.txt")
+            upload_log_to_google_doc(st.secrets["UFILE_ID"], "user_log.txt")
+
+        # Force a rerun to update the UI
+        time.sleep(1)
+        st.rerun()
+
+        return success
+    except Exception as e:
+        st.error(f"Failed to stop bot: {e}")
+
+        # Log the failed stop operation
+        log_bot_operation(current_user, "stop", success=False,
+                        details=f"Exception: {str(e)}")
+        return False
 
 def start_bot():
     """Start the bot with logging and status checking"""
