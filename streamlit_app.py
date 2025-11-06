@@ -343,7 +343,7 @@ def check_password():
 
     if "password_correct" not in st.session_state:
         # First run, show login form
-        st.markdown("### 🎶 Railway Choir Bot Control Panel")
+        st.markdown("### 🎶 Choir Bot Control Panel")
         st.markdown("🔒 **User Authentication Required**")
 
         col1, col2 = st.columns(2)
@@ -387,7 +387,7 @@ def check_password():
         return False
     elif not st.session_state["password_correct"]:
         # Credentials not correct, show login form + error
-        st.markdown("### 🎶 Railway Choir Bot Control Panel")
+        st.markdown("### 🎶 Choir Bot Control Panel")
         st.markdown("🔒 **User Authentication Required**")
 
         col1, col2 = st.columns(2)
@@ -424,7 +424,7 @@ def check_password():
 
 # Set page config
 st.set_page_config(
-    page_title="Railway Choir Bot",
+    page_title="Choir Bot",
     page_icon="🎶",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -980,7 +980,7 @@ if not check_password():
 
 # Add a header to confirm authentication worked
 current_user = st.session_state.get("current_user", "Unknown")
-st.markdown("### 🎶 Railway Choir Bot Control Panel")
+st.markdown("### 🎶 Choir Bot Control Panel")
 st.markdown(f"✅ **Welcome, {current_user.title()}!** - You have access to bot controls")
 
 # Show user info and logout option in sidebar after authentication
@@ -1057,7 +1057,7 @@ with st.sidebar:
 
 # Main content
 if page == "Dashboard":
-    st.markdown("<h1 class='main-header'>🎶 Railway Choir Bot Control Panel</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='main-header'>🎶 Choir Bot Control Panel</h1>", unsafe_allow_html=True)
     
     # Enhanced Status card with logging information
     st.markdown("<h2 class='sub-header'>Bot Status & Control</h2>", unsafe_allow_html=True)
@@ -1095,7 +1095,7 @@ if page == "Dashboard":
         st.markdown(
             "<div class='info-box'>"
             "<h3>Multi-User Control Panel</h3>"
-            "<p>This dashboard allows authorized users to manage the Railway Choir Telegram Bot. "
+            "<p>This dashboard allows authorized users to manage the Choir Telegram Bot. "
             "The system tracks who starts and stops the bot to prevent conflicts.</p>"
             "<p>The bot provides search capabilities for hymns, lyrics, and convention songs "
             "through a Telegram interface.</p>"
@@ -1448,12 +1448,12 @@ elif page == "Settings":
             st.error("BFILE_ID or UFILE_ID not configured in secrets")
 
 elif page == "About":
-    st.markdown("<h1 class='main-header'>About Railway Choir Bot</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='main-header'>About Choir Bot</h1>", unsafe_allow_html=True)
 
     # Bot information
     st.markdown("## 🎶 Bot Information")
     st.markdown("""
-    This control panel allows you to start and stop the Railway Choir Telegram Bot.
+    This control panel allows you to start and stop the Choir Telegram Bot.
 
     **Bot Features:**
     - Search for hymns, lyrics, and convention songs
@@ -1507,7 +1507,7 @@ elif page == "About":
     # Credits
     st.markdown("## 👥 Credits")
     st.markdown("""
-    - **Bot Development:** Railway Choir Bot Team
+    - **Bot Development:** Choir Bot Team
     - **Bible Content:** WordProject.org
     - **Framework:** Streamlit + Python Telegram Bot
     - **Hosting:** Railway/Streamlit Cloud
