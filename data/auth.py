@@ -493,20 +493,45 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# List of popular Bible verses for temporary passwords
-BIBLE_VERSE_PASSWORDS = [
-    "John 3:16", "Genesis 1:1", "Psalm 23:1", "Proverbs 3:5",
-    "Romans 8:28", "Philippians 4:13", "Isaiah 41:10", "Jeremiah 29:11",
-    "Matthew 6:33", "John 14:6", "Psalm 46:1", "Romans 12:2",
-    "2 Timothy 1:7", "James 1:5", "1 John 4:19", "Psalm 121:1",
-    "Matthew 28:20", "Galatians 5:22", "Ephesians 2:8", "Hebrews 11:1",
-    "1 Corinthians 13:13", "Psalm 37:4", "Proverbs 16:3", "Isaiah 40:31",
-    "Romans 5:8", "John 1:1", "Psalm 91:1", "Matthew 11:28"
-]
+# Dictionary of Bible verses with their text
+BIBLE_VERSE_PASSWORDS = {
+    "John 3:16": "For God so loved the world that he gave his one and only Son, that whoever believes in him shall not perish but have eternal life.",
+    "Genesis 1:1": "In the beginning God created the heavens and the earth.",
+    "Psalm 23:1": "The Lord is my shepherd, I lack nothing.",
+    "Proverbs 3:5": "Trust in the Lord with all your heart and lean not on your own understanding.",
+    "Romans 8:28": "And we know that in all things God works for the good of those who love him, who have been called according to his purpose.",
+    "Philippians 4:13": "I can do all things through Christ who strengthens me.",
+    "Isaiah 41:10": "So do not fear, for I am with you; do not be dismayed, for I am your God.",
+    "Jeremiah 29:11": "For I know the plans I have for you, declares the Lord, plans to prosper you and not to harm you, plans to give you hope and a future.",
+    "Matthew 6:33": "But seek first his kingdom and his righteousness, and all these things will be given to you as well.",
+    "John 14:6": "Jesus answered, 'I am the way and the truth and the life. No one comes to the Father except through me.'",
+    "Psalm 46:1": "God is our refuge and strength, an ever-present help in trouble.",
+    "Romans 12:2": "Do not conform to the pattern of this world, but be transformed by the renewing of your mind.",
+    "2 Timothy 1:7": "For God has not given us a spirit of fear, but of power and of love and of a sound mind.",
+    "James 1:5": "If any of you lacks wisdom, you should ask God, who gives generously to all without finding fault, and it will be given to you.",
+    "1 John 4:19": "We love because he first loved us.",
+    "Psalm 121:1": "I lift up my eyes to the mountains—where does my help come from?",
+    "Matthew 28:20": "And surely I am with you always, to the very end of the age.",
+    "Galatians 5:22": "But the fruit of the Spirit is love, joy, peace, forbearance, kindness, goodness, faithfulness.",
+    "Ephesians 2:8": "For it is by grace you have been saved, through faith—and this is not from yourselves, it is the gift of God.",
+    "Hebrews 11:1": "Now faith is confidence in what we hope for and assurance about what we do not see.",
+    "1 Corinthians 13:13": "And now these three remain: faith, hope and love. But the greatest of these is love.",
+    "Psalm 37:4": "Take delight in the Lord, and he will give you the desires of your heart.",
+    "Proverbs 16:3": "Commit to the Lord whatever you do, and he will establish your plans.",
+    "Isaiah 40:31": "But those who hope in the Lord will renew their strength. They will soar on wings like eagles.",
+    "Romans 5:8": "But God demonstrates his own love for us in this: While we were still sinners, Christ died for us.",
+    "John 1:1": "In the beginning was the Word, and the Word was with God, and the Word was God.",
+    "Psalm 91:1": "Whoever dwells in the shelter of the Most High will rest in the shadow of the Almighty.",
+    "Matthew 11:28": "Come to me, all you who are weary and burdened, and I will give you rest."
+}
 
 def _generate_temp_password():
     """Generate a random Bible verse-based temporary password"""
-    return random.choice(BIBLE_VERSE_PASSWORDS)
+    return random.choice(list(BIBLE_VERSE_PASSWORDS.keys()))
+
+def _get_verse_text(verse_reference: str) -> str:
+    """Get the text for a Bible verse reference"""
+    return BIBLE_VERSE_PASSWORDS.get(verse_reference, "")
 
 def get_user_email(username: str) -> str:
     """
@@ -571,6 +596,9 @@ def send_password_reset_email(to_email: str, username: str, temp_password: str) 
         message["From"] = sender_email
         message["To"] = to_email
         
+        # Get the verse text
+        verse_text = _get_verse_text(temp_password)
+        
         # Create HTML content
         html = f"""
         <html>
@@ -588,6 +616,13 @@ def send_password_reset_email(to_email: str, username: str, temp_password: str) 
                 <li>Please log in and change your password immediately</li>
                 <li>Go to "Change Password" page after logging in</li>
             </ul>
+            <div style="background-color: #f9f9f9; border-left: 4px solid #4CAF50; padding: 15px; margin: 20px 0;">
+                <p style="margin: 0; color: #555;">
+                    <strong>📖 Did you know what {temp_password} says?</strong><br>
+                    <em>"{verse_text}"</em><br><br>
+                    <strong>😊 Have a nice day!</strong>
+                </p>
+            </div>
             <p>If you did not request this password reset, please contact your administrator immediately.</p>
             <hr>
             <p style="color: #888; font-size: 12px;">This is an automated message from Choir Bot Control Panel.</p>
@@ -608,6 +643,11 @@ def send_password_reset_email(to_email: str, username: str, temp_password: str) 
         - This is a temporary password based on a Bible verse reference
         - Please log in and change your password immediately
         - Go to "Change Password" page after logging in
+        
+        📖 Did you know what {temp_password} says?
+        "{verse_text}"
+        
+        😊 Have a nice day!
         
         If you did not request this password reset, please contact your administrator immediately.
         
