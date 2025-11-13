@@ -71,7 +71,6 @@ def load_bot_users_from_sheet():
         bot_auth_sheet_id = config.secrets.get("BOT_AUTH_SHEET_ID")
         
         if not bot_auth_sheet_id:
-            bot_logger.warning("BOT_AUTH_SHEET_ID not found in secrets, using fallback")
             return None
         
         drive_service = get_drive_service()
@@ -95,18 +94,18 @@ def load_bot_users_from_sheet():
         required_columns = ['username', 'password_hash', 'is_active']
         for col in required_columns:
             if col not in df.columns:
-                bot_logger.error(f"Missing required column: {col} in bot auth sheet")
+                bot_logger.error(f"Authentication configuration error")
                 return None
         
         # Update cache
         _bot_users_cache['data'] = df
         _bot_users_cache['last_loaded'] = datetime.now()
         
-        bot_logger.info(f"Successfully loaded bot users from Google Sheet ({len(df)} users)")
+        bot_logger.info("✅ Authentication initialized")
         return df
     
     except Exception as e:
-        bot_logger.error(f"Error loading bot users from Google Sheet: {e}")
+        bot_logger.error(f"Authentication error: {str(e)[:50]}")
         return None
 
 def save_bot_users_to_sheet(df):
@@ -124,7 +123,7 @@ def save_bot_users_to_sheet(df):
         bot_auth_sheet_id = config.secrets.get("BOT_AUTH_SHEET_ID")
         
         if not bot_auth_sheet_id:
-            bot_logger.error("BOT_AUTH_SHEET_ID not found in secrets")
+            bot_logger.error("Configuration error")
             return False
         
         drive_service = get_drive_service()
@@ -151,11 +150,11 @@ def save_bot_users_to_sheet(df):
         _bot_users_cache['data'] = df
         _bot_users_cache['last_loaded'] = datetime.now()
         
-        bot_logger.info("Successfully saved bot users to Google Sheet")
+        bot_logger.info("✅ Authentication data saved")
         return True
     
     except Exception as e:
-        bot_logger.error(f"Error saving bot users to Google Sheet: {e}")
+        bot_logger.error(f"Save error: {str(e)[:50]}")
         return False
 
 def get_bot_users():
@@ -181,10 +180,10 @@ def get_bot_users():
             # Return dict of username: password_hash
             return dict(zip(active_users['username'], active_users['password_hash']))
         except Exception as e:
-            bot_logger.error(f"Error parsing bot users from sheet: {e}")
+            bot_logger.error(f"Parse error: {str(e)[:50]}")
     
     # Fallback to BOT_USERS from secrets/environment
-    bot_logger.info("Falling back to BOT_USERS from secrets/environment")
+    bot_logger.info("⚠️ Using fallback authentication")
     
     # Try environment variable first
     bot_users_json = os.getenv("BOT_USERS")
@@ -197,7 +196,7 @@ def get_bot_users():
                     users_dict[username] = _hash_password(password)
             return users_dict
         except json.JSONDecodeError as e:
-            bot_logger.error(f"Error parsing BOT_USERS from environment: {e}")
+            bot_logger.error(f"Parse error: {str(e)[:50]}")
     
     # Try secrets.toml
     config = get_config()
@@ -211,10 +210,10 @@ def get_bot_users():
                     users_dict[username] = _hash_password(password)
             return users_dict
         except json.JSONDecodeError as e:
-            bot_logger.error(f"Error parsing BOT_USERS from secrets: {e}")
+            bot_logger.error(f"Parse error: {str(e)[:50]}")
     
     # Return empty dict if nothing works
-    bot_logger.warning("No bot users configured!")
+    bot_logger.warning("⚠️ No authentication configured")
     return {}
 
 def verify_bot_user(username: str, password: str) -> bool:
@@ -254,13 +253,13 @@ def change_bot_user_password(username: str, old_password: str, new_password: str
     df = load_bot_users_from_sheet()
     
     if df is None:
-        return False, "❌ Authentication system is currently unavailable. Please try again later."
+        return False, "❌ Authentication system unavailable. Please try again later."
     
     try:
         # Find user
         user_idx = df[df['username'] == username].index
         if user_idx.empty:
-            return False, "❌ User not found in authentication system."
+            return False, "❌ User not found."
         
         user_idx = user_idx[0]
         
@@ -273,7 +272,7 @@ def change_bot_user_password(username: str, old_password: str, new_password: str
         
         # Check if user is active
         if not df.loc[user_idx, 'is_active']:
-            return False, "❌ Your account is currently inactive. Please contact the administrator."
+            return False, "❌ Account inactive. Contact administrator."
         
         # Validate new password
         if len(new_password) < 6:
@@ -289,14 +288,14 @@ def change_bot_user_password(username: str, old_password: str, new_password: str
         
         # Save to sheet
         if save_bot_users_to_sheet(df):
-            bot_logger.info(f"Bot user {username} changed password successfully")
+            bot_logger.info(f"Password changed: {username}")
             return True, "✅ Password changed successfully!"
         else:
-            return False, "❌ Failed to save new password. Please try again."
+            return False, "❌ Failed to save. Please try again."
     
     except Exception as e:
-        bot_logger.error(f"Error changing password for bot user {username}: {e}")
-        return False, "❌ An error occurred while changing your password. Please try again later."
+        bot_logger.error(f"Password change error: {str(e)[:50]}")
+        return False, "❌ An error occurred. Please try again later."
 
 def add_bot_user(username: str, initial_password: str, is_active: bool = True) -> tuple:
     """
@@ -319,7 +318,7 @@ def add_bot_user(username: str, initial_password: str, is_active: bool = True) -
     try:
         # Check if user already exists
         if username in df['username'].values:
-            return False, f"❌ Bot user '{username}' already exists."
+            return False, f"❌ User '{username}' already exists."
         
         # Create new user entry
         new_user = {
@@ -335,14 +334,14 @@ def add_bot_user(username: str, initial_password: str, is_active: bool = True) -
         
         # Save to sheet
         if save_bot_users_to_sheet(df):
-            bot_logger.info(f"Added new bot user: {username}")
-            return True, f"✅ Successfully added bot user '{username}'."
+            bot_logger.info(f"Added user: {username}")
+            return True, f"✅ Successfully added user '{username}'."
         else:
-            return False, "❌ Failed to save new user. Please try again."
+            return False, "❌ Failed to save. Please try again."
     
     except Exception as e:
-        bot_logger.error(f"Error adding new bot user {username}: {e}")
-        return False, "❌ An error occurred while adding the user. Please try again later."
+        bot_logger.error(f"Add user error: {str(e)[:50]}")
+        return False, "❌ An error occurred. Please try again later."
 
 
 # ========================================
@@ -362,7 +361,6 @@ def load_telegram_auth_from_sheet():
         telegram_auth_sheet_id = config.secrets.get("TELEGRAM_AUTH_SHEET_ID")
         
         if not telegram_auth_sheet_id:
-            bot_logger.warning("TELEGRAM_AUTH_SHEET_ID not found in secrets, using fallback")
             return None
         
         drive_service = get_drive_service()
@@ -386,18 +384,18 @@ def load_telegram_auth_from_sheet():
         required_columns = ['user_id', 'is_active']
         for col in required_columns:
             if col not in df.columns:
-                bot_logger.error(f"Missing required column: {col} in telegram auth sheet")
+                bot_logger.error(f"Configuration error")
                 return None
         
         # Update cache
         _telegram_auth_cache['data'] = df
         _telegram_auth_cache['last_loaded'] = datetime.now()
         
-        bot_logger.info(f"Successfully loaded telegram auth from Google Sheet ({len(df)} users)")
+        bot_logger.info("✅ Telegram authorization initialized")
         return df
     
     except Exception as e:
-        bot_logger.error(f"Error loading telegram auth from Google Sheet: {e}")
+        bot_logger.error(f"Authorization error: {str(e)[:50]}")
         return None
 
 def get_authorized_users():
@@ -422,10 +420,10 @@ def get_authorized_users():
             active_users = df[df['is_active'] == True]['user_id'].tolist()
             return [int(uid) for uid in active_users]
         except Exception as e:
-            bot_logger.error(f"Error parsing telegram auth from sheet: {e}")
+            bot_logger.error(f"Parse error: {str(e)[:50]}")
     
     # Fallback to secrets
-    bot_logger.info("Falling back to AUTHORIZED_USERS from secrets")
+    bot_logger.info("⚠️ Using fallback authorization")
     config = get_config()
     return config.AUTHORIZED_USERS
 
@@ -474,7 +472,7 @@ def get_auth_stats():
             stats['telegram_auth']['active_users'] = len(telegram_df[telegram_df['is_active'] == True])
             stats['telegram_auth']['inactive_users'] = len(telegram_df[telegram_df['is_active'] == False])
     except Exception as e:
-        bot_logger.error(f"Error getting telegram auth stats: {e}")
+        bot_logger.error(f"Stats error: {str(e)[:50]}")
     
     try:
         if bot_users_df is not None:
@@ -482,6 +480,6 @@ def get_auth_stats():
             stats['bot_users']['active_users'] = len(bot_users_df[bot_users_df['is_active'] == True])
             stats['bot_users']['inactive_users'] = len(bot_users_df[bot_users_df['is_active'] == False])
     except Exception as e:
-        bot_logger.error(f"Error getting bot users stats: {e}")
+        bot_logger.error(f"Stats error: {str(e)[:50]}")
     
     return stats
