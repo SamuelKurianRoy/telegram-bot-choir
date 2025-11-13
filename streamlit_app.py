@@ -55,11 +55,21 @@ def convert_to_ist(timestamp_str):
         # Fallback to original timestamp if conversion fails
         return timestamp_str
 
-# Load users from environment variable or use defaults
+# Load users from Google Sheet or environment variable
 def load_users():
-    """Load user credentials from environment or use defaults"""
+    """Load user credentials from Google Sheet, environment, or use defaults"""
+    try:
+        # Try to load from Google Sheet first (new method)
+        from data.auth import get_bot_users
+        bot_users = get_bot_users()
+        if bot_users:
+            print(f"✅ Loaded {len(bot_users)} bot users from Google Sheet/secrets")
+            return bot_users
+    except Exception as e:
+        print(f"⚠️ Could not load from Google Sheet: {e}")
+    
+    # Fallback to environment variable (old method)
     import json
-    # Try to load from environment variable (JSON format)
     users_json = os.getenv("BOT_USERS")
     if users_json:
         try:
@@ -68,7 +78,7 @@ def load_users():
             st.error("❌ Invalid BOT_USERS environment variable format")
             return DEFAULT_USERS
 
-    # Use default users
+    # Use default users as last resort
     return DEFAULT_USERS
 
 BOT_USERS = load_users()
@@ -315,21 +325,35 @@ def check_password():
 
     def credentials_entered():
         """Checks whether username and password entered by the user are correct."""
+        import hashlib
+        
         username = st.session_state.get("username", "").strip()
         password = st.session_state.get("password", "")
 
-        if username in BOT_USERS and BOT_USERS[username] == password:
-            st.session_state["password_correct"] = True
-            st.session_state["current_user"] = username
-            st.session_state["login_time"] = time.time()
-            # Clear credentials from session state
-            if "username" in st.session_state:
-                del st.session_state["username"]
-            if "password" in st.session_state:
-                del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
-            st.session_state["login_error"] = True
+        if username in BOT_USERS:
+            # Hash the entered password
+            password_hash = hashlib.sha256(password.encode()).hexdigest()
+            stored_hash = BOT_USERS[username]
+            
+            # Check if stored value is already hashed (64 characters) or plain text
+            if len(stored_hash) == 64:  # SHA256 hash
+                is_correct = stored_hash == password_hash
+            else:  # Plain text (legacy support)
+                is_correct = stored_hash == password
+            
+            if is_correct:
+                st.session_state["password_correct"] = True
+                st.session_state["current_user"] = username
+                st.session_state["login_time"] = time.time()
+                # Clear credentials from session state
+                if "username" in st.session_state:
+                    del st.session_state["username"]
+                if "password" in st.session_state:
+                    del st.session_state["password"]
+                return
+        
+        st.session_state["password_correct"] = False
+        st.session_state["login_error"] = True
 
     # Check session timeout
     if "login_time" in st.session_state:
@@ -1010,7 +1034,7 @@ with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/musical-notes.png", width=100)
     st.title("Navigation")
     
-    page = st.radio("Go to", ["Dashboard", "Logs", "Settings", "Bible Game", "About"])
+    page = st.radio("Go to", ["Dashboard", "Logs", "Settings", "Change Password", "Bible Game", "About"])
     
     st.markdown("---")
     
@@ -1411,6 +1435,56 @@ elif page == "Bible Game":
 elif page == "Settings":
     st.markdown("<h1 class='main-header'>Bot Settings</h1>", unsafe_allow_html=True)
     
+    # Authentication System Status
+    st.markdown("## 🔐 Authentication System")
+    
+    try:
+        from data.auth import get_auth_stats
+        auth_stats = get_auth_stats()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### Bot Users (Control Panel)")
+            bot_users_stats = auth_stats['bot_users']
+            
+            if bot_users_stats['using_sheet']:
+                st.success("🟢 Using Google Sheet")
+                st.metric("Total Users", bot_users_stats['total_users'])
+                st.metric("Active Users", bot_users_stats['active_users'])
+                st.metric("Inactive Users", bot_users_stats['inactive_users'])
+            else:
+                st.warning("🟡 Using Fallback (Secrets/Environment)")
+                st.info("Google Sheet authentication is not available. Using BOT_USERS from secrets.")
+        
+        with col2:
+            st.markdown("### Telegram Users (Bot Access)")
+            telegram_stats = auth_stats['telegram_auth']
+            
+            if telegram_stats['using_sheet']:
+                st.success("🟢 Using Google Sheet")
+                st.metric("Total Users", telegram_stats['total_users'])
+                st.metric("Active Users", telegram_stats['active_users'])
+                st.metric("Inactive Users", telegram_stats['inactive_users'])
+            else:
+                st.warning("🟡 Using Fallback (Secrets)")
+                st.info("Google Sheet authentication is not available. Using AUTHORIZED_USERS from secrets.")
+        
+        if st.button("🔄 Refresh Authentication Cache"):
+            from data.auth import refresh_auth_cache
+            if refresh_auth_cache():
+                st.success("✅ Authentication cache refreshed successfully!")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.warning("⚠️ Could not load from Google Sheets. Using fallback authentication.")
+    
+    except Exception as e:
+        st.error(f"❌ Error loading authentication stats: {str(e)}")
+        st.info("💡 Authentication system may not be fully configured. Check AUTH_SETUP_GUIDE.md")
+    
+    st.markdown("---")
+    
     # Log upload settings
     st.subheader("Log Upload Settings")
     
@@ -1446,6 +1520,84 @@ elif page == "Settings":
                 st.error(f"Error uploading logs: {msg1}, {msg2}")
         else:
             st.error("BFILE_ID or UFILE_ID not configured in secrets")
+
+elif page == "Change Password":
+    st.markdown("<h1 class='main-header'>🔐 Change Password</h1>", unsafe_allow_html=True)
+    
+    st.info("Change your Streamlit control panel password. This password is used to access this dashboard.")
+    
+    current_user = st.session_state.get("current_user", "Unknown")
+    
+    with st.form("change_password_form"):
+        st.markdown(f"**Username:** {current_user}")
+        st.markdown("---")
+        
+        old_password = st.text_input("🔑 Current Password", type="password", help="Enter your current password")
+        new_password = st.text_input("🔐 New Password", type="password", help="Enter your new password (minimum 6 characters)")
+        confirm_password = st.text_input("🔐 Confirm New Password", type="password", help="Re-enter your new password")
+        
+        submit_button = st.form_submit_button("Change Password", type="primary", use_container_width=True)
+    
+    if submit_button:
+        # Validation
+        if not old_password or not new_password or not confirm_password:
+            st.error("❌ All fields are required!")
+        elif new_password != confirm_password:
+            st.error("❌ New passwords don't match!")
+        elif len(new_password) < 6:
+            st.error("❌ New password must be at least 6 characters long!")
+        elif old_password == new_password:
+            st.error("❌ New password must be different from current password!")
+        else:
+            # Attempt to change password
+            try:
+                from data.auth import change_bot_user_password
+                success, message = change_bot_user_password(current_user, old_password, new_password)
+                
+                if success:
+                    st.success(message)
+                    st.success("✅ Please log in again with your new password.")
+                    st.balloons()
+                    
+                    # Log out user
+                    time.sleep(2)
+                    for key in ["password_correct", "login_time", "current_user"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.rerun()
+                else:
+                    st.error(message)
+            except Exception as e:
+                st.error(f"❌ Error changing password: {str(e)}")
+                st.info("💡 Tip: Make sure Google Sheet authentication is set up correctly. Check AUTH_SETUP_GUIDE.md for details.")
+    
+    st.markdown("---")
+    st.markdown("### 💡 Password Tips")
+    st.markdown("""
+    - Use at least 6 characters
+    - Mix letters, numbers, and symbols
+    - Don't reuse passwords from other sites
+    - Change your password regularly
+    - Keep your password secure and don't share it
+    """)
+    
+    st.markdown("---")
+    st.markdown("### ℹ️ About Authentication")
+    st.markdown("""
+    This control panel uses Google Sheet-based authentication with fallback to secrets:
+    
+    **Using Google Sheet (Recommended):**
+    - Passwords can be changed anytime
+    - Changes are stored in Google Sheets
+    - No need to restart the bot
+    
+    **Fallback Mode (Secrets/Environment):**
+    - If Google Sheet is unavailable
+    - Uses BOT_USERS from secrets.toml or environment
+    - Password changes won't work in this mode
+    
+    Check the **Settings** page for authentication system status.
+    """)
 
 elif page == "About":
     st.markdown("<h1 class='main-header'>About Choir Bot</h1>", unsafe_allow_html=True)
