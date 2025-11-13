@@ -495,13 +495,13 @@ from email.mime.multipart import MIMEMultipart
 
 # List of popular Bible verses for temporary passwords
 BIBLE_VERSE_PASSWORDS = [
-    "John3:16", "Genesis1:1", "Psalm23:1", "Proverbs3:5",
-    "Romans8:28", "Philippians4:13", "Isaiah41:10", "Jeremiah29:11",
-    "Matthew6:33", "John14:6", "Psalm46:1", "Romans12:2",
-    "2Timothy1:7", "James1:5", "1John4:19", "Psalm121:1",
-    "Matthew28:20", "Galatians5:22", "Ephesians2:8", "Hebrews11:1",
-    "1Corinthians13:13", "Psalm37:4", "Proverbs16:3", "Isaiah40:31",
-    "Romans5:8", "John1:1", "Psalm91:1", "Matthew11:28"
+    "John 3:16", "Genesis 1:1", "Psalm 23:1", "Proverbs 3:5",
+    "Romans 8:28", "Philippians 4:13", "Isaiah 41:10", "Jeremiah 29:11",
+    "Matthew 6:33", "John 14:6", "Psalm 46:1", "Romans 12:2",
+    "2 Timothy 1:7", "James 1:5", "1 John 4:19", "Psalm 121:1",
+    "Matthew 28:20", "Galatians 5:22", "Ephesians 2:8", "Hebrews 11:1",
+    "1 Corinthians 13:13", "Psalm 37:4", "Proverbs 16:3", "Isaiah 40:31",
+    "Romans 5:8", "John 1:1", "Psalm 91:1", "Matthew 11:28"
 ]
 
 def _generate_temp_password():
