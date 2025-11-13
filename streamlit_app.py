@@ -1529,24 +1529,6 @@ elif page == "Change Password":
     - Change your password regularly
     - Keep your password secure and don't share it
     """)
-    
-    st.markdown("---")
-    st.markdown("### ℹ️ About Authentication")
-    st.markdown("""
-    This control panel uses Google Sheet-based authentication with fallback to secrets:
-    
-    **Using Google Sheet (Recommended):**
-    - Passwords can be changed anytime
-    - Changes are stored in Google Sheets
-    - No need to restart the bot
-    
-    **Fallback Mode (Secrets/Environment):**
-    - If Google Sheet is unavailable
-    - Uses BOT_USERS from secrets.toml or environment
-    - Password changes won't work in this mode
-    
-    Check the **Settings** page for authentication system status.
-    """)
 
 elif page == "About":
     st.markdown("<h1 class='main-header'>About Choir Bot</h1>", unsafe_allow_html=True)
