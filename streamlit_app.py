@@ -1590,8 +1590,8 @@ elif page == "About":
     # Credits
     st.markdown("## 👥 Credits")
     st.markdown("""
-    - **Bot Development:** Choir Bot Team
+    - **Bot Development:** Samuel Kurian Roy
     - **Bible Content:** WordProject.org
     - **Framework:** Streamlit + Python Telegram Bot
-    - **Hosting:** Railway/Streamlit Cloud
+    - **Hosting:** Streamlit Cloud
     """)
