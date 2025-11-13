@@ -483,3 +483,209 @@ def get_auth_stats():
         user_logger.error(f"Stats error: {str(e)[:50]}")
     
     return stats
+
+# ========================================
+# FORGOT PASSWORD FUNCTIONALITY
+# ========================================
+
+import random
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# List of popular Bible verses for temporary passwords
+BIBLE_VERSE_PASSWORDS = [
+    "John3:16", "Genesis1:1", "Psalm23:1", "Proverbs3:5",
+    "Romans8:28", "Philippians4:13", "Isaiah41:10", "Jeremiah29:11",
+    "Matthew6:33", "John14:6", "Psalm46:1", "Romans12:2",
+    "2Timothy1:7", "James1:5", "1John4:19", "Psalm121:1",
+    "Matthew28:20", "Galatians5:22", "Ephesians2:8", "Hebrews11:1",
+    "1Corinthians13:13", "Psalm37:4", "Proverbs16:3", "Isaiah40:31",
+    "Romans5:8", "John1:1", "Psalm91:1", "Matthew11:28"
+]
+
+def _generate_temp_password():
+    """Generate a random Bible verse-based temporary password"""
+    return random.choice(BIBLE_VERSE_PASSWORDS)
+
+def get_user_email(username: str) -> str:
+    """
+    Get email address for a user from Google Sheet.
+    
+    Args:
+        username: Username to look up
+        
+    Returns:
+        str: Email address or None if not found
+    """
+    df = load_bot_users_from_sheet()
+    
+    if df is None:
+        return None
+    
+    try:
+        user_row = df[df['username'] == username]
+        if user_row.empty:
+            return None
+        
+        # Check if email column exists
+        if 'email' not in df.columns:
+            user_logger.error("Email column not found in sheet")
+            return None
+        
+        email = user_row.iloc[0]['email']
+        return email if pd.notna(email) else None
+    
+    except Exception as e:
+        user_logger.error(f"Error getting email: {str(e)[:50]}")
+        return None
+
+def send_password_reset_email(to_email: str, username: str, temp_password: str) -> bool:
+    """
+    Send password reset email to user.
+    
+    Args:
+        to_email: Recipient email address
+        username: Username for the account
+        temp_password: Temporary password
+        
+    Returns:
+        bool: True if email sent successfully
+    """
+    try:
+        config = get_config()
+        
+        # Get email configuration from secrets
+        smtp_server = config.secrets.get("SMTP_SERVER", "smtp.gmail.com")
+        smtp_port = config.secrets.get("SMTP_PORT", 587)
+        sender_email = config.secrets.get("SENDER_EMAIL")
+        sender_password = config.secrets.get("SENDER_PASSWORD")
+        
+        if not sender_email or not sender_password:
+            user_logger.error("Email configuration missing")
+            return False
+        
+        # Create message
+        message = MIMEMultipart("alternative")
+        message["Subject"] = "Choir Bot - Password Reset"
+        message["From"] = sender_email
+        message["To"] = to_email
+        
+        # Create HTML content
+        html = f"""
+        <html>
+          <body>
+            <h2>🎶 Choir Bot Password Reset</h2>
+            <p>Hello <strong>{username}</strong>,</p>
+            <p>You requested a password reset for your Choir Bot Control Panel account.</p>
+            <p>Your temporary password is:</p>
+            <h3 style="color: #4CAF50; background-color: #f0f0f0; padding: 10px; display: inline-block;">
+                {temp_password}
+            </h3>
+            <p><strong>Important:</strong></p>
+            <ul>
+                <li>This is a temporary password based on a Bible verse reference</li>
+                <li>Please log in and change your password immediately</li>
+                <li>Go to "Change Password" page after logging in</li>
+            </ul>
+            <p>If you did not request this password reset, please contact your administrator immediately.</p>
+            <hr>
+            <p style="color: #888; font-size: 12px;">This is an automated message from Choir Bot Control Panel.</p>
+          </body>
+        </html>
+        """
+        
+        text = f"""
+        Choir Bot Password Reset
+        
+        Hello {username},
+        
+        You requested a password reset for your Choir Bot Control Panel account.
+        
+        Your temporary password is: {temp_password}
+        
+        Important:
+        - This is a temporary password based on a Bible verse reference
+        - Please log in and change your password immediately
+        - Go to "Change Password" page after logging in
+        
+        If you did not request this password reset, please contact your administrator immediately.
+        
+        ---
+        This is an automated message from Choir Bot Control Panel.
+        """
+        
+        # Attach both plain text and HTML versions
+        part1 = MIMEText(text, "plain")
+        part2 = MIMEText(html, "html")
+        message.attach(part1)
+        message.attach(part2)
+        
+        # Send email
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, to_email, message.as_string())
+        
+        user_logger.info(f"Password reset email sent: {username}")
+        return True
+    
+    except Exception as e:
+        user_logger.error(f"Email send error: {str(e)[:50]}")
+        return False
+
+def reset_password_for_user(username: str) -> tuple:
+    """
+    Reset user password to a random Bible verse and send email.
+    
+    Args:
+        username: Username to reset password for
+        
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    # Load user data
+    df = load_bot_users_from_sheet()
+    
+    if df is None:
+        return False, "❌ Authentication system unavailable. Please try again later."
+    
+    try:
+        # Find user
+        user_idx = df[df['username'] == username].index
+        if user_idx.empty:
+            return False, "❌ Username not found."
+        
+        user_idx = user_idx[0]
+        
+        # Check if user is active
+        if not df.loc[user_idx, 'is_active']:
+            return False, "❌ Account inactive. Contact administrator."
+        
+        # Get user email
+        email = get_user_email(username)
+        if not email:
+            return False, "❌ No email address on file. Contact administrator."
+        
+        # Generate temporary password
+        temp_password = _generate_temp_password()
+        
+        # Update password in sheet
+        new_password_hash = _hash_password(temp_password)
+        df.loc[user_idx, 'password_hash'] = new_password_hash
+        df.loc[user_idx, 'last_updated'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Save to sheet
+        if not save_bot_users_to_sheet(df):
+            return False, "❌ Failed to reset password. Please try again."
+        
+        # Send email
+        if send_password_reset_email(email, username, temp_password):
+            user_logger.info(f"Password reset: {username}")
+            return True, f"✅ Password reset successful! Check your email at {email[:3]}***@{email.split('@')[1] if '@' in email else '***'}"
+        else:
+            return False, "❌ Password updated but failed to send email. Please contact administrator."
+    
+    except Exception as e:
+        user_logger.error(f"Password reset error: {str(e)[:50]}")
+        return False, "❌ An error occurred. Please try again later."

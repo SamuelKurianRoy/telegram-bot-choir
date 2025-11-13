@@ -386,14 +386,55 @@ def check_password():
                 placeholder="Enter password..."
             )
 
-        if st.button("🔑 Login", type="primary", use_container_width=True):
-            credentials_entered()
-            if st.session_state.get("password_correct"):
-                st.success(f"✅ Welcome, {st.session_state['current_user']}!")
-                time.sleep(1)
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            if st.button("🔑 Login", type="primary", use_container_width=True):
+                credentials_entered()
+                if st.session_state.get("password_correct"):
+                    st.success(f"✅ Welcome, {st.session_state['current_user']}!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("❌ Login failed. Please check your credentials.")
+        
+        with col2:
+            if st.button("🔓 Forgot Password?", use_container_width=True):
+                st.session_state["show_forgot_password"] = True
                 st.rerun()
-            else:
-                st.error("❌ Login failed. Please check your credentials.")
+
+        # Forgot Password Form
+        if st.session_state.get("show_forgot_password"):
+            st.markdown("---")
+            st.markdown("### 🔓 Password Reset")
+            st.markdown("Enter your username to receive a temporary password via email.")
+            
+            reset_username = st.text_input(
+                "👤 Username",
+                key="reset_username",
+                placeholder="Enter your username..."
+            )
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("📧 Send Reset Email", type="primary", use_container_width=True):
+                    if reset_username:
+                        from data.auth import reset_password_for_user
+                        success, message = reset_password_for_user(reset_username)
+                        if success:
+                            st.success(message)
+                            st.info("💡 Check your email for the temporary password. You can change it after logging in.")
+                            time.sleep(3)
+                            st.session_state["show_forgot_password"] = False
+                            st.rerun()
+                        else:
+                            st.error(message)
+                    else:
+                        st.warning("⚠️ Please enter your username.")
+            
+            with col2:
+                if st.button("❌ Cancel", use_container_width=True):
+                    st.session_state["show_forgot_password"] = False
+                    st.rerun()
 
         if st.session_state.get("login_error"):
             st.error("❌ Invalid username or password. Please try again.")
@@ -406,6 +447,7 @@ def check_password():
         st.markdown("- 🔐 Individual user passwords")
         st.markdown("- ⏰ 30-minute session timeout")
         st.markdown("- 🔓 Manual logout option")
+        st.markdown("- 📧 Password reset via email")
 
         return False
     elif not st.session_state["password_correct"]:
@@ -430,14 +472,55 @@ def check_password():
                 placeholder="Enter password..."
             )
 
-        if st.button("🔑 Login", type="primary", use_container_width=True):
-            credentials_entered()
-            if st.session_state.get("password_correct"):
-                st.success(f"✅ Welcome, {st.session_state['current_user']}!")
-                time.sleep(1)
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            if st.button("🔑 Login", key="login2", type="primary", use_container_width=True):
+                credentials_entered()
+                if st.session_state.get("password_correct"):
+                    st.success(f"✅ Welcome, {st.session_state['current_user']}!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("❌ Login failed. Please check your credentials.")
+        
+        with col2:
+            if st.button("🔓 Forgot Password?", key="forgot2", use_container_width=True):
+                st.session_state["show_forgot_password"] = True
                 st.rerun()
-            else:
-                st.error("❌ Login failed. Please check your credentials.")
+
+        # Forgot Password Form
+        if st.session_state.get("show_forgot_password"):
+            st.markdown("---")
+            st.markdown("### 🔓 Password Reset")
+            st.markdown("Enter your username to receive a temporary password via email.")
+            
+            reset_username = st.text_input(
+                "👤 Username",
+                key="reset_username2",
+                placeholder="Enter your username..."
+            )
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("📧 Send Reset Email", key="send_reset2", type="primary", use_container_width=True):
+                    if reset_username:
+                        from data.auth import reset_password_for_user
+                        success, message = reset_password_for_user(reset_username)
+                        if success:
+                            st.success(message)
+                            st.info("💡 Check your email for the temporary password. You can change it after logging in.")
+                            time.sleep(3)
+                            st.session_state["show_forgot_password"] = False
+                            st.rerun()
+                        else:
+                            st.error(message)
+                    else:
+                        st.warning("⚠️ Please enter your username.")
+            
+            with col2:
+                if st.button("❌ Cancel", key="cancel_reset2", use_container_width=True):
+                    st.session_state["show_forgot_password"] = False
+                    st.rerun()
 
         st.error("❌ Invalid username or password. Please try again.")
         return False
