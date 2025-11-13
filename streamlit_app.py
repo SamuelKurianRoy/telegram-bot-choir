@@ -63,10 +63,9 @@ def load_users():
         from data.auth import get_bot_users
         bot_users = get_bot_users()
         if bot_users:
-            print(f"✅ Loaded {len(bot_users)} bot users from Google Sheet/secrets")
             return bot_users
     except Exception as e:
-        print(f"⚠️ Could not load from Google Sheet: {e}")
+        pass  # Silently handle errors
     
     # Fallback to environment variable (old method)
     import json
@@ -1434,56 +1433,6 @@ elif page == "Bible Game":
 
 elif page == "Settings":
     st.markdown("<h1 class='main-header'>Bot Settings</h1>", unsafe_allow_html=True)
-    
-    # Authentication System Status
-    st.markdown("## 🔐 Authentication System")
-    
-    try:
-        from data.auth import get_auth_stats
-        auth_stats = get_auth_stats()
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("### Bot Users (Control Panel)")
-            bot_users_stats = auth_stats['bot_users']
-            
-            if bot_users_stats['using_sheet']:
-                st.success("🟢 Using Google Sheet")
-                st.metric("Total Users", bot_users_stats['total_users'])
-                st.metric("Active Users", bot_users_stats['active_users'])
-                st.metric("Inactive Users", bot_users_stats['inactive_users'])
-            else:
-                st.warning("🟡 Using Fallback (Secrets/Environment)")
-                st.info("Google Sheet authentication is not available. Using BOT_USERS from secrets.")
-        
-        with col2:
-            st.markdown("### Telegram Users (Bot Access)")
-            telegram_stats = auth_stats['telegram_auth']
-            
-            if telegram_stats['using_sheet']:
-                st.success("🟢 Using Google Sheet")
-                st.metric("Total Users", telegram_stats['total_users'])
-                st.metric("Active Users", telegram_stats['active_users'])
-                st.metric("Inactive Users", telegram_stats['inactive_users'])
-            else:
-                st.warning("🟡 Using Fallback (Secrets)")
-                st.info("Google Sheet authentication is not available. Using AUTHORIZED_USERS from secrets.")
-        
-        if st.button("🔄 Refresh Authentication Cache"):
-            from data.auth import refresh_auth_cache
-            if refresh_auth_cache():
-                st.success("✅ Authentication cache refreshed successfully!")
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.warning("⚠️ Could not load from Google Sheets. Using fallback authentication.")
-    
-    except Exception as e:
-        st.error(f"❌ Error loading authentication stats: {str(e)}")
-        st.info("💡 Authentication system may not be fully configured. Check AUTH_SETUP_GUIDE.md")
-    
-    st.markdown("---")
     
     # Log upload settings
     st.subheader("Log Upload Settings")
