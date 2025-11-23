@@ -3,7 +3,7 @@
 
 import pandas as pd
 import io
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from data.drive import get_drive_service
 from config import get_config
@@ -220,11 +220,16 @@ def get_full_roster_table():
 def get_next_sunday():
     """
     Get the next Sunday date. If today is Sunday, return today.
+    Uses IST (Indian Standard Time, UTC+5:30).
     
     Returns:
         date: The next Sunday date
     """
-    today = date.today()
+    # Get current time in IST (UTC+5:30)
+    ist_offset = timezone(timedelta(hours=5, minutes=30))
+    ist_now = datetime.now(ist_offset)
+    today = ist_now.date()
+    
     # Monday = 0, Sunday = 6
     days_ahead = 6 - today.weekday()
     if days_ahead < 0:  # Today is Sunday
@@ -233,6 +238,9 @@ def get_next_sunday():
         days_ahead = 7
     
     next_sunday = today + timedelta(days=days_ahead)
+    
+    user_logger.info(f"IST time: {ist_now.strftime('%Y-%m-%d %H:%M:%S %Z')}, Next Sunday: {next_sunday}")
+    
     return next_sunday
 
 def get_songs_for_date(target_date):
@@ -280,11 +288,18 @@ def get_songs_for_date(target_date):
         song_columns = [col for col in df.columns if col != 'Date']
         songs = []
         
+        # Import IndexFinder to get full song names
+        from data.vocabulary import IndexFinder
+        
         for _, row in matching_rows.iterrows():
             for col in song_columns:
                 song = row[col]
                 if pd.notna(song) and str(song).strip() != '':
-                    songs.append(str(song).strip())
+                    song_code = str(song).strip()
+                    # Get full song name with index
+                    song_name = IndexFinder(song_code)
+                    full_song = f"{song_code} - {song_name}" if song_name else song_code
+                    songs.append(full_song)
         
         user_logger.info(f"Retrieved {len(songs)} songs for date")
         return songs
