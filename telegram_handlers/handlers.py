@@ -1888,6 +1888,8 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/download` - Download audio from links
 • `/comment` - Send feedback to admin
 • `/setting` - Manage personal settings
+• `/organist` - View organist assignments for songs
+• `/updatesunday` - Update Songs for Sunday sheet (admin only)
 
 **Usage Examples:**
 • `/admin_user_info 757438955`
