@@ -3159,10 +3159,20 @@ ORGANIST_SELECTION = range(1)
 
 async def organist_roster_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start the organist roster command - show list of organists to choose from"""
-    from data.organist_roster import get_unique_organists, get_unassigned_songs, get_roster_summary
+    from data.organist_roster import get_unique_organists, get_unassigned_songs, get_roster_summary, update_songs_for_sunday
     
     user = update.effective_user
     user_logger.info(f"User {user.id} ({user.first_name}) started /organist command")
+    
+    # Auto-update Sunday songs silently in the background
+    try:
+        success, message, date_used = update_songs_for_sunday()
+        if success:
+            user_logger.info(f"Auto-updated Sunday songs: {message}")
+        else:
+            user_logger.warning(f"Auto-update Sunday songs failed: {message}")
+    except Exception as e:
+        user_logger.error(f"Error during auto-update: {str(e)[:100]}")
     
     # Get organist list
     organists = get_unique_organists()

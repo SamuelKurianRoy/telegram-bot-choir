@@ -13,15 +13,20 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 
 bot_logger, user_logger = setup_loggers()
 
-def get_organist_roster_data():
+# Global cache for organist roster data
+_organist_roster_cache = None
+
+def load_organist_roster_data():
     """
-    Load organist roster data from Google Sheet.
+    Load organist roster data from Google Sheet and cache it.
     Reads from the 'Order of Songs' sheet.
     
     Returns:
         DataFrame with columns: 'Song/ Responses', 'Name of The Organist'
         or None if failed
     """
+    global _organist_roster_cache
+    
     try:
         config = get_config()
         roster_sheet_id = config.secrets.get("ORGANIST_ROSTER_SHEET_ID")
@@ -54,12 +59,40 @@ def get_organist_roster_data():
                 user_logger.error(f"Missing required column: {col}")
                 return None
         
-        user_logger.info("✅ Organist roster loaded successfully")
+        # Cache the data
+        _organist_roster_cache = df
+        user_logger.info("✅ Organist roster loaded and cached successfully")
         return df
     
     except Exception as e:
         user_logger.error(f"Roster load error: {str(e)[:100]}")
         return None
+
+def get_organist_roster_data():
+    """
+    Get organist roster data from cache, or load if not cached.
+    
+    Returns:
+        DataFrame with columns: 'Song/ Responses', 'Name of The Organist'
+        or None if failed
+    """
+    global _organist_roster_cache
+    
+    if _organist_roster_cache is None:
+        return load_organist_roster_data()
+    
+    return _organist_roster_cache
+
+def reload_organist_roster():
+    """
+    Force reload of organist roster data from Google Sheet.
+    Called by /refresh command.
+    
+    Returns:
+        bool: True if reload successful, False otherwise
+    """
+    result = load_organist_roster_data()
+    return result is not None
 
 def get_unique_organists():
     """

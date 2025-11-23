@@ -285,6 +285,16 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
         conversations._theme_texts.clear()  # Clear theme texts
         # Re-initialize theme components with fresh data
         conversations.initialize_theme_components()
+        
+        # Reload organist roster data
+        msg6a = await update.message.reply_text("📋 Reloading organist roster...")
+        progress_messages.append(msg6a.message_id)
+        from data.organist_roster import reload_organist_roster
+        roster_reloaded = reload_organist_roster()
+        if roster_reloaded:
+            user_logger.info("Organist roster reloaded successfully")
+        else:
+            user_logger.warning("Could not reload organist roster")
 
         # Upload logs
         msg7 = await update.message.reply_text("📝 .......")

@@ -324,6 +324,30 @@ def run_bot():
     # Initialize heavy theme components during startup
     print("🚀 Initializing theme components...")
     initialize_theme_components()
+    
+    # Load organist roster data at startup
+    print("📋 Loading organist roster data...")
+    try:
+        from data.organist_roster import load_organist_roster_data
+        roster_df = load_organist_roster_data()
+        if roster_df is not None:
+            print(f"✅ Organist roster loaded ({len(roster_df)} entries)")
+        else:
+            print("⚠️ Could not load organist roster data")
+    except Exception as e:
+        print(f"⚠️ Error loading organist roster: {str(e)[:100]}")
+    
+    # Auto-update Sunday songs on bot startup
+    print("📅 Auto-updating Songs for Sunday...")
+    try:
+        from data.organist_roster import update_songs_for_sunday
+        success, message, date_used = update_songs_for_sunday()
+        if success:
+            print(f"✅ {message}")
+        else:
+            print(f"⚠️ Sunday update: {message}")
+    except Exception as e:
+        print(f"⚠️ Could not auto-update Sunday songs: {str(e)[:100]}")
 
     try:
         print("Starting main bot function...")
