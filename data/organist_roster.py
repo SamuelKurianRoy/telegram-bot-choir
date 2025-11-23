@@ -274,10 +274,24 @@ def get_songs_for_date(target_date):
         
         # Sort dates
         available_dates = sorted(df['Date'].unique())
-        user_logger.info(f"Available dates: {[d.strftime('%d/%m/%Y') for d in available_dates[:5]]}")
+        user_logger.info(f"Available dates: {[d.strftime('%d/%m/%Y') for d in available_dates[:10]]}")
         
-        # Find songs on the target date
+        # Find songs on the target date OR nearby dates (account for timezone issues)
+        # Try the target date and the day before/after
         matching_rows = df[df['Date'] == target_date]
+        
+        if matching_rows.empty:
+            # Try day before and after (timezone handling)
+            day_before = target_date - timedelta(days=1)
+            day_after = target_date + timedelta(days=1)
+            
+            matching_rows = df[df['Date'] == day_before]
+            if not matching_rows.empty:
+                user_logger.info(f"Found songs on {day_before} instead of {target_date} (timezone issue)")
+            else:
+                matching_rows = df[df['Date'] == day_after]
+                if not matching_rows.empty:
+                    user_logger.info(f"Found songs on {day_after} instead of {target_date} (timezone issue)")
         
         user_logger.info(f"Looking for date: {target_date.strftime('%d/%m/%Y')}, found {len(matching_rows)} matches")
         
