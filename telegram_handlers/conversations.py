@@ -3188,7 +3188,8 @@ async def organist_roster_start(update: Update, context: ContextTypes.DEFAULT_TY
             row.append(organists[i + 1])
         keyboard.append(row)
     
-    # Add "Unassigned Songs" and "Cancel" buttons
+    # Add "Unassigned Songs", "Full Roster" and "Cancel" buttons
+    keyboard.append(["📋 Full Roster Table"])
     keyboard.append(["🎹 Unassigned Songs"])
     keyboard.append(["❌ Cancel"])
     
@@ -3215,7 +3216,7 @@ async def organist_roster_start(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def organist_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle organist selection and display their songs"""
-    from data.organist_roster import get_songs_by_organist, get_unassigned_songs
+    from data.organist_roster import get_songs_by_organist, get_unassigned_songs, get_full_roster_table
     
     user = update.effective_user
     selection = update.message.text
@@ -3225,6 +3226,54 @@ async def organist_selection(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "Operation cancelled.",
             reply_markup=ReplyKeyboardRemove()
         )
+        return ConversationHandler.END
+    
+    # Handle full roster table view
+    if selection == "📋 Full Roster Table":
+        roster_table = get_full_roster_table()
+        
+        if not roster_table:
+            await update.message.reply_text(
+                "❌ Could not load roster data.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return ConversationHandler.END
+        
+        # Format table
+        table_lines = []
+        for i, (song, organist) in enumerate(roster_table, 1):
+            # Use fixed width formatting for better alignment
+            table_lines.append(f"{i}. {song} → {organist}")
+        
+        table_text = "\n".join(table_lines)
+        
+        message = (
+            f"📋 *Full Roster Table* ({len(roster_table)} entries)\n\n"
+            f"{table_text}"
+        )
+        
+        # Split message if too long
+        if len(message) > 4000:
+            await update.message.reply_text(
+                f"📋 *Full Roster Table* ({len(roster_table)} entries)\n\n",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=ReplyKeyboardRemove()
+            )
+            # Send in chunks
+            chunk_size = 40
+            for i in range(0, len(roster_table), chunk_size):
+                chunk = roster_table[i:i+chunk_size]
+                chunk_lines = [f"{i+j+1}. {song} → {organist}" for j, (song, organist) in enumerate(chunk)]
+                chunk_text = "\n".join(chunk_lines)
+                await update.message.reply_text(chunk_text)
+        else:
+            await update.message.reply_text(
+                message,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=ReplyKeyboardRemove()
+            )
+        
+        user_logger.info(f"User {user.id} viewed full roster table ({len(roster_table)} entries)")
         return ConversationHandler.END
     
     # Handle unassigned songs

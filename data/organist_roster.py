@@ -177,3 +177,39 @@ def get_roster_summary():
             'unassigned_songs': 0,
             'total_organists': 0
         }
+
+def get_full_roster_table():
+    """
+    Get the complete roster table in order.
+    
+    Returns:
+        list: List of tuples (song_name, organist_name) in original order
+    """
+    df = get_organist_roster_data()
+    
+    if df is None:
+        return []
+    
+    try:
+        # Get all rows with song names (filter out empty songs)
+        roster_table = []
+        for _, row in df.iterrows():
+            song = row['Song/ Responses']
+            organist = row['Name of The Organist']
+            
+            # Only include rows with song names
+            if pd.notna(song) and str(song).strip():
+                # Handle empty organist
+                if pd.isna(organist) or str(organist).strip() == '':
+                    organist_name = "Not Assigned"
+                else:
+                    organist_name = str(organist).strip()
+                
+                roster_table.append((str(song).strip(), organist_name))
+        
+        user_logger.info(f"Retrieved full roster table ({len(roster_table)} entries)")
+        return roster_table
+    
+    except Exception as e:
+        user_logger.error(f"Error getting full table: {str(e)[:50]}")
+        return []
