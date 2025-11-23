@@ -264,15 +264,22 @@ def get_songs_for_date(target_date):
             user_logger.error("Main database is empty")
             return []
         
+        user_logger.info(f"Loaded database with {len(df)} rows")
+        
         # Ensure 'Date' column is datetime.date
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.date
         df.dropna(subset=['Date'], inplace=True)
         
+        user_logger.info(f"After date parsing: {len(df)} rows")
+        
         # Sort dates
         available_dates = sorted(df['Date'].unique())
+        user_logger.info(f"Available dates: {[d.strftime('%d/%m/%Y') for d in available_dates[:5]]}")
         
         # Find songs on the target date
         matching_rows = df[df['Date'] == target_date]
+        
+        user_logger.info(f"Looking for date: {target_date.strftime('%d/%m/%Y')}, found {len(matching_rows)} matches")
         
         if matching_rows.empty:
             # Get the next available date with songs
