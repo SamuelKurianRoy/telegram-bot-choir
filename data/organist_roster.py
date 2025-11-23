@@ -336,41 +336,49 @@ def update_songs_for_sunday():
         if "Songs for Sunday" not in excel_file.sheet_names:
             return False, "'Songs for Sunday' sheet not found", sunday_date
         
-        # Read the "Songs for Sunday" sheet
-        df_sunday = pd.read_excel(file_data, sheet_name='Songs for Sunday')
+        # Read all sheets into memory first
+        all_sheets = {}
+        for sheet_name in excel_file.sheet_names:
+            file_data.seek(0)
+            all_sheets[sheet_name] = pd.read_excel(file_data, sheet_name=sheet_name)
+        
+        df_sunday = all_sheets.get('Songs for Sunday')
+        
+        if df_sunday is None:
+            return False, "'Songs for Sunday' sheet not found", sunday_date
         
         # Ensure required columns exist
-        if 'Songs' not in df_sunday.columns or 'Organist' not in df_sunday.columns:
-            return False, "Required columns 'Songs' and 'Organist' not found", sunday_date
+        if 'Songs' not in df_sunday.columns:
+            df_sunday['Songs'] = ''
+        if 'Organist' not in df_sunday.columns:
+            df_sunday['Organist'] = ''
         
         # Create new DataFrame with songs
         new_df = pd.DataFrame()
         new_df['Songs'] = songs
         
-        # Preserve organist column if it has data, otherwise create empty
-        if len(df_sunday) >= len(songs):
-            # Keep existing organists up to the number of songs
-            new_df['Organist'] = df_sunday['Organist'].iloc[:len(songs)].values
+        # Preserve organist column - pad or truncate as needed
+        existing_organists = df_sunday['Organist'].tolist() if len(df_sunday) > 0 else []
+        
+        # Match the number of organists to the number of songs
+        if len(existing_organists) < len(songs):
+            # Pad with empty strings
+            organists = existing_organists + [''] * (len(songs) - len(existing_organists))
         else:
-            # Not enough organists, pad with empty
-            existing_organists = df_sunday['Organist'].tolist() if len(df_sunday) > 0 else []
-            padded_organists = existing_organists + [''] * (len(songs) - len(existing_organists))
-            new_df['Organist'] = padded_organists
+            # Truncate to match songs
+            organists = existing_organists[:len(songs)]
+        
+        new_df['Organist'] = organists
+        
+        # Update the sheet in our dictionary
+        all_sheets['Songs for Sunday'] = new_df
         
         # Now write back to Excel
-        # We need to preserve all other sheets
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            # Write all sheets
+            # Write all sheets in their original order
             for sheet_name in excel_file.sheet_names:
-                if sheet_name == 'Songs for Sunday':
-                    # Write the updated sheet
-                    new_df.to_excel(writer, sheet_name=sheet_name, index=False)
-                else:
-                    # Write the original sheet
-                    df_temp = pd.read_excel(file_data, sheet_name=sheet_name)
-                    file_data.seek(0)  # Reset pointer
-                    df_temp.to_excel(writer, sheet_name=sheet_name, index=False)
+                all_sheets[sheet_name].to_excel(writer, sheet_name=sheet_name, index=False)
         
         output.seek(0)
         
