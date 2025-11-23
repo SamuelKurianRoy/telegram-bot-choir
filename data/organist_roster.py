@@ -79,8 +79,10 @@ def get_organist_roster_data():
     global _organist_roster_cache
     
     if _organist_roster_cache is None:
+        user_logger.info("Cache miss - loading organist roster from Google Drive")
         return load_organist_roster_data()
     
+    user_logger.info(f"Cache hit - using cached organist roster ({len(_organist_roster_cache)} entries)")
     return _organist_roster_cache
 
 def reload_organist_roster():
