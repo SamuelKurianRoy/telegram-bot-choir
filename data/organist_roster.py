@@ -220,15 +220,13 @@ def get_full_roster_table():
 def get_next_sunday():
     """
     Get the next Sunday date. If today is Sunday, return today.
-    Uses IST (Indian Standard Time, UTC+5:30).
+    Uses local system time (same as the bot's runtime environment).
     
     Returns:
         date: The next Sunday date
     """
-    # Get current time in IST (UTC+5:30)
-    ist_offset = timezone(timedelta(hours=5, minutes=30))
-    ist_now = datetime.now(ist_offset)
-    today = ist_now.date()
+    # Use local system date (same as what the bot uses)
+    today = date.today()
     
     # Monday = 0, Sunday = 6
     days_ahead = 6 - today.weekday()
@@ -239,7 +237,7 @@ def get_next_sunday():
     
     next_sunday = today + timedelta(days=days_ahead)
     
-    user_logger.info(f"IST time: {ist_now.strftime('%Y-%m-%d %H:%M:%S %Z')}, Next Sunday: {next_sunday}")
+    user_logger.info(f"Local date: {today.strftime('%Y-%m-%d')}, Next Sunday: {next_sunday.strftime('%d/%m/%Y')}")
     
     return next_sunday
 
@@ -274,36 +272,23 @@ def get_songs_for_date(target_date):
         
         # Sort dates
         available_dates = sorted(df['Date'].unique())
-        user_logger.info(f"Available dates: {[d.strftime('%d/%m/%Y') for d in available_dates[:10]]}")
+        user_logger.info(f"Available dates (first 10): {[d.strftime('%d/%m/%Y') for d in available_dates[:10]]}")
         
-        # Find songs on the target date OR nearby dates (account for timezone issues)
-        # Try the target date and the day before/after
+        # Find songs on the target date
         matching_rows = df[df['Date'] == target_date]
         
-        if matching_rows.empty:
-            # Try day before and after (timezone handling)
-            day_before = target_date - timedelta(days=1)
-            day_after = target_date + timedelta(days=1)
-            
-            matching_rows = df[df['Date'] == day_before]
-            if not matching_rows.empty:
-                user_logger.info(f"Found songs on {day_before} instead of {target_date} (timezone issue)")
-            else:
-                matching_rows = df[df['Date'] == day_after]
-                if not matching_rows.empty:
-                    user_logger.info(f"Found songs on {day_after} instead of {target_date} (timezone issue)")
-        
-        user_logger.info(f"Looking for date: {target_date.strftime('%d/%m/%Y')}, found {len(matching_rows)} matches")
+        user_logger.info(f"Looking for date: {target_date.strftime('%d/%m/%Y')}, found {len(matching_rows)} matching rows")
         
         if matching_rows.empty:
             # Get the next available date with songs
             next_dates = [d for d in available_dates if d > target_date]
             if not next_dates:
-                user_logger.warning(f"No songs found on {target_date} or any later date")
+                user_logger.warning(f"No songs found on {target_date.strftime('%d/%m/%Y')} or any later date")
+                user_logger.warning(f"Last available date in DB: {available_dates[-1].strftime('%d/%m/%Y') if available_dates else 'None'}")
                 return []
             next_date = next_dates[0]
             matching_rows = df[df['Date'] == next_date]
-            user_logger.info(f"No songs on {target_date}, using next date: {next_date}")
+            user_logger.info(f"No songs on {target_date.strftime('%d/%m/%Y')}, using next date: {next_date.strftime('%d/%m/%Y')}")
         
         # Get song columns
         song_columns = [col for col in df.columns if col != 'Date']
