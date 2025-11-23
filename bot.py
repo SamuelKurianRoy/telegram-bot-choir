@@ -34,7 +34,8 @@ try:
         download_start, download_url_input, download_playlist_choice, download_quality_selection, ENTER_URL, PLAYLIST_CHOICE, SELECT_QUALITY,
         start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback, handle_song_code,
         bible_game_start, bible_game_language_handler, bible_game_difficulty_handler, bible_game_question_handler, BIBLE_GAME_LANGUAGE, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION,
-        initialize_theme_components
+        initialize_theme_components,
+        organist_roster_start, organist_selection, cancel_organist, ORGANIST_SELECTION
     )
     from telegram_handlers.preferences import (
         setting_start, setting_menu_handler, bible_language_handler, game_language_handler,
@@ -221,6 +222,15 @@ settings_conv_handler = ConversationHandler(
     fallbacks=[CommandHandler("cancel", cancel_settings)],
 )
 
+# Register the organist roster conversation handler
+organist_roster_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("organist", organist_roster_start)],
+    states={
+        ORGANIST_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, organist_selection)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel_organist)],
+)
+
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
 app.add_handler(bible_conv_handler)
@@ -266,6 +276,7 @@ app.add_handler(comment_handler)
 app.add_handler(reply_conv_handler)
 app.add_handler(download_conv_handler)
 app.add_handler(notation_conv_handler)
+app.add_handler(organist_roster_conv_handler)
 app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
 
 # Register the callback handler for 'Show all dates' button in /last

@@ -3149,3 +3149,172 @@ def get_vocabulary_categories():
         "Convention Vocabulary": Convention_Vocabulary,
     }
 
+
+# ========================================
+# ORGANIST ROSTER CONVERSATION HANDLER
+# ========================================
+
+# States for organist roster conversation
+ORGANIST_SELECTION = range(1)
+
+async def organist_roster_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start the organist roster command - show list of organists to choose from"""
+    from data.organist_roster import get_unique_organists, get_unassigned_songs, get_roster_summary
+    
+    user = update.effective_user
+    user_logger.info(f"User {user.id} ({user.first_name}) started /organist command")
+    
+    # Get organist list
+    organists = get_unique_organists()
+    summary = get_roster_summary()
+    
+    if not organists and summary['unassigned_songs'] == 0:
+        await update.message.reply_text(
+            "❌ Could not load organist roster data.\n\n"
+            "Please check:\n"
+            "• ORGANIST_ROSTER_SHEET_ID is set in secrets\n"
+            "• Sheet contains 'Order of Songs' tab\n"
+            "• Required columns exist: 'Song/ Responses', 'Name of The Organist'"
+        )
+        return ConversationHandler.END
+    
+    # Create keyboard with organists + "Unassigned Songs" option
+    keyboard = []
+    
+    # Add organists (2 per row)
+    for i in range(0, len(organists), 2):
+        row = [organists[i]]
+        if i + 1 < len(organists):
+            row.append(organists[i + 1])
+        keyboard.append(row)
+    
+    # Add "Unassigned Songs" and "Cancel" buttons
+    keyboard.append(["🎹 Unassigned Songs"])
+    keyboard.append(["❌ Cancel"])
+    
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    
+    # Create summary message
+    message = (
+        "🎶 *Organist Roster*\n\n"
+        f"📊 *Summary:*\n"
+        f"• Total Songs: {summary['total_songs']}\n"
+        f"• Assigned: {summary['assigned_songs']}\n"
+        f"• Unassigned: {summary['unassigned_songs']}\n"
+        f"• Total Organists: {summary['total_organists']}\n\n"
+        f"👤 Select an organist to see their assigned songs:"
+    )
+    
+    await update.message.reply_text(
+        message,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    return ORGANIST_SELECTION
+
+async def organist_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle organist selection and display their songs"""
+    from data.organist_roster import get_songs_by_organist, get_unassigned_songs
+    
+    user = update.effective_user
+    selection = update.message.text
+    
+    if selection == "❌ Cancel":
+        await update.message.reply_text(
+            "Operation cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Handle unassigned songs
+    if selection == "🎹 Unassigned Songs":
+        songs = get_unassigned_songs()
+        
+        if not songs:
+            await update.message.reply_text(
+                "✅ Great! All songs have been assigned to organists!",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return ConversationHandler.END
+        
+        # Format songs list
+        songs_text = "\n".join([f"{i+1}. {song}" for i, song in enumerate(songs)])
+        
+        message = (
+            f"🎹 *Unassigned Songs* ({len(songs)} total)\n\n"
+            f"{songs_text}"
+        )
+        
+        # Split message if too long
+        if len(message) > 4000:
+            await update.message.reply_text(
+                f"🎹 *Unassigned Songs* ({len(songs)} total)\n\n",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=ReplyKeyboardRemove()
+            )
+            # Send songs in chunks
+            chunk_size = 30
+            for i in range(0, len(songs), chunk_size):
+                chunk = songs[i:i+chunk_size]
+                chunk_text = "\n".join([f"{i+j+1}. {song}" for j, song in enumerate(chunk)])
+                await update.message.reply_text(chunk_text)
+        else:
+            await update.message.reply_text(
+                message,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=ReplyKeyboardRemove()
+            )
+        
+        user_logger.info(f"User {user.id} viewed unassigned songs ({len(songs)} songs)")
+        return ConversationHandler.END
+    
+    # Handle specific organist selection
+    organist_name = selection
+    songs = get_songs_by_organist(organist_name)
+    
+    if not songs:
+        await update.message.reply_text(
+            f"No songs found for {organist_name}.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Format songs list
+    songs_text = "\n".join([f"{i+1}. {song}" for i, song in enumerate(songs)])
+    
+    message = (
+        f"🎵 *Songs for {organist_name}* ({len(songs)} total)\n\n"
+        f"{songs_text}"
+    )
+    
+    # Split message if too long
+    if len(message) > 4000:
+        await update.message.reply_text(
+            f"🎵 *Songs for {organist_name}* ({len(songs)} total)\n\n",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardRemove()
+        )
+        # Send songs in chunks
+        chunk_size = 30
+        for i in range(0, len(songs), chunk_size):
+            chunk = songs[i:i+chunk_size]
+            chunk_text = "\n".join([f"{i+j+1}. {song}" for j, song in enumerate(chunk)])
+            await update.message.reply_text(chunk_text)
+    else:
+        await update.message.reply_text(
+            message,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardRemove()
+        )
+    
+    user_logger.info(f"User {user.id} viewed songs for {organist_name} ({len(songs)} songs)")
+    return ConversationHandler.END
+
+async def cancel_organist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel the organist roster conversation"""
+    await update.message.reply_text(
+        "Operation cancelled.",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
