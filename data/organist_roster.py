@@ -220,24 +220,29 @@ def get_full_roster_table():
 def get_next_sunday():
     """
     Get the next Sunday date. If today is Sunday, return today.
-    Uses local system time (same as the bot's runtime environment).
+    Uses IST (Indian Standard Time, UTC+5:30) for calculating the current date.
     
     Returns:
-        date: The next Sunday date
+        date: The next Sunday date in standard date format (for database lookup)
     """
-    # Use local system date (same as what the bot uses)
-    today = date.today()
+    # Get current time in IST (UTC+5:30)
+    ist_offset = timezone(timedelta(hours=5, minutes=30))
+    ist_now = datetime.now(ist_offset)
+    today = ist_now.date()
+    
+    user_logger.info(f"IST now: {ist_now.strftime('%Y-%m-%d %H:%M:%S')}, Today: {today.strftime('%d/%m/%Y')} ({today.strftime('%A')})")
     
     # Monday = 0, Sunday = 6
-    days_ahead = 6 - today.weekday()
-    if days_ahead < 0:  # Today is Sunday
-        days_ahead = 0
-    elif days_ahead == 0 and today.weekday() != 6:  # Not Sunday
-        days_ahead = 7
-    
-    next_sunday = today + timedelta(days=days_ahead)
-    
-    user_logger.info(f"Local date: {today.strftime('%Y-%m-%d')}, Next Sunday: {next_sunday.strftime('%d/%m/%Y')}")
+    if today.weekday() == 6:  # Today is Sunday
+        next_sunday = today
+        user_logger.info(f"Today is Sunday, using today: {next_sunday.strftime('%d/%m/%Y')}")
+    else:
+        # Calculate days until next Sunday
+        days_ahead = (6 - today.weekday()) % 7
+        if days_ahead == 0:
+            days_ahead = 7
+        next_sunday = today + timedelta(days=days_ahead)
+        user_logger.info(f"Next Sunday is {days_ahead} days away: {next_sunday.strftime('%d/%m/%Y')}")
     
     return next_sunday
 
@@ -295,7 +300,7 @@ def get_songs_for_date(target_date):
         songs = []
         
         # Import IndexFinder to get full song names
-        from data.vocabulary import IndexFinder
+        from data.datasets import IndexFinder
         
         for _, row in matching_rows.iterrows():
             for col in song_columns:
