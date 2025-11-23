@@ -312,6 +312,8 @@ def update_songs_for_sunday():
         # Get songs for that date
         songs = get_songs_for_date(sunday_date)
         
+        user_logger.info(f"Retrieved {len(songs)} songs for {sunday_date.strftime('%d/%m/%Y')}")
+        
         if not songs:
             return False, f"No songs found for {sunday_date.strftime('%d/%m/%Y')}", sunday_date
         
@@ -342,16 +344,22 @@ def update_songs_for_sunday():
             file_data.seek(0)
             all_sheets[sheet_name] = pd.read_excel(file_data, sheet_name=sheet_name)
         
+        user_logger.info(f"Available sheets: {list(all_sheets.keys())}")
+        
         df_sunday = all_sheets.get('Songs for Sunday')
         
         if df_sunday is None:
-            return False, "'Songs for Sunday' sheet not found", sunday_date
+            available_sheets = ', '.join(excel_file.sheet_names)
+            return False, f"'Songs for Sunday' sheet not found. Available: {available_sheets}", sunday_date
         
         # Ensure required columns exist
         if 'Songs' not in df_sunday.columns:
             df_sunday['Songs'] = ''
         if 'Organist' not in df_sunday.columns:
             df_sunday['Organist'] = ''
+        
+        user_logger.info(f"Current 'Songs for Sunday' has {len(df_sunday)} rows")
+        user_logger.info(f"Columns: {df_sunday.columns.tolist()}")
         
         # Create new DataFrame with songs
         new_df = pd.DataFrame()
