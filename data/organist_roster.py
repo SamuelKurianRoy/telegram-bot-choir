@@ -8,6 +8,8 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from data.drive import get_drive_service
 from config import get_config
 from logging_utils import setup_loggers
+from openpyxl import load_workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 bot_logger, user_logger = setup_loggers()
 
@@ -331,42 +333,33 @@ def update_songs_for_sunday():
             _, done = downloader.next_chunk()
         file_data.seek(0)
         
-        # Read all sheets
-        excel_file = pd.ExcelFile(file_data)
+        # Load workbook with openpyxl to preserve formulas in other sheets
+        wb = load_workbook(file_data)
         
         # Check if "Songs for Sunday" sheet exists
-        if "Songs for Sunday" not in excel_file.sheet_names:
-            return False, "'Songs for Sunday' sheet not found", sunday_date
-        
-        # Read all sheets into memory first
-        all_sheets = {}
-        for sheet_name in excel_file.sheet_names:
-            file_data.seek(0)
-            all_sheets[sheet_name] = pd.read_excel(file_data, sheet_name=sheet_name)
-        
-        user_logger.info(f"Available sheets: {list(all_sheets.keys())}")
-        
-        df_sunday = all_sheets.get('Songs for Sunday')
-        
-        if df_sunday is None:
-            available_sheets = ', '.join(excel_file.sheet_names)
+        if "Songs for Sunday" not in wb.sheetnames:
+            available_sheets = ', '.join(wb.sheetnames)
             return False, f"'Songs for Sunday' sheet not found. Available: {available_sheets}", sunday_date
         
-        # Ensure required columns exist
-        if 'Songs' not in df_sunday.columns:
-            df_sunday['Songs'] = ''
-        if 'Organist' not in df_sunday.columns:
-            df_sunday['Organist'] = ''
+        user_logger.info(f"Available sheets: {wb.sheetnames}")
         
-        user_logger.info(f"Current 'Songs for Sunday' has {len(df_sunday)} rows")
-        user_logger.info(f"Columns: {df_sunday.columns.tolist()}")
+        # Get the target sheet
+        ws = wb["Songs for Sunday"]
         
-        # Create new DataFrame with songs
-        new_df = pd.DataFrame()
-        new_df['Songs'] = songs
+        # Read current data to preserve organists
+        current_data = []
+        for row in ws.iter_rows(min_row=2, values_only=True):  # Skip header
+            current_data.append(row)
         
-        # Preserve organist column - pad or truncate as needed
-        existing_organists = df_sunday['Organist'].tolist() if len(df_sunday) > 0 else []
+        user_logger.info(f"Current 'Songs for Sunday' has {len(current_data)} rows")
+        
+        # Get existing organists (column B, index 1)
+        existing_organists = []
+        for row in current_data:
+            if len(row) > 1:
+                existing_organists.append(row[1] if row[1] is not None else '')
+            else:
+                existing_organists.append('')
         
         # Match the number of organists to the number of songs
         if len(existing_organists) < len(songs):
@@ -376,18 +369,17 @@ def update_songs_for_sunday():
             # Truncate to match songs
             organists = existing_organists[:len(songs)]
         
-        new_df['Organist'] = organists
+        # Clear the sheet data (keep header row)
+        ws.delete_rows(2, ws.max_row)
         
-        # Update the sheet in our dictionary
-        all_sheets['Songs for Sunday'] = new_df
+        # Write new data
+        for i, (song, organist) in enumerate(zip(songs, organists), start=2):
+            ws.cell(row=i, column=1, value=song)  # Column A: Songs
+            ws.cell(row=i, column=2, value=organist)  # Column B: Organist
         
-        # Now write back to Excel
+        # Save to BytesIO
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            # Write all sheets in their original order
-            for sheet_name in excel_file.sheet_names:
-                all_sheets[sheet_name].to_excel(writer, sheet_name=sheet_name, index=False)
-        
+        wb.save(output)
         output.seek(0)
         
         # Upload the file back
