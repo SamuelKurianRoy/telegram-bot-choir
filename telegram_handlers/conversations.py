@@ -3367,3 +3367,36 @@ async def cancel_organist(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         reply_markup=ReplyKeyboardRemove()
     )
     return ConversationHandler.END
+
+async def update_sunday_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Update the Songs for Sunday sheet with songs from today (if Sunday) or next Sunday"""
+    from data.organist_roster import update_songs_for_sunday
+    
+    user = update.effective_user
+    user_logger.info(f"User {user.id} initiated Sunday songs update")
+    
+    # Send "updating..." message
+    status_msg = await update.message.reply_text("⏳ Updating Songs for Sunday sheet...")
+    
+    try:
+        # Call the update function
+        success, message, date_used = update_songs_for_sunday()
+        
+        if success:
+            response = (
+                f"✅ *Songs Updated Successfully!*\n\n"
+                f"📅 Date: {date_used.strftime('%d/%m/%Y')}\n"
+                f"{message}"
+            )
+            user_logger.info(f"User {user.id} successfully updated Sunday songs for {date_used}")
+        else:
+            response = f"❌ *Update Failed*\n\n{message}"
+            user_logger.warning(f"User {user.id} failed to update Sunday songs: {message}")
+        
+        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN)
+    
+    except Exception as e:
+        error_msg = f"Error updating Sunday songs: {str(e)[:100]}"
+        user_logger.error(f"User {user.id} encountered error: {error_msg}")
+        await status_msg.edit_text(f"❌ {error_msg}")
+

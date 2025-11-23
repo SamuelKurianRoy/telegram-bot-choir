@@ -35,7 +35,8 @@ try:
         start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback, handle_song_code,
         bible_game_start, bible_game_language_handler, bible_game_difficulty_handler, bible_game_question_handler, BIBLE_GAME_LANGUAGE, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION,
         initialize_theme_components,
-        organist_roster_start, organist_selection, cancel_organist, ORGANIST_SELECTION
+        organist_roster_start, organist_selection, cancel_organist, ORGANIST_SELECTION,
+        update_sunday_songs
     )
     from telegram_handlers.preferences import (
         setting_start, setting_menu_handler, bible_language_handler, game_language_handler,
@@ -277,6 +278,7 @@ app.add_handler(reply_conv_handler)
 app.add_handler(download_conv_handler)
 app.add_handler(notation_conv_handler)
 app.add_handler(organist_roster_conv_handler)
+app.add_handler(CommandHandler("updatesunday", update_sunday_songs))
 app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
 
 # Register the callback handler for 'Show all dates' button in /last

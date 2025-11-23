@@ -3,7 +3,8 @@
 
 import pandas as pd
 import io
-from googleapiclient.http import MediaIoBaseDownload
+from datetime import datetime, date, timedelta
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from data.drive import get_drive_service
 from config import get_config
 from logging_utils import setup_loggers
@@ -213,3 +214,181 @@ def get_full_roster_table():
     except Exception as e:
         user_logger.error(f"Error getting full table: {str(e)[:50]}")
         return []
+
+def get_next_sunday():
+    """
+    Get the next Sunday date. If today is Sunday, return today.
+    
+    Returns:
+        date: The next Sunday date
+    """
+    today = date.today()
+    # Monday = 0, Sunday = 6
+    days_ahead = 6 - today.weekday()
+    if days_ahead < 0:  # Today is Sunday
+        days_ahead = 0
+    elif days_ahead == 0 and today.weekday() != 6:  # Not Sunday
+        days_ahead = 7
+    
+    next_sunday = today + timedelta(days=days_ahead)
+    return next_sunday
+
+def get_songs_for_date(target_date):
+    """
+    Get songs for a specific date from the main database.
+    Uses the same logic as the /date command.
+    
+    Args:
+        target_date: date object
+        
+    Returns:
+        list: List of songs for that date (or next available date)
+    """
+    try:
+        from data.datasets import get_all_data
+        
+        data = get_all_data()
+        df = data["df"]
+        
+        if df is None or df.empty:
+            user_logger.error("Main database is empty")
+            return []
+        
+        # Ensure 'Date' column is datetime.date
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.date
+        df.dropna(subset=['Date'], inplace=True)
+        
+        # Sort dates
+        available_dates = sorted(df['Date'].unique())
+        
+        # Find songs on the target date
+        matching_rows = df[df['Date'] == target_date]
+        
+        if matching_rows.empty:
+            # Get the next available date with songs
+            next_dates = [d for d in available_dates if d > target_date]
+            if not next_dates:
+                user_logger.warning(f"No songs found on {target_date} or any later date")
+                return []
+            next_date = next_dates[0]
+            matching_rows = df[df['Date'] == next_date]
+            user_logger.info(f"No songs on {target_date}, using next date: {next_date}")
+        
+        # Get song columns
+        song_columns = [col for col in df.columns if col != 'Date']
+        songs = []
+        
+        for _, row in matching_rows.iterrows():
+            for col in song_columns:
+                song = row[col]
+                if pd.notna(song) and str(song).strip() != '':
+                    songs.append(str(song).strip())
+        
+        user_logger.info(f"Retrieved {len(songs)} songs for date")
+        return songs
+    
+    except Exception as e:
+        user_logger.error(f"Error getting songs for date: {str(e)[:100]}")
+        return []
+
+def update_songs_for_sunday():
+    """
+    Update the "Songs for Sunday" sheet with songs from today (if Sunday) or next Sunday.
+    Only updates the "Songs" column, leaves "Organist" column unchanged.
+    
+    Returns:
+        tuple: (success: bool, message: str, date_used: date)
+    """
+    try:
+        config = get_config()
+        roster_sheet_id = config.secrets.get("ORGANIST_ROSTER_SHEET_ID")
+        
+        if not roster_sheet_id:
+            return False, "ORGANIST_ROSTER_SHEET_ID not found in secrets", None
+        
+        # Get next Sunday date
+        sunday_date = get_next_sunday()
+        
+        # Get songs for that date
+        songs = get_songs_for_date(sunday_date)
+        
+        if not songs:
+            return False, f"No songs found for {sunday_date.strftime('%d/%m/%Y')}", sunday_date
+        
+        drive_service = get_drive_service()
+        
+        # Download the current Excel file
+        request = drive_service.files().export_media(
+            fileId=roster_sheet_id,
+            mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        file_data = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_data, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        file_data.seek(0)
+        
+        # Read all sheets
+        excel_file = pd.ExcelFile(file_data)
+        
+        # Check if "Songs for Sunday" sheet exists
+        if "Songs for Sunday" not in excel_file.sheet_names:
+            return False, "'Songs for Sunday' sheet not found", sunday_date
+        
+        # Read the "Songs for Sunday" sheet
+        df_sunday = pd.read_excel(file_data, sheet_name='Songs for Sunday')
+        
+        # Ensure required columns exist
+        if 'Songs' not in df_sunday.columns or 'Organist' not in df_sunday.columns:
+            return False, "Required columns 'Songs' and 'Organist' not found", sunday_date
+        
+        # Create new DataFrame with songs
+        new_df = pd.DataFrame()
+        new_df['Songs'] = songs
+        
+        # Preserve organist column if it has data, otherwise create empty
+        if len(df_sunday) >= len(songs):
+            # Keep existing organists up to the number of songs
+            new_df['Organist'] = df_sunday['Organist'].iloc[:len(songs)].values
+        else:
+            # Not enough organists, pad with empty
+            existing_organists = df_sunday['Organist'].tolist() if len(df_sunday) > 0 else []
+            padded_organists = existing_organists + [''] * (len(songs) - len(existing_organists))
+            new_df['Organist'] = padded_organists
+        
+        # Now write back to Excel
+        # We need to preserve all other sheets
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            # Write all sheets
+            for sheet_name in excel_file.sheet_names:
+                if sheet_name == 'Songs for Sunday':
+                    # Write the updated sheet
+                    new_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                else:
+                    # Write the original sheet
+                    df_temp = pd.read_excel(file_data, sheet_name=sheet_name)
+                    file_data.seek(0)  # Reset pointer
+                    df_temp.to_excel(writer, sheet_name=sheet_name, index=False)
+        
+        output.seek(0)
+        
+        # Upload the file back
+        media = MediaIoBaseUpload(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            resumable=True
+        )
+        
+        drive_service.files().update(
+            fileId=roster_sheet_id,
+            media_body=media
+        ).execute()
+        
+        user_logger.info(f"✅ Updated Songs for Sunday with {len(songs)} songs for {sunday_date.strftime('%d/%m/%Y')}")
+        return True, f"✅ Updated {len(songs)} songs for {sunday_date.strftime('%d/%m/%Y')}", sunday_date
+    
+    except Exception as e:
+        user_logger.error(f"Error updating Sunday songs: {str(e)[:100]}")
+        return False, f"Error: {str(e)[:100]}", None
