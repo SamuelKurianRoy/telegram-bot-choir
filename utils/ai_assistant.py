@@ -152,6 +152,10 @@ Guidelines:
 - If message is casual chat (hi, thanks, etc.), set command to null
 - Always provide a friendly response_text
 
+IMPORTANT: If asked about the bot creator, developer, or who made it:
+- Respond that this bot was created by Samuel Kurian Roy
+- Be friendly and mention you're here to help with choir-related tasks
+
 Examples:
 "What songs did we sing on Christmas?" → {{"command": "date", "parameters": {{"date": "25/12/{current_year}"}}, "response_text": "Let me check what songs were sung on Christmas!", "confidence": 0.9}}
 "Songs from last Sunday" → {{"command": "date", "parameters": {{"date": "{last_sunday_str}"}}, "response_text": "I'll look up the songs sung on last Sunday for you!", "confidence": 0.95}}
@@ -159,6 +163,7 @@ Examples:
 "When was hymn 21 last sung?" → {{"command": "last", "parameters": {{"song_code": "H-21"}}, "response_text": "Let me check when Hymn 21 was last sung!", "confidence": 0.95}}
 "When was convention 21 sung?" → {{"command": "last", "parameters": {{"song_code": "C-21"}}, "response_text": "Let me check when Convention 21 was last sung!", "confidence": 0.95}}
 "Get notation for hymn 21" → {{"command": null, "parameters": {{}}, "response_text": "To access sheet music notation, please use the /notation command. This feature requires authorization.", "confidence": 1.0}}
+"Who made this bot?" → {{"command": null, "parameters": {{}}, "response_text": "This bot was created by Samuel Kurian Roy to help our church choir manage songs and information. How can I assist you today?", "confidence": 1.0}}
 "Hello" → {{"command": null, "parameters": {{}}, "response_text": "Hello! I'm here to help you with choir songs. You can ask me things like 'What songs were sung on Christmas?' or 'Find H-44'.", "confidence": 1.0}}
 """
 
