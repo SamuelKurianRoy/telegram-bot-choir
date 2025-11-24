@@ -26,21 +26,12 @@ def initialize_gemini():
         
         genai.configure(api_key=api_key)
         
-        # List available models to see what's actually available
-        try:
-            available_models = [m.name for m in genai.list_models()]
-            user_logger.info(f"Available Gemini models: {available_models[:5]}")
-        except:
-            pass
-        
         # Try different model names in order of preference
+        # Based on test_gemini_api.py verification - only using confirmed working models
         model_names = [
-            'gemini-1.5-flash-latest',
-            'gemini-1.5-flash',
-            'gemini-1.5-pro-latest',
-            'gemini-pro',
-            'models/gemini-1.5-flash-latest',
-            'models/gemini-1.5-flash',
+            'models/gemini-2.5-flash',  # Primary - fast and reliable (confirmed working)
+            'models/gemini-2.5-pro',    # Fallback - more capable
+            'models/gemini-2.0-flash',  # Alternative - if 2.5 unavailable
         ]
         
         for model_name in model_names:
