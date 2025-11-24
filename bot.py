@@ -22,7 +22,8 @@ try:
         admin_view_authorized_users, admin_add_authorized_user, admin_remove_authorized_user,
         admin_reply_start, admin_reply_select_user, admin_reply_send_message, REPLY_SELECT_USER, REPLY_ENTER_MESSAGE, admin_reply_legacy,
         admin_disable_feature, admin_enable_feature, admin_feature_status,
-        admin_restrict_access, admin_unrestrict_access, admin_debug_features, admin_add_missing_features, admin_restore_all_features
+        admin_restrict_access, admin_unrestrict_access, admin_debug_features, admin_add_missing_features, admin_restore_all_features,
+        ai_message_handler
     )
     from telegram_handlers.conversations import (
         SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT,
@@ -281,6 +282,10 @@ app.add_handler(organist_roster_conv_handler)
 app.add_handler(CommandHandler("updatesunday", update_sunday_songs))
 app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
 
+# AI Message Handler - Must be LAST to catch all unhandled text messages
+# This allows AI to interpret natural language queries
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_message_handler))
+
 # Register the callback handler for 'Show all dates' button in /last
 app.add_handler(CallbackQueryHandler(last_show_all_dates_callback, pattern="^showalldates:"))
 
@@ -324,6 +329,17 @@ def run_bot():
     # Initialize heavy theme components during startup
     print("🚀 Initializing theme components...")
     initialize_theme_components()
+    
+    # Initialize AI assistant
+    print("🤖 Initializing AI assistant (Gemini)...")
+    try:
+        from utils.ai_assistant import initialize_gemini
+        if initialize_gemini():
+            print("✅ AI assistant ready")
+        else:
+            print("⚠️ AI assistant disabled (no API key or error)")
+    except Exception as e:
+        print(f"⚠️ Could not initialize AI: {str(e)[:100]}")
     
     # Load organist roster data at startup
     print("📋 Loading organist roster data...")

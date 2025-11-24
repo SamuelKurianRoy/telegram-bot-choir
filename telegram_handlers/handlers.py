@@ -2662,3 +2662,148 @@ async def admin_restore_all_features(update: Update, context: CallbackContext) -
     except Exception as e:
         await update.message.reply_text(f"❌ Error restoring features: {str(e)}")
         user_logger.error(f"Error in admin_restore_all_features: {e}")
+
+# === AI ASSISTANT HANDLER ===
+
+async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handle natural language messages using AI to determine intent and execute commands.
+    This is called for messages that don't start with / and aren't song codes.
+    """
+    from utils.ai_assistant import parse_user_intent, should_use_ai
+    
+    user = update.effective_user
+    message_text = update.message.text.strip()
+    
+    # Check if this message should be processed by AI
+    if not should_use_ai(message_text):
+        # Let other handlers deal with it
+        return
+    
+    user_logger.info(f"AI processing message from {user.id}: {message_text[:50]}")
+    
+    # Send "thinking" indicator
+    await update.message.chat.send_action("typing")
+    
+    try:
+        # Parse user intent with Gemini
+        intent = parse_user_intent(message_text)
+        
+        command = intent.get("command")
+        parameters = intent.get("parameters", {})
+        response_text = intent.get("response_text", "")
+        confidence = intent.get("confidence", 0.0)
+        
+        user_logger.info(f"AI Intent: command={command}, confidence={confidence}")
+        
+        # Send AI response first
+        if response_text:
+            await update.message.reply_text(response_text)
+        
+        # If no command or low confidence, just give conversational response
+        if command is None or confidence < 0.5:
+            if not response_text:
+                await update.message.reply_text(
+                    "I'm not sure what you're looking for. Try asking something like:\n"
+                    "• 'What songs were sung on Christmas?'\n"
+                    "• 'Find H-44'\n"
+                    "• 'Who is the organist?'\n\n"
+                    "Or use /help to see all commands!"
+                )
+            return
+        
+        # Execute the appropriate command based on AI interpretation
+        await execute_ai_command(update, context, command, parameters)
+        
+    except Exception as e:
+        user_logger.error(f"Error in AI handler: {str(e)[:200]}")
+        await update.message.reply_text(
+            "I had trouble understanding that. You can try:\n"
+            "• Using a direct command like /help\n"
+            "• Rephrasing your question\n"
+            "• Asking something more specific"
+        )
+
+async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE, command: str, parameters: dict) -> None:
+    """Execute the bot command determined by AI"""
+    
+    try:
+        if command == "date":
+            # Extract date and call date_input handler
+            date_str = parameters.get("date", "")
+            if date_str:
+                # Create a mock update with the date text
+                update.message.text = date_str
+                context.user_data['expecting_date'] = True
+                await date_input(update, context)
+        
+        elif command == "search":
+            query = parameters.get("query", "")
+            await update.message.reply_text(
+                f"To search for '{query}', please use the /search command and follow the prompts."
+            )
+        
+        elif command == "organist":
+            # Import and call organist handler
+            from telegram_handlers.conversations import organist_roster_start
+            await organist_roster_start(update, context)
+        
+        elif command == "last":
+            song_code = parameters.get("song_code", "")
+            if song_code:
+                update.message.text = song_code
+                await last_sung_input(update, context)
+            else:
+                await update.message.reply_text("Please use /last followed by a song code (e.g., /last H-44)")
+        
+        elif command == "check":
+            song_code = parameters.get("song_code", "")
+            if song_code:
+                update.message.text = song_code
+                await check_song_input(update, context)
+            else:
+                await update.message.reply_text("Please use /check followed by a song code (e.g., /check H-44)")
+        
+        elif command == "tune":
+            song_code = parameters.get("song_code", "")
+            if song_code:
+                await update.message.reply_text(f"To find the tune for {song_code}, please use /tune and follow the prompts.")
+            else:
+                await update.message.reply_text("Please use /tune to find tune information for songs.")
+        
+        elif command == "theme":
+            await update.message.reply_text("To search by theme, please use the /theme command and follow the interactive prompts.")
+        
+        elif command == "bible":
+            reference = parameters.get("reference", "")
+            if reference:
+                update.message.text = reference
+                await bible_input_handler(update, context)
+            else:
+                await update.message.reply_text("Please use /bible followed by a verse reference (e.g., /bible John 3:16)")
+        
+        elif command == "games":
+            from telegram_handlers.conversations import bible_game_start
+            await bible_game_start(update, context)
+        
+        elif command == "download":
+            await update.message.reply_text("To download audio, please use /download and paste a YouTube or Spotify link.")
+        
+        elif command == "help":
+            await help_command(update, context)
+        
+        elif command == "updatesunday":
+            from telegram_handlers.conversations import update_sunday_songs
+            await update_sunday_songs(update, context)
+        
+        else:
+            await update.message.reply_text(
+                f"I understood you want to use '{command}', but I'm not sure how to help with that yet. "
+                f"Try using /{command} directly or check /help for available commands."
+            )
+    
+    except Exception as e:
+        user_logger.error(f"Error executing AI command '{command}': {str(e)[:200]}")
+        await update.message.reply_text(
+            f"I had trouble executing that command. Please try using /{command} directly."
+        )
