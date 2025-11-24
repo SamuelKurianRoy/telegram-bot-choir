@@ -25,13 +25,30 @@ def initialize_gemini():
             return False
         
         genai.configure(api_key=api_key)
-        _gemini_model = genai.GenerativeModel('gemini-1.5-flash')  # Use faster flash model
+        
+        # Use the stable model name
+        _gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        
+        # Test the model with a simple query
+        test_response = _gemini_model.generate_content("Say 'OK' if you are working.")
+        user_logger.info(f"Gemini test response: {test_response.text[:50]}")
+        
         user_logger.info("✅ Gemini AI initialized successfully")
         return True
         
     except Exception as e:
-        user_logger.error(f"Failed to initialize Gemini: {str(e)[:100]}")
-        return False
+        user_logger.error(f"Failed to initialize Gemini: {str(e)[:200]}")
+        user_logger.error(f"Trying alternative model...")
+        
+        # Fallback to older stable model
+        try:
+            _gemini_model = genai.GenerativeModel('models/gemini-1.5-flash')
+            test_response = _gemini_model.generate_content("Say 'OK' if you are working.")
+            user_logger.info(f"✅ Gemini AI initialized with fallback model")
+            return True
+        except Exception as e2:
+            user_logger.error(f"Fallback also failed: {str(e2)[:200]}")
+            return False
 
 def parse_user_intent(user_message: str) -> dict:
     """
