@@ -26,29 +26,47 @@ def initialize_gemini():
         
         genai.configure(api_key=api_key)
         
-        # Use the stable model name
-        _gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        # List available models to see what's actually available
+        try:
+            available_models = [m.name for m in genai.list_models()]
+            user_logger.info(f"Available Gemini models: {available_models[:5]}")
+        except:
+            pass
         
-        # Test the model with a simple query
-        test_response = _gemini_model.generate_content("Say 'OK' if you are working.")
-        user_logger.info(f"Gemini test response: {test_response.text[:50]}")
+        # Try different model names in order of preference
+        model_names = [
+            'gemini-1.5-flash-latest',
+            'gemini-1.5-flash',
+            'gemini-1.5-pro-latest',
+            'gemini-pro',
+            'models/gemini-1.5-flash-latest',
+            'models/gemini-1.5-flash',
+        ]
         
-        user_logger.info("✅ Gemini AI initialized successfully")
-        return True
+        for model_name in model_names:
+            try:
+                user_logger.info(f"Trying model: {model_name}")
+                _gemini_model = genai.GenerativeModel(model_name)
+                
+                # Test the model
+                test_response = _gemini_model.generate_content("Say OK")
+                user_logger.info(f"Model {model_name} works! Test: {test_response.text[:20]}")
+                user_logger.info(f"✅ Gemini AI initialized with {model_name}")
+                return True
+                
+            except Exception as model_error:
+                user_logger.warning(f"Model {model_name} failed: {str(model_error)[:100]}")
+                continue
+        
+        # If we get here, no model worked
+        user_logger.error("All Gemini models failed to initialize")
+        return False
         
     except Exception as e:
         user_logger.error(f"Failed to initialize Gemini: {str(e)[:200]}")
-        user_logger.error(f"Trying alternative model...")
-        
-        # Fallback to older stable model
-        try:
-            _gemini_model = genai.GenerativeModel('models/gemini-1.5-flash')
-            test_response = _gemini_model.generate_content("Say 'OK' if you are working.")
-            user_logger.info(f"✅ Gemini AI initialized with fallback model")
-            return True
-        except Exception as e2:
-            user_logger.error(f"Fallback also failed: {str(e2)[:200]}")
-            return False
+        import traceback
+        user_logger.error(f"Init traceback: {traceback.format_exc()[:500]}")
+        return False
 
 def parse_user_intent(user_message: str) -> dict:
     """
