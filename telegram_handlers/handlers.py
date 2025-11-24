@@ -689,7 +689,13 @@ async def date_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def date_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    input_date = update.message.text.strip()
+    
+    # Check if AI provided input
+    if 'ai_date_input' in context.user_data:
+        input_date = context.user_data.pop('ai_date_input').strip()
+    else:
+        input_date = update.message.text.strip()
+    
     result = get_songs_by_date(input_date)
 
     if isinstance(result, dict):
@@ -756,7 +762,12 @@ async def check_song_start(update: Update, context: CallbackContext) -> int:
     return ENTER_SONG
 
 async def check_song_input(update: Update, context: CallbackContext) -> int:
-    user_input = update.message.text.strip().upper()
+    # Check if AI provided input
+    if 'ai_song_input' in context.user_data:
+        user_input = context.user_data.pop('ai_song_input').strip().upper()
+    else:
+        user_input = update.message.text.strip().upper()
+    
     user_input = standardize_hlc_value(user_input)
 
     # Basic format check
@@ -851,7 +862,12 @@ async def last_sung_start(update: Update, context: CallbackContext) -> int:
  
  # Handle song input
 async def last_sung_input(update: Update, context: CallbackContext) -> int:
-    user_input = update.message.text.strip().upper()
+    # Check if AI provided input
+    if 'ai_song_input' in context.user_data:
+        user_input = context.user_data.pop('ai_song_input').strip().upper()
+    else:
+        user_input = update.message.text.strip().upper()
+    
     user_input = standardize_hlc_value(user_input)
 
     if not user_input or '-' not in user_input:
@@ -1150,7 +1166,13 @@ async def bible_input_handler(update: Update, context: CallbackContext) -> int:
     """Handle book, chapter, and optional language input"""
     try:
         user = update.effective_user
-        user_input = update.message.text.strip()
+        
+        # Check if AI provided input
+        if 'ai_bible_input' in context.user_data:
+            user_input = context.user_data.pop('ai_bible_input').strip()
+        else:
+            user_input = update.message.text.strip()
+        
         parts = user_input.split()
         # Get user's preferred Bible language
         language = get_user_bible_language(user.id)  # Use user's preference
@@ -2732,9 +2754,9 @@ async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
             # Extract date and call date_input handler
             date_str = parameters.get("date", "")
             if date_str:
-                # Create a mock update with the date text
-                update.message.text = date_str
+                # Store in context and call handler
                 context.user_data['expecting_date'] = True
+                context.user_data['ai_date_input'] = date_str
                 await date_input(update, context)
         
         elif command == "search":
@@ -2751,7 +2773,8 @@ async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
         elif command == "last":
             song_code = parameters.get("song_code", "")
             if song_code:
-                update.message.text = song_code
+                # Store in context and call handler
+                context.user_data['ai_song_input'] = song_code
                 await last_sung_input(update, context)
             else:
                 await update.message.reply_text("Please use /last followed by a song code (e.g., /last H-44)")
@@ -2759,7 +2782,8 @@ async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
         elif command == "check":
             song_code = parameters.get("song_code", "")
             if song_code:
-                update.message.text = song_code
+                # Store in context and call handler
+                context.user_data['ai_song_input'] = song_code
                 await check_song_input(update, context)
             else:
                 await update.message.reply_text("Please use /check followed by a song code (e.g., /check H-44)")
@@ -2777,7 +2801,8 @@ async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
         elif command == "bible":
             reference = parameters.get("reference", "")
             if reference:
-                update.message.text = reference
+                # Store in context and call handler
+                context.user_data['ai_bible_input'] = reference
                 await bible_input_handler(update, context)
             else:
                 await update.message.reply_text("Please use /bible followed by a verse reference (e.g., /bible John 3:16)")
