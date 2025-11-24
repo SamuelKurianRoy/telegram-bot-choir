@@ -25,7 +25,7 @@ def initialize_gemini():
             return False
         
         genai.configure(api_key=api_key)
-        _gemini_model = genai.GenerativeModel('gemini-pro')
+        _gemini_model = genai.GenerativeModel('gemini-1.5-flash')  # Use faster flash model
         user_logger.info("✅ Gemini AI initialized successfully")
         return True
         
@@ -132,6 +132,8 @@ Examples:
             
     except Exception as e:
         user_logger.error(f"Error parsing intent with Gemini: {str(e)[:200]}")
+        import traceback
+        user_logger.error(f"Full traceback: {traceback.format_exc()[:500]}")
         return {
             "command": None,
             "parameters": {},
