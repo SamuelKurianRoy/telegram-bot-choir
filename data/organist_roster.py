@@ -609,13 +609,28 @@ def get_songs_for_assignment():
         for song in df['Songs']:
             if pd.notna(song):
                 song_str = str(song).strip()
-                # Check if it's a valid song code format (H-XX, L-XX, C-XX)
-                if song_str and '-' in song_str:
-                    parts = song_str.split('-')
-                    if len(parts) == 2 and parts[0].upper() in ['H', 'L', 'C'] and parts[1].strip():
-                        songs.append(song_str.upper())
+                if not song_str:
+                    continue
+                
+                # Extract just the song code part (before the " - " separator if present)
+                # Format can be: "H-44" or "H-44 - Song Name"
+                if ' - ' in song_str:
+                    # Has full name, extract just the code
+                    song_code = song_str.split(' - ')[0].strip()
+                else:
+                    # Just the code
+                    song_code = song_str
+                
+                # Validate it's a proper song code (H-XX, L-XX, C-XX)
+                if '-' in song_code:
+                    parts = song_code.split('-', 1)  # Split only on first dash
+                    if len(parts) == 2 and parts[0].upper() in ['H', 'L', 'C'] and parts[1].strip().isdigit():
+                        songs.append(song_code.upper())
         
         if not songs:
+            # Log what we found for debugging
+            sample_songs = [str(s)[:50] for s in df['Songs'].head(5) if pd.notna(s)]
+            user_logger.warning(f"No valid song codes found. Sample entries: {sample_songs}")
             return False, [], "No valid song codes found in 'Songs for Sunday' sheet"
         
         return True, songs, f"Found {len(songs)} songs"
