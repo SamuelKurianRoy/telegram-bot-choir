@@ -532,7 +532,12 @@ def assign_song_to_organist(song_code: str, organist_name: str):
                 break
         
         if not song_found:
-            return False, f"Song '{song_code}' not found in the roster sheet"
+            user_logger.warning(f"Song '{song_code}' not found in 'Order of Songs' sheet")
+            return False, (
+                f"Song '{song_code}' is not in the 'Order of Songs' roster yet.\n\n"
+                f"Please add it to the 'Order of Songs' sheet manually first, "
+                f"then you can assign an organist to it."
+            )
         
         # Update the organist assignment
         ws.cell(row=song_row, column=organist_col, value=organist_name)
