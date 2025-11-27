@@ -3157,6 +3157,9 @@ def get_vocabulary_categories():
 # States for organist roster conversation
 ORGANIST_SELECTION = range(1)
 
+# Assign songs states
+ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT = range(2)
+
 async def organist_roster_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start the organist roster command - show list of organists to choose from"""
     from data.organist_roster import get_unique_organists, get_unassigned_songs, get_roster_summary
@@ -3399,4 +3402,295 @@ async def update_sunday_songs(update: Update, context: ContextTypes.DEFAULT_TYPE
         error_msg = f"Error updating Sunday songs: {str(e)[:100]}"
         user_logger.error(f"User {user.id} encountered error: {error_msg}")
         await status_msg.edit_text(f"❌ {error_msg}")
+
+
+# ==========================================
+# ASSIGN SONGS TO ORGANISTS
+# ==========================================
+
+async def assign_songs_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start the assign songs conversation - show songs from 'Songs for Sunday'"""
+    from data.organist_roster import get_songs_for_assignment
+    
+    user = update.effective_user
+    user_logger.info(f"User {user.id} ({user.first_name}) started /assignsongs command")
+    
+    # Check authorization
+    if not await is_authorized(update):
+        return ConversationHandler.END
+    
+    # Get songs from 'Songs for Sunday' sheet
+    success, songs, message = get_songs_for_assignment()
+    
+    if not success:
+        await update.message.reply_text(
+            f"❌ Could not load songs for assignment.\n\n{message}\n\n"
+            "Please ensure:\n"
+            "• Songs for Sunday sheet has been updated with /updatesunday\n"
+            "• Sheet contains 'Songs' column with valid song codes"
+        )
+        return ConversationHandler.END
+    
+    if not songs:
+        await update.message.reply_text(
+            "❌ No songs found in 'Songs for Sunday' sheet.\n\n"
+            "Please run /updatesunday first to populate the songs."
+        )
+        return ConversationHandler.END
+    
+    # Store songs in context
+    context.user_data['songs_for_assignment'] = songs
+    
+    # Create keyboard with songs (2 per row)
+    keyboard = []
+    for i in range(0, len(songs), 2):
+        row = [songs[i]]
+        if i + 1 < len(songs):
+            row.append(songs[i + 1])
+        keyboard.append(row)
+    
+    keyboard.append(["❌ Cancel"])
+    
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    
+    message = (
+        "🎵 *Assign Songs to Organists*\n\n"
+        f"📋 Found {len(songs)} songs for this Sunday:\n\n"
+        "👉 Select a song to assign to an organist:"
+    )
+    
+    await update.message.reply_text(
+        message,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    return ASSIGN_SONG_SELECT
+
+
+async def assign_song_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle song selection - show organist list"""
+    from data.organist_roster import get_unique_organists
+    
+    selected_song = update.message.text.strip()
+    
+    # Handle "Assign More Songs" choice
+    if selected_song == "🎵 Assign More Songs":
+        # Just continue to song selection - songs already loaded in context
+        songs = context.user_data.get('songs_for_assignment', [])
+        keyboard = []
+        for i in range(0, len(songs), 2):
+            row = [songs[i]]
+            if i + 1 < len(songs):
+                row.append(songs[i + 1])
+            keyboard.append(row)
+        keyboard.append(["❌ Cancel"])
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            "👉 Select another song to assign:",
+            reply_markup=reply_markup
+        )
+        return ASSIGN_SONG_SELECT
+    
+    # Handle "Done" choice
+    if selected_song == "✅ Done":
+        await update.message.reply_text(
+            "✅ All done! Song assignments have been saved to the roster.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Handle cancel
+    if selected_song == "❌ Cancel":
+        await update.message.reply_text(
+            "❌ Assignment cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Validate song selection
+    songs = context.user_data.get('songs_for_assignment', [])
+    if selected_song.upper() not in [s.upper() for s in songs]:
+        await update.message.reply_text(
+            "❌ Invalid song selection. Please choose from the list.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Store selected song
+    context.user_data['selected_song'] = selected_song.upper()
+    
+    # Get organist list
+    organists = get_unique_organists()
+    
+    if not organists:
+        await update.message.reply_text(
+            "❌ Could not load organist list.\n\n"
+            "Please check the 'Order of Songs' sheet has organists listed.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Create keyboard with organists (2 per row)
+    keyboard = []
+    for i in range(0, len(organists), 2):
+        row = [organists[i]]
+        if i + 1 < len(organists):
+            row.append(organists[i + 1])
+        keyboard.append(row)
+    
+    # Add "Unassigned" and "Cancel" options
+    keyboard.append(["🚫 Unassigned"])
+    keyboard.append(["⬅️ Back", "❌ Cancel"])
+    
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    
+    # Get song name using IndexFinder
+    from data.datasets import IndexFinder
+    song_name = IndexFinder(selected_song)
+    display_name = f"{selected_song} - {song_name}" if song_name != "Invalid Number" else selected_song
+    
+    message = (
+        f"🎵 *Assigning: {display_name}*\n\n"
+        f"👤 Select an organist to assign this song to:"
+    )
+    
+    await update.message.reply_text(
+        message,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    return ASSIGN_ORGANIST_SELECT
+
+
+async def assign_organist_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle organist selection - assign song and confirm"""
+    from data.organist_roster import assign_song_to_organist
+    
+    selected_organist = update.message.text.strip()
+    selected_song = context.user_data.get('selected_song', '')
+    
+    # Handle back button
+    if selected_organist == "⬅️ Back":
+        # Go back to song selection
+        songs = context.user_data.get('songs_for_assignment', [])
+        keyboard = []
+        for i in range(0, len(songs), 2):
+            row = [songs[i]]
+            if i + 1 < len(songs):
+                row.append(songs[i + 1])
+            keyboard.append(row)
+        keyboard.append(["❌ Cancel"])
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            "👉 Select a song to assign:",
+            reply_markup=reply_markup
+        )
+        return ASSIGN_SONG_SELECT
+    
+    # Handle cancel
+    if selected_organist == "❌ Cancel":
+        await update.message.reply_text(
+            "❌ Assignment cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Handle unassigned
+    if selected_organist == "🚫 Unassigned":
+        selected_organist = ""  # Empty string for unassigned
+    
+    # Show progress message
+    status_msg = await update.message.reply_text(
+        f"⏳ Assigning {selected_song} to {selected_organist if selected_organist else 'Unassigned'}...",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    
+    # Assign the song
+    success, message = assign_song_to_organist(selected_song, selected_organist)
+    
+    if success:
+        # Get song name for display
+        from data.datasets import IndexFinder
+        song_name = IndexFinder(selected_song)
+        display_name = f"{selected_song} - {song_name}" if song_name != "Invalid Number" else selected_song
+        
+        response = (
+            f"✅ *Assignment Successful!*\n\n"
+            f"🎵 Song: {display_name}\n"
+            f"👤 Organist: {selected_organist if selected_organist else '🚫 Unassigned'}\n\n"
+            f"The roster has been updated."
+        )
+        
+        # Ask if they want to assign more songs
+        keyboard = [
+            ["🎵 Assign More Songs"],
+            ["✅ Done"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        
+        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_text(
+            "Would you like to assign more songs?",
+            reply_markup=reply_markup
+        )
+        
+        user_logger.info(f"User {update.effective_user.id} assigned {selected_song} to {selected_organist}")
+        
+        # Store state for continuation
+        context.user_data['assignment_complete'] = True
+        return ASSIGN_SONG_SELECT
+    else:
+        await status_msg.edit_text(
+            f"❌ *Assignment Failed*\n\n{message}",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        user_logger.error(f"User {update.effective_user.id} failed to assign {selected_song}: {message}")
+        return ConversationHandler.END
+
+
+async def assign_continue_or_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle continue or done after successful assignment"""
+    choice = update.message.text.strip()
+    
+    if choice == "🎵 Assign More Songs":
+        # Restart the assignment process
+        songs = context.user_data.get('songs_for_assignment', [])
+        
+        keyboard = []
+        for i in range(0, len(songs), 2):
+            row = [songs[i]]
+            if i + 1 < len(songs):
+                row.append(songs[i + 1])
+            keyboard.append(row)
+        keyboard.append(["❌ Cancel"])
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            "👉 Select another song to assign:",
+            reply_markup=reply_markup
+        )
+        return ASSIGN_SONG_SELECT
+    else:
+        # Done - end conversation
+        await update.message.reply_text(
+            "✅ All done! Song assignments have been saved to the roster.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
+
+async def cancel_assign_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel the assign songs conversation"""
+    await update.message.reply_text(
+        "❌ Assignment cancelled.",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
 

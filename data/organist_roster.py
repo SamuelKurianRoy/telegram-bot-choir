@@ -461,3 +461,165 @@ def update_songs_for_sunday():
     except Exception as e:
         user_logger.error(f"Error updating Sunday songs: {str(e)[:100]}")
         return False, f"Error: {str(e)[:100]}", None
+
+
+def assign_song_to_organist(song_code: str, organist_name: str):
+    """
+    Assign a specific song to an organist in the Google Sheet.
+    
+    Args:
+        song_code: Song code (e.g., 'H-44', 'L-22')
+        organist_name: Name of the organist to assign
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        config = get_config()
+        roster_sheet_id = config.secrets.get("ORGANIST_ROSTER_SHEET_ID")
+        
+        if not roster_sheet_id:
+            return False, "ORGANIST_ROSTER_SHEET_ID not found in secrets"
+        
+        drive_service = get_drive_service()
+        
+        # Download current file
+        request = drive_service.files().export_media(
+            fileId=roster_sheet_id,
+            mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        file_data = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_data, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        file_data.seek(0)
+        
+        # Load workbook using openpyxl to preserve formulas
+        wb = load_workbook(file_data)
+        
+        # Check if 'Order of Songs' sheet exists
+        if 'Order of Songs' not in wb.sheetnames:
+            return False, "'Order of Songs' sheet not found in workbook"
+        
+        ws = wb['Order of Songs']
+        
+        # Find the header row
+        header_row = None
+        song_col = None
+        organist_col = None
+        
+        for row_idx, row in enumerate(ws.iter_rows(max_row=10, values_only=False), 1):
+            for col_idx, cell in enumerate(row, 1):
+                if cell.value == 'Song/ Responses':
+                    song_col = col_idx
+                    header_row = row_idx
+                elif cell.value == 'Name of The Organist':
+                    organist_col = col_idx
+        
+        if not song_col or not organist_col:
+            return False, "Could not find required columns in sheet"
+        
+        # Find the song in the sheet
+        song_found = False
+        song_row = None
+        
+        for row_idx in range(header_row + 1, ws.max_row + 1):
+            cell_value = ws.cell(row=row_idx, column=song_col).value
+            if cell_value and str(cell_value).strip().upper() == song_code.upper():
+                song_row = row_idx
+                song_found = True
+                break
+        
+        if not song_found:
+            return False, f"Song '{song_code}' not found in the roster sheet"
+        
+        # Update the organist assignment
+        ws.cell(row=song_row, column=organist_col, value=organist_name)
+        
+        # Save workbook to BytesIO
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # Upload back to Google Drive
+        media = MediaIoBaseUpload(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            resumable=True
+        )
+        
+        drive_service.files().update(
+            fileId=roster_sheet_id,
+            media_body=media
+        ).execute()
+        
+        # Invalidate cache to force reload
+        global _organist_roster_cache
+        _organist_roster_cache = None
+        
+        user_logger.info(f"✅ Assigned {song_code} to {organist_name}")
+        return True, f"✅ {song_code} assigned to {organist_name}"
+    
+    except Exception as e:
+        user_logger.error(f"Error assigning song: {str(e)[:200]}")
+        return False, f"Error: {str(e)[:100]}"
+
+
+def get_songs_for_assignment():
+    """
+    Get list of songs from 'Songs for Sunday' sheet that can be assigned to organists.
+    
+    Returns:
+        tuple: (success: bool, songs: list of str, message: str)
+    """
+    try:
+        config = get_config()
+        roster_sheet_id = config.secrets.get("ORGANIST_ROSTER_SHEET_ID")
+        
+        if not roster_sheet_id:
+            return False, [], "ORGANIST_ROSTER_SHEET_ID not found in secrets"
+        
+        drive_service = get_drive_service()
+        
+        # Download the file
+        request = drive_service.files().export_media(
+            fileId=roster_sheet_id,
+            mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        file_data = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_data, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        file_data.seek(0)
+        
+        # Read the 'Songs for Sunday' sheet
+        try:
+            df = pd.read_excel(file_data, sheet_name='Songs for Sunday')
+        except Exception as sheet_error:
+            return False, [], f"'Songs for Sunday' sheet not found: {str(sheet_error)[:50]}"
+        
+        # Get songs from the 'Songs' column
+        if 'Songs' not in df.columns:
+            return False, [], "'Songs' column not found in 'Songs for Sunday' sheet"
+        
+        # Extract song codes and filter out empty/invalid ones
+        songs = []
+        for song in df['Songs']:
+            if pd.notna(song):
+                song_str = str(song).strip()
+                # Check if it's a valid song code format (H-XX, L-XX, C-XX)
+                if song_str and '-' in song_str:
+                    parts = song_str.split('-')
+                    if len(parts) == 2 and parts[0].upper() in ['H', 'L', 'C'] and parts[1].strip():
+                        songs.append(song_str.upper())
+        
+        if not songs:
+            return False, [], "No valid song codes found in 'Songs for Sunday' sheet"
+        
+        return True, songs, f"Found {len(songs)} songs"
+    
+    except Exception as e:
+        user_logger.error(f"Error getting songs for assignment: {str(e)[:200]}")
+        return False, [], f"Error: {str(e)[:100]}"

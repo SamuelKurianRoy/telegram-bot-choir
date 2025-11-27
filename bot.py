@@ -37,7 +37,8 @@ try:
         bible_game_start, bible_game_language_handler, bible_game_difficulty_handler, bible_game_question_handler, BIBLE_GAME_LANGUAGE, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION,
         initialize_theme_components,
         organist_roster_start, organist_selection, cancel_organist, ORGANIST_SELECTION,
-        update_sunday_songs
+        update_sunday_songs,
+        assign_songs_start, assign_song_selected, assign_organist_selected, assign_continue_or_done, cancel_assign_songs, ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT
     )
     from telegram_handlers.preferences import (
         setting_start, setting_menu_handler, bible_language_handler, game_language_handler,
@@ -233,6 +234,16 @@ organist_roster_conv_handler = ConversationHandler(
     fallbacks=[CommandHandler("cancel", cancel_organist)],
 )
 
+# Register the assign songs conversation handler
+assign_songs_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("assignsongs", assign_songs_start)],
+    states={
+        ASSIGN_SONG_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, assign_song_selected)],
+        ASSIGN_ORGANIST_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, assign_organist_selected)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel_assign_songs)],
+)
+
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
 app.add_handler(bible_conv_handler)
@@ -279,6 +290,7 @@ app.add_handler(reply_conv_handler)
 app.add_handler(download_conv_handler)
 app.add_handler(notation_conv_handler)
 app.add_handler(organist_roster_conv_handler)
+app.add_handler(assign_songs_conv_handler)
 app.add_handler(CommandHandler("updatesunday", update_sunday_songs))
 app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
 

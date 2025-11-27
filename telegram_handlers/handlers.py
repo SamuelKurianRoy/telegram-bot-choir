@@ -192,6 +192,9 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "• **/updatesunday**\n"
         "  - *Description:* Update the 'Songs for Sunday' sheet with songs from today (if Sunday) or the next Sunday.\n"
         "  - *Example:* Type `/updatesunday` to automatically populate the sheet with the latest songs.\n\n"
+        "• **/assignsongs**\n"
+        "  - *Description:* Assign Sunday songs to organists. Shows songs from 'Songs for Sunday' sheet as buttons. Select a song, then choose an organist to assign it to.\n"
+        "  - *Example:* Type `/assignsongs`, select a song like 'H-44', then choose an organist from the list.\n\n"
         "• **/vocabulary**\n"
         "  - *Description:* Starts the vocabulary export conversation.\n"
         "  - *Example:* Type `/vocabulary` and follow the instructions.\n\n"
@@ -1912,6 +1915,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/setting` - Manage personal settings
 • `/organist` - View organist assignments for songs
 • `/updatesunday` - Update Songs for Sunday sheet (admin only)
+• `/assignsongs` - Assign Sunday songs to organists
 
 **Usage Examples:**
 • `/admin_user_info 757438955`
