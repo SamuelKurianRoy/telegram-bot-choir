@@ -3620,14 +3620,6 @@ async def assign_organist_selected(update: Update, context: ContextTypes.DEFAULT
         song_name = IndexFinder(selected_song)
         display_name = f"{selected_song} - {song_name}" if song_name != "Invalid Number" else selected_song
         
-        response = (
-            f"✅ *Assignment Successful!*\n\n"
-            f"🎵 Song: {display_name}\n"
-            f"👤 Organist: {selected_organist if selected_organist else '🚫 Unassigned'}\n\n"
-            f"The roster has been updated.\n\n"
-            f"Would you like to assign more songs?"
-        )
-        
         # Ask if they want to assign more songs
         keyboard = [
             ["🎵 Assign More Songs"],
@@ -3635,15 +3627,25 @@ async def assign_organist_selected(update: Update, context: ContextTypes.DEFAULT
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         
-        # Edit the status message first
-        await status_msg.edit_text(
-            f"✅ *Assignment Successful!*\n\n"
-            f"🎵 Song: {display_name}\n"
-            f"👤 Organist: {selected_organist if selected_organist else '🚫 Unassigned'}",
-            parse_mode=ParseMode.MARKDOWN
-        )
+        # Try to edit the status message, but don't fail if we can't
+        try:
+            await status_msg.edit_text(
+                f"✅ *Assignment Successful!*\n\n"
+                f"🎵 Song: {display_name}\n"
+                f"👤 Organist: {selected_organist if selected_organist else '🚫 Unassigned'}",
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except Exception as edit_error:
+            # If edit fails, just send a new message instead
+            user_logger.warning(f"Could not edit status message: {edit_error}")
+            await update.message.reply_text(
+                f"✅ *Assignment Successful!*\n\n"
+                f"🎵 Song: {display_name}\n"
+                f"👤 Organist: {selected_organist if selected_organist else '🚫 Unassigned'}",
+                parse_mode=ParseMode.MARKDOWN
+            )
         
-        # Then send a new message with the keyboard
+        # Send a new message with the keyboard
         await update.message.reply_text(
             "Would you like to assign more songs?",
             reply_markup=reply_markup
@@ -3655,10 +3657,21 @@ async def assign_organist_selected(update: Update, context: ContextTypes.DEFAULT
         context.user_data['assignment_complete'] = True
         return ASSIGN_SONG_SELECT
     else:
-        await status_msg.edit_text(
-            f"❌ *Assignment Failed*\n\n{message}",
-            parse_mode=ParseMode.MARKDOWN
-        )
+        # Assignment failed
+        try:
+            await status_msg.edit_text(
+                f"❌ *Assignment Failed*\n\n{message}",
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except Exception as edit_error:
+            # If edit fails, send a new message instead
+            user_logger.warning(f"Could not edit status message: {edit_error}")
+            await update.message.reply_text(
+                f"❌ *Assignment Failed*\n\n{message}",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=ReplyKeyboardRemove()
+            )
+        
         user_logger.error(f"User {update.effective_user.id} failed to assign {selected_song}: {message}")
         return ConversationHandler.END
 
