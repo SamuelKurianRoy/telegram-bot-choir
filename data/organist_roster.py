@@ -465,7 +465,7 @@ def update_songs_for_sunday():
 
 def assign_song_to_organist(song_code: str, organist_name: str):
     """
-    Assign a specific song to an organist in the Google Sheet.
+    Assign a specific song to an organist in the 'Songs for Sunday' sheet.
     
     Args:
         song_code: Song code (e.g., 'H-44', 'L-22')
@@ -498,48 +498,51 @@ def assign_song_to_organist(song_code: str, organist_name: str):
         # Load workbook using openpyxl to preserve formulas
         wb = load_workbook(file_data)
         
-        # Check if 'Order of Songs' sheet exists
-        if 'Order of Songs' not in wb.sheetnames:
-            return False, "'Order of Songs' sheet not found in workbook"
+        # Check if 'Songs for Sunday' sheet exists
+        if 'Songs for Sunday' not in wb.sheetnames:
+            return False, "'Songs for Sunday' sheet not found in workbook"
         
-        ws = wb['Order of Songs']
+        ws = wb['Songs for Sunday']
         
-        # Find the header row
-        header_row = None
+        # Find the header row (should be row 1)
+        # Expected columns: 'Songs' (column A) and 'Organist' (column B)
         song_col = None
         organist_col = None
         
-        for row_idx, row in enumerate(ws.iter_rows(max_row=10, values_only=False), 1):
-            for col_idx, cell in enumerate(row, 1):
-                if cell.value == 'Song/ Responses':
-                    song_col = col_idx
-                    header_row = row_idx
-                elif cell.value == 'Name of The Organist':
-                    organist_col = col_idx
+        # Check first row for headers
+        for col_idx, cell in enumerate(ws[1], 1):
+            if cell.value and 'songs' in str(cell.value).lower():
+                song_col = col_idx
+            elif cell.value and 'organist' in str(cell.value).lower():
+                organist_col = col_idx
         
         if not song_col or not organist_col:
-            return False, "Could not find required columns in sheet"
+            return False, "Could not find 'Songs' or 'Organist' columns in 'Songs for Sunday' sheet"
         
-        # Find the song in the sheet
+        # Find the song in the sheet (search from row 2 onwards)
         song_found = False
         song_row = None
         
-        for row_idx in range(header_row + 1, ws.max_row + 1):
+        for row_idx in range(2, ws.max_row + 1):
             cell_value = ws.cell(row=row_idx, column=song_col).value
-            if cell_value and str(cell_value).strip().upper() == song_code.upper():
-                song_row = row_idx
-                song_found = True
-                break
+            if cell_value:
+                # Extract song code from "H-44 - Song Name" format
+                song_str = str(cell_value).strip()
+                if ' - ' in song_str:
+                    cell_song_code = song_str.split(' - ')[0].strip()
+                else:
+                    cell_song_code = song_str
+                
+                if cell_song_code.upper() == song_code.upper():
+                    song_row = row_idx
+                    song_found = True
+                    break
         
         if not song_found:
-            user_logger.warning(f"Song '{song_code}' not found in 'Order of Songs' sheet")
-            return False, (
-                f"Song '{song_code}' is not in the 'Order of Songs' roster yet.\n\n"
-                f"Please add it to the 'Order of Songs' sheet manually first, "
-                f"then you can assign an organist to it."
-            )
+            user_logger.warning(f"Song '{song_code}' not found in 'Songs for Sunday' sheet")
+            return False, f"Song '{song_code}' not found in 'Songs for Sunday' sheet"
         
-        # Update the organist assignment
+        # Update the organist assignment in the 'Organist' column
         ws.cell(row=song_row, column=organist_col, value=organist_name)
         
         # Save workbook to BytesIO
@@ -563,7 +566,7 @@ def assign_song_to_organist(song_code: str, organist_name: str):
         global _organist_roster_cache
         _organist_roster_cache = None
         
-        user_logger.info(f"✅ Assigned {song_code} to {organist_name}")
+        user_logger.info(f"✅ Assigned {song_code} to {organist_name} in 'Songs for Sunday' sheet")
         return True, f"✅ {song_code} assigned to {organist_name}"
     
     except Exception as e:
