@@ -3624,7 +3624,8 @@ async def assign_organist_selected(update: Update, context: ContextTypes.DEFAULT
             f"✅ *Assignment Successful!*\n\n"
             f"🎵 Song: {display_name}\n"
             f"👤 Organist: {selected_organist if selected_organist else '🚫 Unassigned'}\n\n"
-            f"The roster has been updated."
+            f"The roster has been updated.\n\n"
+            f"Would you like to assign more songs?"
         )
         
         # Ask if they want to assign more songs
@@ -3634,7 +3635,15 @@ async def assign_organist_selected(update: Update, context: ContextTypes.DEFAULT
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         
-        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN)
+        # Edit the status message first
+        await status_msg.edit_text(
+            f"✅ *Assignment Successful!*\n\n"
+            f"🎵 Song: {display_name}\n"
+            f"👤 Organist: {selected_organist if selected_organist else '🚫 Unassigned'}",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        # Then send a new message with the keyboard
         await update.message.reply_text(
             "Would you like to assign more songs?",
             reply_markup=reply_markup
