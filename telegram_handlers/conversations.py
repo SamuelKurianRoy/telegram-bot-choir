@@ -3945,32 +3945,50 @@ async def unused_category_selected(update: Update, context: ContextTypes.DEFAULT
             )
             return ConversationHandler.END
         
-        # Build response message with Malayalam index
+        # Build response message with Malayalam index - one song per line
         from data.datasets import IndexFinder
         
-        response_parts = [
+        # Create summary header
+        summary = [
             f"📋 *Unused Songs Report*\n",
             f"📅 *Duration:* {duration_label}",
             f"📊 *Total Unused:* {total_unused} songs\n"
         ]
         
+        # Try to send as text message first, split if needed
+        try:
+            await status_msg.edit_text("\n".join(summary), parse_mode=ParseMode.MARKDOWN)
+        except Exception:
+            await update.message.reply_text("\n".join(summary), parse_mode=ParseMode.MARKDOWN)
+        
+        # Send each category in separate messages if needed
         for category_name, songs in unused_songs.items():
             if songs:
-                response_parts.append(f"\n*{category_name}:* {len(songs)} songs")
-                # Show first 20 songs inline with Malayalam index
-                if len(songs) <= 20:
-                    songs_with_index = [f"{song} ({IndexFinder(song)})" for song in songs]
-                    songs_str = ", ".join(songs_with_index)
-                    response_parts.append(f"{songs_str}")
-                else:
-                    songs_with_index = [f"{song} ({IndexFinder(song)})" for song in songs[:20]]
-                    songs_str = ", ".join(songs_with_index)
-                    response_parts.append(f"{songs_str}, ... and {len(songs) - 20} more")
+                category_messages = []
+                current_message = f"*{category_name}:* {len(songs)} songs\n"
+                
+                for song in songs:
+                    index = IndexFinder(song)
+                    song_line = f"• {song}: {index}\n"
+                    
+                    # Check if adding this song would exceed message limit
+                    if len(current_message + song_line) > 4000:
+                        # Send current message and start a new one
+                        category_messages.append(current_message)
+                        current_message = song_line
+                    else:
+                        current_message += song_line
+                
+                # Add remaining content
+                if current_message.strip():
+                    category_messages.append(current_message)
+                
+                # Send all messages for this category
+                for msg in category_messages:
+                    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
         
-        response = "\n".join(response_parts)
-        
-        # If result is too long, send as file
-        if len(response) > 4000 or total_unused > 50:
+        # If too many songs, also offer CSV export
+        if total_unused > 50:
             # Create CSV file with Malayalam index
             import tempfile
             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv', encoding='utf-8') as f:
@@ -4005,13 +4023,6 @@ async def unused_category_selected(update: Update, context: ContextTypes.DEFAULT
             
             # Clean up
             os.remove(temp_file)
-        else:
-            # Send as text message - use try/except for edit
-            try:
-                await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN)
-            except Exception:
-                # If edit fails, send new message
-                await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
         
         user_logger.info(f"User {update.effective_user.id} generated unused songs report: {category_label}, {duration_label}, {total_unused} songs")
         
