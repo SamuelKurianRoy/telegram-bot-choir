@@ -147,16 +147,15 @@ def dfcleaning():
 
 def standardize_song_columns():
     """
-    Standardizes all song columns in df by removing whitespace.
+    Standardizes all song columns in df by removing whitespace and updating global df.
     """
     global df
     if df is None:
         return None
-    standardized_df = df.copy()
     song_columns = [col for col in df.columns if col != 'Date']
     for col in song_columns:
-        standardized_df[col] = standardized_df[col].astype(str).apply(lambda x: re.sub(r'\s+', '', x))
-    return standardized_df
+        df[col] = df[col].astype(str).apply(lambda x: re.sub(r'\s+', '', x))
+    return df
 
 def Tune_finder_of_known_songs(song):
     """
@@ -266,7 +265,9 @@ def Datefinder(songs, category=None, first=False):
     Found = False
     formatted_date = []
     for i in range(len(df) - 1, -1, -1):
-        if Song in df.iloc[i].tolist():
+        # Standardize each cell value in the row before comparison
+        row_values = [standardize_hlc_value(str(val)) for val in df.iloc[i].tolist()]
+        if Song in row_values:
             Found = True
             date_val = df['Date'].iloc[i]
             formatted_date.append(date_val.strftime("%d/%m/%Y"))

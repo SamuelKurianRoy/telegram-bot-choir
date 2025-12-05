@@ -268,7 +268,7 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
         dfH, dfL, dfC, yr23, yr24, yr25, df, dfTH, dfTD = load_datasets()
         yrDataPreprocessing()
         dfcleaning()
-        df = standardize_song_columns()
+        standardize_song_columns()  # Now modifies global df in-place
 
         # Refresh lyrics_file_map
         msg4 = await update.message.reply_text("🎵 Refreshing lyrics file map...")
