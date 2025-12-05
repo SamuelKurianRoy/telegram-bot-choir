@@ -3314,11 +3314,11 @@ async def organist_selection(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         # Split message if too long
         if len(message) > 4000:
-        await update.message.reply_text(
-            f"🎹 *Unassigned Songs* ({len(songs)} total)\n\n",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=ReplyKeyboardRemove()
-        )
+            await update.message.reply_text(
+                f"🎹 *Unassigned Songs* ({len(songs)} total)\n\n",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=ReplyKeyboardRemove()
+            )
             # Send songs in chunks
             chunk_size = 30
             for i in range(0, len(songs), chunk_size):
