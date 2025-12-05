@@ -2383,6 +2383,9 @@ async def search_by_number(update: Update, context: CallbackContext) -> int:
  
  
 CATEGORY_SELECTION, EXPORT_CONFIRMATION = range(2)
+
+# Unused songs states
+UNUSED_DURATION_SELECT, UNUSED_CATEGORY_SELECT = range(2)
 ADMIN_ID = int(st.secrets["ADMIN_ID"])
 
 async def start_vocabulary(update: Update, context: CallbackContext) -> int:
@@ -3712,6 +3715,281 @@ async def cancel_assign_songs(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Cancel the assign songs conversation"""
     await update.message.reply_text(
         "❌ Assignment cancelled.",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
+
+
+# ==========================================
+# UNUSED SONGS - Find songs not sung recently
+# ==========================================
+
+async def unused_songs_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start the unused songs conversation - select duration"""
+    user = update.effective_user
+    user_logger.info(f"User {user.id} ({user.first_name}) started /unused command")
+    
+    # Duration options
+    keyboard = [
+        ["📅 3 Months", "📅 6 Months"],
+        ["📅 This Year (2025)", "📅 1 Year"],
+        ["❌ Cancel"]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    
+    message = (
+        "🎵 *Find Unused Songs*\n\n"
+        "Select a time period to find songs that haven't been sung:\n\n"
+        "• *3 Months* - Songs not sung in last 3 months\n"
+        "• *6 Months* - Songs not sung in last 6 months\n"
+        "• *This Year* - Songs not sung in 2025\n"
+        "• *1 Year* - Songs not sung in last 12 months\n\n"
+        "👉 Choose a duration:"
+    )
+    
+    await update.message.reply_text(
+        message,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    return UNUSED_DURATION_SELECT
+
+
+async def unused_duration_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle duration selection - show category options"""
+    selection = update.message.text.strip()
+    
+    # Handle cancel
+    if selection == "❌ Cancel":
+        await update.message.reply_text(
+            "❌ Cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Parse duration
+    from datetime import datetime, timedelta
+    today = datetime.now().date()
+    
+    if "3 Months" in selection:
+        cutoff_date = today - timedelta(days=90)
+        duration_label = "3 months"
+    elif "6 Months" in selection:
+        cutoff_date = today - timedelta(days=180)
+        duration_label = "6 months"
+    elif "This Year" in selection:
+        cutoff_date = datetime(2025, 1, 1).date()
+        duration_label = "this year (2025)"
+    elif "1 Year" in selection:
+        cutoff_date = today - timedelta(days=365)
+        duration_label = "1 year"
+    else:
+        await update.message.reply_text(
+            "❌ Invalid selection.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Store in context
+    context.user_data['unused_cutoff_date'] = cutoff_date
+    context.user_data['unused_duration_label'] = duration_label
+    
+    # Show category selection
+    keyboard = [
+        ["📖 Hymns", "🎤 Lyrics"],
+        ["🎺 Conventions", "🎵 All Categories"],
+        ["❌ Cancel"]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    
+    message = (
+        f"📅 *Duration Selected:* {duration_label}\n\n"
+        "Now choose which category to check:\n\n"
+        "• *Hymns* - Check unused hymns (H-XX)\n"
+        "• *Lyrics* - Check unused lyrics (L-XX)\n"
+        "• *Conventions* - Check unused conventions (C-XX)\n"
+        "• *All Categories* - Check all songs\n\n"
+        "👉 Choose a category:"
+    )
+    
+    await update.message.reply_text(
+        message,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    return UNUSED_CATEGORY_SELECT
+
+
+async def unused_category_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle category selection - find and export unused songs"""
+    selection = update.message.text.strip()
+    
+    # Handle cancel
+    if selection == "❌ Cancel":
+        await update.message.reply_text(
+            "❌ Cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Get stored data
+    cutoff_date = context.user_data.get('unused_cutoff_date')
+    duration_label = context.user_data.get('unused_duration_label')
+    
+    if not cutoff_date:
+        await update.message.reply_text(
+            "❌ Session expired. Please start again with /unused",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Determine categories to check
+    if "Hymns" in selection:
+        categories = ['H']
+        category_label = "Hymns"
+    elif "Lyrics" in selection:
+        categories = ['L']
+        category_label = "Lyrics"
+    elif "Conventions" in selection:
+        categories = ['C']
+        category_label = "Conventions"
+    elif "All" in selection:
+        categories = ['H', 'L', 'C']
+        category_label = "All Categories"
+    else:
+        await update.message.reply_text(
+            "❌ Invalid selection.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Show processing message
+    status_msg = await update.message.reply_text(
+        f"⏳ Finding {category_label.lower()} not sung in {duration_label}...",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    
+    try:
+        # Get unused songs
+        from data.datasets import get_all_data, dfH, dfL, dfC
+        
+        data = get_all_data()
+        df = data["df"]
+        
+        if df is None or df.empty:
+            await status_msg.edit_text("❌ Database is empty or unavailable.")
+            return ConversationHandler.END
+        
+        # Ensure Date column is datetime
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.date
+        df = df.dropna(subset=['Date'])
+        
+        # Get all songs from the database after cutoff date
+        recent_df = df[df['Date'] >= cutoff_date]
+        
+        # Get all song codes from recent data
+        sung_songs = set()
+        for col in recent_df.columns:
+            if col != 'Date':
+                songs = recent_df[col].dropna().astype(str).str.strip().str.upper()
+                sung_songs.update(songs)
+        
+        # Get complete vocabulary for each category
+        unused_songs = {}
+        
+        for category in categories:
+            if category == 'H':
+                all_songs = set([f"H-{row['Hymn no']}" for _, row in dfH.iterrows() if pd.notna(row['Hymn no'])])
+                category_name = "Hymns"
+            elif category == 'L':
+                all_songs = set([f"L-{row['Lyric no']}" for _, row in dfL.iterrows() if pd.notna(row['Lyric no'])])
+                category_name = "Lyrics"
+            elif category == 'C':
+                all_songs = set([f"C-{row['Convention no']}" for _, row in dfC.iterrows() if pd.notna(row['Convention no'])])
+                category_name = "Conventions"
+            
+            # Find unused songs (in vocabulary but not sung recently)
+            unused = sorted(all_songs - sung_songs, key=lambda x: int(x.split('-')[1]))
+            unused_songs[category_name] = unused
+        
+        # Create response
+        total_unused = sum(len(songs) for songs in unused_songs.values())
+        
+        if total_unused == 0:
+            await status_msg.edit_text(
+                f"✅ *All songs in {category_label} have been sung in {duration_label}!*\n\n"
+                f"No unused songs found.",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return ConversationHandler.END
+        
+        # Build response message
+        response_parts = [
+            f"📋 *Unused Songs Report*\n",
+            f"📅 *Duration:* {duration_label}",
+            f"📊 *Total Unused:* {total_unused} songs\n"
+        ]
+        
+        for category_name, songs in unused_songs.items():
+            if songs:
+                response_parts.append(f"\n*{category_name}:* {len(songs)} songs")
+                # Show first 20 songs inline
+                if len(songs) <= 20:
+                    songs_str = ", ".join(songs)
+                    response_parts.append(f"{songs_str}")
+                else:
+                    songs_str = ", ".join(songs[:20])
+                    response_parts.append(f"{songs_str}, ... and {len(songs) - 20} more")
+        
+        response = "\n".join(response_parts)
+        
+        # If result is too long, send as file
+        if len(response) > 4000 or total_unused > 50:
+            # Create CSV file
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv', encoding='utf-8') as f:
+                f.write("Category,Song Code\n")
+                for category_name, songs in unused_songs.items():
+                    for song in songs:
+                        f.write(f"{category_name},{song}\n")
+                temp_file = f.name
+            
+            # Send file
+            await status_msg.edit_text(
+                f"✅ Found {total_unused} unused songs!\n\n"
+                f"Sending as CSV file...",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            
+            with open(temp_file, 'rb') as f:
+                await update.message.reply_document(
+                    document=f,
+                    filename=f"unused_songs_{duration_label.replace(' ', '_')}.csv",
+                    caption=f"📋 Unused {category_label} (not sung in {duration_label})"
+                )
+            
+            # Clean up
+            os.remove(temp_file)
+        else:
+            # Send as text message
+            await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN)
+        
+        user_logger.info(f"User {update.effective_user.id} generated unused songs report: {category_label}, {duration_label}, {total_unused} songs")
+        
+    except Exception as e:
+        error_msg = f"Error generating report: {str(e)[:100]}"
+        user_logger.error(f"Unused songs error: {error_msg}")
+        await status_msg.edit_text(f"❌ {error_msg}")
+    
+    return ConversationHandler.END
+
+
+async def cancel_unused_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel the unused songs conversation"""
+    await update.message.reply_text(
+        "❌ Cancelled.",
         reply_markup=ReplyKeyboardRemove()
     )
     return ConversationHandler.END

@@ -38,7 +38,8 @@ try:
         initialize_theme_components,
         organist_roster_start, organist_selection, cancel_organist, ORGANIST_SELECTION,
         update_sunday_songs,
-        assign_songs_start, assign_song_selected, assign_organist_selected, assign_continue_or_done, cancel_assign_songs, ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT
+        assign_songs_start, assign_song_selected, assign_organist_selected, assign_continue_or_done, cancel_assign_songs, ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT,
+        unused_songs_start, unused_duration_selected, unused_category_selected, cancel_unused_songs, UNUSED_DURATION_SELECT, UNUSED_CATEGORY_SELECT
     )
     from telegram_handlers.preferences import (
         setting_start, setting_menu_handler, bible_language_handler, game_language_handler,
@@ -244,6 +245,16 @@ assign_songs_conv_handler = ConversationHandler(
     fallbacks=[CommandHandler("cancel", cancel_assign_songs)],
 )
 
+# Register the unused songs conversation handler
+unused_songs_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("unused", unused_songs_start)],
+    states={
+        UNUSED_DURATION_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, unused_duration_selected)],
+        UNUSED_CATEGORY_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, unused_category_selected)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel_unused_songs)],
+)
+
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
 app.add_handler(bible_conv_handler)
@@ -291,6 +302,7 @@ app.add_handler(download_conv_handler)
 app.add_handler(notation_conv_handler)
 app.add_handler(organist_roster_conv_handler)
 app.add_handler(assign_songs_conv_handler)
+app.add_handler(unused_songs_conv_handler)
 app.add_handler(CommandHandler("updatesunday", update_sunday_songs))
 app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
 

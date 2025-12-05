@@ -195,6 +195,9 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "• **/assignsongs**\n"
         "  - *Description:* Assign Sunday songs to organists. Shows songs from 'Songs for Sunday' sheet as buttons. Select a song, then choose an organist to assign it to.\n"
         "  - *Example:* Type `/assignsongs`, select a song like 'H-44', then choose an organist from the list.\n\n"
+        "• **/unused**\n"
+        "  - *Description:* Find songs that haven't been sung in a specific time period. Filter by hymns, lyrics, or conventions, and choose durations like 3 months, 6 months, this year, or 1 year.\n"
+        "  - *Example:* Type `/unused`, select a duration like '3 Months', then choose a category like 'Hymns'.\n\n"
         "• **/vocabulary**\n"
         "  - *Description:* Starts the vocabulary export conversation.\n"
         "  - *Example:* Type `/vocabulary` and follow the instructions.\n\n"
@@ -1916,6 +1919,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/organist` - View organist assignments for songs
 • `/updatesunday` - Update Songs for Sunday sheet (admin only)
 • `/assignsongs` - Assign Sunday songs to organists
+• `/unused` - Find songs not sung in a specific period
 
 **Usage Examples:**
 • `/admin_user_info 757438955`
