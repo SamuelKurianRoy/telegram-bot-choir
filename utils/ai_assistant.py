@@ -113,7 +113,9 @@ Available commands:
 10. /download - Download audio from YouTube/Spotify links
 11. /help - Show help information
 12. /updatesunday - Update Songs for Sunday sheet
-13. None - If the message is just casual conversation or doesn't match any command
+13. /assignsongs - Assign Sunday songs to organists (e.g., "Assign songs to organists")
+14. /unused - Find songs not sung in a specific period (e.g., "Show unused songs" or "Songs not sung this year")
+15. None - If the message is just casual conversation or doesn't match any command
 
 NOTE: /notation is NOT available through AI - it requires authorization. If user asks for notation, respond conversationally and suggest using /notation command directly.
 
