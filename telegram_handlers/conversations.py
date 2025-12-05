@@ -3872,46 +3872,63 @@ async def unused_category_selected(update: Update, context: ContextTypes.DEFAULT
     )
     
     try:
-        # Get unused songs
-        from data.datasets import get_all_data, dfH, dfL, dfC
+        # Get unused songs using the COMPUTED vocabulary (songs actually sung)
+        from data.datasets import get_all_data
+        from data.vocabulary import ChoirVocabulary
         
         data = get_all_data()
         df = data["df"]
+        dfH = data["dfH"]
+        dfL = data["dfL"]
+        dfC = data["dfC"]
         
         if df is None or df.empty:
             await status_msg.edit_text("❌ Database is empty or unavailable.")
             return ConversationHandler.END
         
+        # Get the computed vocabulary (songs that have actually been sung)
+        Vocabulary, Hymn_Vocabulary, Lyric_Vocabulary, Convention_Vocabulary = ChoirVocabulary(df, dfH, dfL, dfC)
+        
         # Ensure Date column is datetime
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.date
         df = df.dropna(subset=['Date'])
         
-        # Get all songs from the database after cutoff date
+        # Filter to only rows after cutoff date
         recent_df = df[df['Date'] >= cutoff_date]
         
-        # Get all song codes from recent data
-        sung_songs = set()
-        for col in recent_df.columns:
-            if col != 'Date':
-                songs = recent_df[col].dropna().astype(str).str.strip().str.upper()
-                sung_songs.update(songs)
-        
-        # Get complete vocabulary for each category
+        # Get vocabulary for each requested category and check against recent data
         unused_songs = {}
         
         for category in categories:
             if category == 'H':
-                all_songs = set([f"H-{row['Hymn no']}" for _, row in dfH.iterrows() if pd.notna(row['Hymn no'])])
+                # Use computed hymn vocabulary (songs actually sung in history)
+                all_songs = [f"H-{int(num)}" for num in Hymn_Vocabulary if pd.notna(num)]
                 category_name = "Hymns"
             elif category == 'L':
-                all_songs = set([f"L-{row['Lyric no']}" for _, row in dfL.iterrows() if pd.notna(row['Lyric no'])])
+                # Use computed lyric vocabulary (songs actually sung in history)
+                all_songs = [f"L-{int(num)}" for num in Lyric_Vocabulary if pd.notna(num)]
                 category_name = "Lyrics"
             elif category == 'C':
-                all_songs = set([f"C-{row['Convention no']}" for _, row in dfC.iterrows() if pd.notna(row['Convention no'])])
+                # Use computed convention vocabulary (songs actually sung in history)
+                all_songs = [f"C-{int(num)}" for num in Convention_Vocabulary if pd.notna(num)]
                 category_name = "Conventions"
             
-            # Find unused songs (in vocabulary but not sung recently)
-            unused = sorted(all_songs - sung_songs, key=lambda x: int(x.split('-')[1]))
+            # Check each song in vocabulary against recent database
+            unused = []
+            for song_code in all_songs:
+                # Check if song appears anywhere in the recent dataframe
+                found = False
+                for col in recent_df.columns:
+                    if col != 'Date':
+                        if recent_df[col].astype(str).str.upper().str.contains(song_code, regex=False, na=False).any():
+                            found = True
+                            break
+                
+                if not found:
+                    unused.append(song_code)
+            
+            # Sort by number
+            unused = sorted(unused, key=lambda x: int(x.split('-')[1]))
             unused_songs[category_name] = unused
         
         # Create response
