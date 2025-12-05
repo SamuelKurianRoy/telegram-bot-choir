@@ -3956,12 +3956,20 @@ async def unused_category_selected(update: Update, context: ContextTypes.DEFAULT
                         f.write(f"{category_name},{song}\n")
                 temp_file = f.name
             
-            # Send file
-            await status_msg.edit_text(
-                f"✅ Found {total_unused} unused songs!\n\n"
-                f"Sending as CSV file...",
-                parse_mode=ParseMode.MARKDOWN
-            )
+            # Send file - use try/except for edit
+            try:
+                await status_msg.edit_text(
+                    f"✅ Found {total_unused} unused songs!\n\n"
+                    f"Sending as CSV file...",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            except Exception:
+                # If edit fails, send new message
+                await update.message.reply_text(
+                    f"✅ Found {total_unused} unused songs!\n\n"
+                    f"Sending as CSV file...",
+                    parse_mode=ParseMode.MARKDOWN
+                )
             
             with open(temp_file, 'rb') as f:
                 await update.message.reply_document(
@@ -3973,15 +3981,23 @@ async def unused_category_selected(update: Update, context: ContextTypes.DEFAULT
             # Clean up
             os.remove(temp_file)
         else:
-            # Send as text message
-            await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN)
+            # Send as text message - use try/except for edit
+            try:
+                await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN)
+            except Exception:
+                # If edit fails, send new message
+                await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
         
         user_logger.info(f"User {update.effective_user.id} generated unused songs report: {category_label}, {duration_label}, {total_unused} songs")
         
     except Exception as e:
         error_msg = f"Error generating report: {str(e)[:100]}"
         user_logger.error(f"Unused songs error: {error_msg}")
-        await status_msg.edit_text(f"❌ {error_msg}")
+        try:
+            await status_msg.edit_text(f"❌ {error_msg}")
+        except Exception:
+            # If edit fails, send new message
+            await update.message.reply_text(f"❌ {error_msg}")
     
     return ConversationHandler.END
 
