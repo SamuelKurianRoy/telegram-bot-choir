@@ -3945,7 +3945,9 @@ async def unused_category_selected(update: Update, context: ContextTypes.DEFAULT
             )
             return ConversationHandler.END
         
-        # Build response message
+        # Build response message with Malayalam index
+        from data.datasets import IndexFinder
+        
         response_parts = [
             f"📋 *Unused Songs Report*\n",
             f"📅 *Duration:* {duration_label}",
@@ -3955,25 +3957,28 @@ async def unused_category_selected(update: Update, context: ContextTypes.DEFAULT
         for category_name, songs in unused_songs.items():
             if songs:
                 response_parts.append(f"\n*{category_name}:* {len(songs)} songs")
-                # Show first 20 songs inline
+                # Show first 20 songs inline with Malayalam index
                 if len(songs) <= 20:
-                    songs_str = ", ".join(songs)
+                    songs_with_index = [f"{song} ({IndexFinder(song)})" for song in songs]
+                    songs_str = ", ".join(songs_with_index)
                     response_parts.append(f"{songs_str}")
                 else:
-                    songs_str = ", ".join(songs[:20])
+                    songs_with_index = [f"{song} ({IndexFinder(song)})" for song in songs[:20]]
+                    songs_str = ", ".join(songs_with_index)
                     response_parts.append(f"{songs_str}, ... and {len(songs) - 20} more")
         
         response = "\n".join(response_parts)
         
         # If result is too long, send as file
         if len(response) > 4000 or total_unused > 50:
-            # Create CSV file
+            # Create CSV file with Malayalam index
             import tempfile
             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv', encoding='utf-8') as f:
-                f.write("Category,Song Code\n")
+                f.write("Category,Song Code,Malayalam Index\n")
                 for category_name, songs in unused_songs.items():
                     for song in songs:
-                        f.write(f"{category_name},{song}\n")
+                        index = IndexFinder(song)
+                        f.write(f"{category_name},{song},{index}\n")
                 temp_file = f.name
             
             # Send file - use try/except for edit
