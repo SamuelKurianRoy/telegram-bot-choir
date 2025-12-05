@@ -2700,7 +2700,7 @@ async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     Handle natural language messages using AI to determine intent and execute commands.
     This is called for messages that don't start with / and aren't song codes.
     """
-    from utils.ai_assistant import parse_user_intent, should_use_ai
+    from utils.ai_assistant import parse_user_intent, should_use_ai, is_conversation_active
     
     user = update.effective_user
     message_text = update.message.text.strip()
@@ -2708,6 +2708,12 @@ async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Check if this message should be processed by AI
     if not should_use_ai(message_text):
         # Let other handlers deal with it
+        return
+    
+    # CRITICAL: Check if user is in an active conversation (multi-step command)
+    # If yes, don't intercept - let the ConversationHandler process it
+    if is_conversation_active(context):
+        user_logger.info(f"Skipping AI for {user.id}: active conversation detected")
         return
     
     user_logger.info(f"AI processing message from {user.id}: {message_text[:50]}")

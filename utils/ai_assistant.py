@@ -226,3 +226,60 @@ def should_use_ai(message_text: str) -> bool:
     
     # Otherwise, use AI to interpret
     return True
+
+def is_conversation_active(context) -> bool:
+    """
+    Check if user is currently in an active multi-step conversation.
+    
+    ConversationHandlers store state in context, so we check for known conversation markers.
+    If user is in a conversation, AI should NOT intercept their response.
+    
+    Args:
+        context: The telegram context object
+        
+    Returns:
+        bool: True if conversation is active, False otherwise
+    """
+    try:
+        # Check if ConversationHandler has stored a state
+        # When a conversation is active, user_data contains specific keys
+        user_data = context.user_data
+        
+        # List of conversation state indicators
+        # These keys are set by various ConversationHandlers
+        conversation_keys = [
+            'expecting_date',  # /date command
+            'ai_date_input',   # AI-triggered date
+            'ai_song_input',   # AI-triggered song lookups
+            'ai_bible_input',  # AI-triggered bible
+            'current_search_method',  # /search
+            'selected_category',  # /vocabulary, /search
+            'selected_theme',  # /theme
+            'tune_method',  # /tune
+            'notation_type',  # /notation
+            'download_url',  # /download
+            'organist_roster_active',  # /organist (we'll add this)
+            'comment_active',  # /comment
+            'reply_active',  # /reply
+            'bible_game_active',  # /games
+            'setting_active',  # /setting
+            'assign_songs_active',  # /assignsongs (we'll add this)
+            'unused_songs_active',  # /unused (we'll add this)
+        ]
+        
+        # If any conversation marker is present, conversation is active
+        for key in conversation_keys:
+            if key in user_data:
+                return True
+        
+        # Also check if there's a conversation_state key (set by ConversationHandler internally)
+        # This is a more reliable check
+        if hasattr(context, 'conversation_state') and context.conversation_state is not None:
+            return True
+        
+        return False
+        
+    except Exception as e:
+        user_logger.error(f"Error checking conversation state: {str(e)[:100]}")
+        # If error, assume no active conversation (safer to process with AI)
+        return False

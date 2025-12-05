@@ -3170,6 +3170,9 @@ async def organist_roster_start(update: Update, context: ContextTypes.DEFAULT_TY
     user = update.effective_user
     user_logger.info(f"User {user.id} ({user.first_name}) started /organist command")
     
+    # Mark conversation as active so AI doesn't intercept
+    context.user_data['organist_roster_active'] = True
+    
     # Get organist list
     organists = get_unique_organists()
     summary = get_roster_summary()
@@ -3182,6 +3185,8 @@ async def organist_roster_start(update: Update, context: ContextTypes.DEFAULT_TY
             "• Sheet contains 'Order of Songs' tab\n"
             "• Required columns exist: 'Song/ Responses', 'Name of The Organist'"
         )
+        # Clear conversation marker
+        context.user_data.pop('organist_roster_active', None)
         return ConversationHandler.END
     
     # Create keyboard with organists + "Unassigned Songs" option
@@ -3232,6 +3237,8 @@ async def organist_selection(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "Operation cancelled.",
             reply_markup=ReplyKeyboardRemove()
         )
+        # Clear conversation marker
+        context.user_data.pop('organist_roster_active', None)
         return ConversationHandler.END
     
     # Handle full roster table view
@@ -3243,6 +3250,8 @@ async def organist_selection(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 "❌ Could not load roster data.",
                 reply_markup=ReplyKeyboardRemove()
             )
+            # Clear conversation marker
+            context.user_data.pop('organist_roster_active', None)
             return ConversationHandler.END
         
         # Format table
@@ -3280,6 +3289,8 @@ async def organist_selection(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
         
         user_logger.info(f"User {user.id} viewed full roster table ({len(roster_table)} entries)")
+        # Clear conversation marker
+        context.user_data.pop('organist_roster_active', None)
         return ConversationHandler.END
     
     # Handle unassigned songs
@@ -3303,11 +3314,11 @@ async def organist_selection(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         # Split message if too long
         if len(message) > 4000:
-            await update.message.reply_text(
-                f"🎹 *Unassigned Songs* ({len(songs)} total)\n\n",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=ReplyKeyboardRemove()
-            )
+        await update.message.reply_text(
+            f"🎹 *Unassigned Songs* ({len(songs)} total)\n\n",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardRemove()
+        )
             # Send songs in chunks
             chunk_size = 30
             for i in range(0, len(songs), chunk_size):
@@ -3322,9 +3333,9 @@ async def organist_selection(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
         
         user_logger.info(f"User {user.id} viewed unassigned songs ({len(songs)} songs)")
-        return ConversationHandler.END
-    
-    # Handle specific organist selection
+        # Clear conversation marker
+        context.user_data.pop('organist_roster_active', None)
+        return ConversationHandler.END    # Handle specific organist selection
     organist_name = selection
     songs = get_songs_by_organist(organist_name)
     
@@ -3333,6 +3344,8 @@ async def organist_selection(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"No songs found for {organist_name}.",
             reply_markup=ReplyKeyboardRemove()
         )
+        # Clear conversation marker
+        context.user_data.pop('organist_roster_active', None)
         return ConversationHandler.END
     
     # Format songs list
@@ -3364,10 +3377,15 @@ async def organist_selection(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
     
     user_logger.info(f"User {user.id} viewed songs for {organist_name} ({len(songs)} songs)")
+    # Clear conversation marker
+    context.user_data.pop('organist_roster_active', None)
     return ConversationHandler.END
 
 async def cancel_organist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancel the organist roster conversation"""
+    # Clear conversation marker
+    context.user_data.pop('organist_roster_active', None)
+    
     await update.message.reply_text(
         "Operation cancelled.",
         reply_markup=ReplyKeyboardRemove()
@@ -3418,8 +3436,13 @@ async def assign_songs_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user = update.effective_user
     user_logger.info(f"User {user.id} ({user.first_name}) started /assignsongs command")
     
+    # Mark conversation as active so AI doesn't intercept
+    context.user_data['assign_songs_active'] = True
+    
     # Check authorization
     if not await is_authorized(update):
+        # Clear marker on early exit
+        context.user_data.pop('assign_songs_active', None)
         return ConversationHandler.END
     
     # Get songs from 'Songs for Sunday' sheet
@@ -3432,6 +3455,8 @@ async def assign_songs_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "• Songs for Sunday sheet has been updated with /updatesunday\n"
             "• Sheet contains 'Songs' column with valid song codes"
         )
+        # Clear conversation marker
+        context.user_data.pop('assign_songs_active', None)
         return ConversationHandler.END
     
     if not songs:
@@ -3439,6 +3464,8 @@ async def assign_songs_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "❌ No songs found in 'Songs for Sunday' sheet.\n\n"
             "Please run /updatesunday first to populate the songs."
         )
+        # Clear conversation marker
+        context.user_data.pop('assign_songs_active', None)
         return ConversationHandler.END
     
     # Store songs in context
@@ -3503,6 +3530,8 @@ async def assign_song_selected(update: Update, context: ContextTypes.DEFAULT_TYP
             "✅ All done! Song assignments have been saved to the roster.",
             reply_markup=ReplyKeyboardRemove()
         )
+        # Clear conversation marker
+        context.user_data.pop('assign_songs_active', None)
         return ConversationHandler.END
     
     # Handle cancel
@@ -3511,6 +3540,8 @@ async def assign_song_selected(update: Update, context: ContextTypes.DEFAULT_TYP
             "❌ Assignment cancelled.",
             reply_markup=ReplyKeyboardRemove()
         )
+        # Clear conversation marker
+        context.user_data.pop('assign_songs_active', None)
         return ConversationHandler.END
     
     # Validate song selection
@@ -3520,6 +3551,8 @@ async def assign_song_selected(update: Update, context: ContextTypes.DEFAULT_TYP
             "❌ Invalid song selection. Please choose from the list.",
             reply_markup=ReplyKeyboardRemove()
         )
+        # Clear conversation marker
+        context.user_data.pop('assign_songs_active', None)
         return ConversationHandler.END
     
     # Store selected song
@@ -3534,6 +3567,8 @@ async def assign_song_selected(update: Update, context: ContextTypes.DEFAULT_TYP
             "Please check the 'Order of Songs' sheet has organists listed.",
             reply_markup=ReplyKeyboardRemove()
         )
+        # Clear conversation marker
+        context.user_data.pop('assign_songs_active', None)
         return ConversationHandler.END
     
     # Create keyboard with organists (2 per row)
@@ -3602,6 +3637,8 @@ async def assign_organist_selected(update: Update, context: ContextTypes.DEFAULT
             "❌ Assignment cancelled.",
             reply_markup=ReplyKeyboardRemove()
         )
+        # Clear conversation marker
+        context.user_data.pop('assign_songs_active', None)
         return ConversationHandler.END
     
     # Handle unassigned
@@ -3676,6 +3713,8 @@ async def assign_organist_selected(update: Update, context: ContextTypes.DEFAULT
             )
         
         user_logger.error(f"User {update.effective_user.id} failed to assign {selected_song}: {message}")
+        # Clear conversation marker
+        context.user_data.pop('assign_songs_active', None)
         return ConversationHandler.END
 
 
@@ -3713,6 +3752,9 @@ async def assign_continue_or_done(update: Update, context: ContextTypes.DEFAULT_
 
 async def cancel_assign_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancel the assign songs conversation"""
+    # Clear conversation marker
+    context.user_data.pop('assign_songs_active', None)
+    
     await update.message.reply_text(
         "❌ Assignment cancelled.",
         reply_markup=ReplyKeyboardRemove()
@@ -3728,6 +3770,9 @@ async def unused_songs_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Start the unused songs conversation - select duration"""
     user = update.effective_user
     user_logger.info(f"User {user.id} ({user.first_name}) started /unused command")
+    
+    # Mark conversation as active so AI doesn't intercept
+    context.user_data['unused_songs_active'] = True
     
     # Duration options
     keyboard = [
@@ -3766,6 +3811,8 @@ async def unused_duration_selected(update: Update, context: ContextTypes.DEFAULT
             "❌ Cancelled.",
             reply_markup=ReplyKeyboardRemove()
         )
+        # Clear conversation marker
+        context.user_data.pop('unused_songs_active', None)
         return ConversationHandler.END
     
     # Parse duration
@@ -3832,6 +3879,8 @@ async def unused_category_selected(update: Update, context: ContextTypes.DEFAULT
             "❌ Cancelled.",
             reply_markup=ReplyKeyboardRemove()
         )
+        # Clear conversation marker
+        context.user_data.pop('unused_songs_active', None)
         return ConversationHandler.END
     
     # Get stored data
@@ -3843,6 +3892,8 @@ async def unused_category_selected(update: Update, context: ContextTypes.DEFAULT
             "❌ Session expired. Please start again with /unused",
             reply_markup=ReplyKeyboardRemove()
         )
+        # Clear conversation marker
+        context.user_data.pop('unused_songs_active', None)
         return ConversationHandler.END
     
     # Determine categories to check
@@ -4035,11 +4086,16 @@ async def unused_category_selected(update: Update, context: ContextTypes.DEFAULT
             # If edit fails, send new message
             await update.message.reply_text(f"❌ {error_msg}")
     
+    # Clear conversation marker before ending
+    context.user_data.pop('unused_songs_active', None)
     return ConversationHandler.END
 
 
 async def cancel_unused_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancel the unused songs conversation"""
+    # Clear conversation marker
+    context.user_data.pop('unused_songs_active', None)
+    
     await update.message.reply_text(
         "❌ Cancelled.",
         reply_markup=ReplyKeyboardRemove()
