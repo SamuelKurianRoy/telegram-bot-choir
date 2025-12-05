@@ -3917,12 +3917,13 @@ async def unused_category_selected(update: Update, context: ContextTypes.DEFAULT
             unused = []
             for song_code in all_songs:
                 # Check if song appears anywhere in the recent dataframe
-                # Since df is now standardized, we can do direct comparison
+                # Standardize both the song code and dataframe values for comparison
                 found = False
                 for col in recent_df.columns:
                     if col != 'Date':
-                        # Direct comparison with standardized data
-                        if (recent_df[col] == song_code).any():
+                        # Standardize each cell value before comparison
+                        standardized_values = recent_df[col].astype(str).apply(lambda x: standardize_hlc_value(x))
+                        if (standardized_values == song_code).any():
                             found = True
                             break
                 
