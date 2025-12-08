@@ -3,6 +3,7 @@
 
 import streamlit as st
 from telegram import Update, ReplyKeyboardRemove, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode
 from telegram.ext import CallbackContext, ConversationHandler, ContextTypes, CallbackQueryHandler
 from config import get_config
 from logging_utils import setup_loggers
@@ -2697,13 +2698,20 @@ async def admin_restore_all_features(update: Update, context: CallbackContext) -
 
 async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Handle natural language messages using AI to determine intent and execute commands.
-    This is called for messages that don't start with / and aren't song codes.
+    Handle natural language messages using AI with RAG (Retrieval-Augmented Generation).
+    
+    This handler:
+    1. Parses user intent with AI
+    2. Executes commands silently to retrieve data (RAG)
+    3. Generates natural language responses based on retrieved data
+    4. Handles multi-step commands autonomously
     
     NOTE: This handler is registered LAST, so if any ConversationHandler is active,
     it will consume the message first and this handler won't be called.
     """
     from utils.ai_assistant import parse_user_intent, should_use_ai
+    from utils.rag_executor import execute_command_for_rag
+    from utils.rag_response_generator import generate_natural_response
     
     user = update.effective_user
     message_text = update.message.text.strip()
@@ -2713,7 +2721,7 @@ async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Let other handlers deal with it
         return
     
-    user_logger.info(f"AI processing message from {user.id}: {message_text[:50]}")
+    user_logger.info(f"AI RAG processing message from {user.id}: {message_text[:50]}")
     
     # Send "thinking" indicator
     await update.message.chat.send_action("typing")
@@ -2724,32 +2732,60 @@ async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         command = intent.get("command")
         parameters = intent.get("parameters", {})
-        response_text = intent.get("response_text", "")
+        use_rag = intent.get("use_rag", True)  # Default to RAG for data queries
         confidence = intent.get("confidence", 0.0)
         
-        user_logger.info(f"AI Intent: command={command}, confidence={confidence}")
-        
-        # Send AI response first
-        if response_text:
-            await update.message.reply_text(response_text)
+        user_logger.info(f"AI Intent: command={command}, use_rag={use_rag}, confidence={confidence}")
         
         # If no command or low confidence, just give conversational response
         if command is None or confidence < 0.5:
+            response_text = intent.get("response_text", "")
             if not response_text:
                 await update.message.reply_text(
                     "I'm not sure what you're looking for. Try asking something like:\n"
                     "• 'What songs were sung on Christmas?'\n"
-                    "• 'Find H-44'\n"
-                    "• 'Who is the organist?'\n\n"
+                    "• 'Find hymns about funeral'\n"
+                    "• 'Songs assigned to Henel'\n\n"
                     "Or use /help to see all commands!"
                 )
+            else:
+                await update.message.reply_text(response_text)
             return
         
-        # Execute the appropriate command based on AI interpretation
-        await execute_ai_command(update, context, command, parameters)
+        # Execute command with RAG if requested
+        if use_rag:
+            # Execute command programmatically and get data
+            user_logger.info(f"Executing RAG: {command} with params {parameters}")
+            rag_result = await execute_command_for_rag(command, parameters, context)
+            
+            if rag_result.get("success"):
+                # Generate natural language response from data
+                natural_response = await generate_natural_response(
+                    user_question=message_text,
+                    command=command,
+                    rag_data=rag_result
+                )
+                
+                # Send the generated response
+                await update.message.reply_text(
+                    natural_response,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            else:
+                # Command failed
+                error_msg = rag_result.get("error", "Unknown error")
+                await update.message.reply_text(
+                    f"I couldn't find that information: {error_msg}\n\n"
+                    f"Try rephrasing or use /{command} directly."
+                )
+        else:
+            # Execute the command normally (non-RAG, interactive commands)
+            await execute_ai_command(update, context, command, parameters)
         
     except Exception as e:
-        user_logger.error(f"Error in AI handler: {str(e)[:200]}")
+        user_logger.error(f"Error in AI RAG handler: {str(e)[:200]}")
+        import traceback
+        user_logger.error(f"Traceback: {traceback.format_exc()[:500]}")
         await update.message.reply_text(
             "I had trouble understanding that. You can try:\n"
             "• Using a direct command like /help\n"

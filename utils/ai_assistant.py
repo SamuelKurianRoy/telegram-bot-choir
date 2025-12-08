@@ -72,6 +72,7 @@ def parse_user_intent(user_message: str) -> dict:
             - parameters: Dict of parameters needed for the command
             - response_text: Optional conversational response
             - confidence: Confidence score (0-1)
+            - use_rag: Whether to use RAG (execute silently and generate response)
     """
     global _gemini_model
     
@@ -125,48 +126,31 @@ Respond with ONLY a JSON object (no markdown, no code blocks, just the raw JSON)
 {{
     "command": "command_name (without /)",
     "parameters": {{"param_name": "value"}},
-    "response_text": "A friendly response acknowledging their request",
+    "use_rag": true,
     "confidence": 0.0-1.0,
-    "reasoning": "Brief explanation of why you chose this command"
+    "reasoning": "Brief explanation"
 }}
 
-Guidelines:
-- For dates: Convert to DD/MM/YYYY format
-  * "last Sunday" → {last_sunday_str}
-  * "yesterday" → calculate from today's date ({(today - timedelta(days=1)).strftime("%d/%m/%Y")})
-  * "Christmas" → 25/12/{current_year}
-  * "Easter" → calculate Easter date for {current_year}
-  * If year is missing, use {current_year}
-  * Always use DD/MM/YYYY format (not MM/DD/YYYY)
-  
-- For song codes: ALWAYS extract in H-XX, L-XX, or C-XX format
-  * "hymn 21" → H-21
-  * "lyric 323" → L-323
-  * "convention 21" → C-21
-  * "H44" → H-44
-  * IMPORTANT: When user says "hymn/lyric/convention NUMBER", convert to proper format (H-/L-/C-)
-  
-- For notation requests: Set command to null (notation requires authorization, handled separately)
-  * "get notation for H-21" → command: null, response: "Please use /notation to access sheet music"
-  
-- For searches, include the search query in parameters
-- Set confidence between 0-1 based on how clear the intent is
-- If message is casual chat (hi, thanks, etc.), set command to null
-- Always provide a friendly response_text
+IMPORTANT PARAMETERS BY COMMAND:
+- date: {{"date": "DD/MM/YYYY"}}
+- last/check/tune: {{"song_code": "H-21"}}
+- organist: {{"organist_name": "Name"}} (optional - omit for full roster)
+- theme: {{"category": "H or L", "theme": "keyword"}} (BOTH required)
+- unused: {{"duration": "3months/6months/thisyear/1year", "category": "H/L/C/all"}}
+- search: {{"query": "search text"}}
 
-IMPORTANT: If asked about the bot creator, developer, or who made it:
-- Respond that this bot was created by Samuel Kurian Roy
-- Be friendly and mention you're here to help with choir-related tasks
+SET use_rag BASED ON COMMAND TYPE:
+- use_rag: true → Data retrieval (date, last, check, theme, organist, unused, search, tune, bible)
+- use_rag: false → Interactive/UI commands (help, games, download, assignsongs, updatesunday)
 
-Examples:
-"What songs did we sing on Christmas?" → {{"command": "date", "parameters": {{"date": "25/12/{current_year}"}}, "response_text": "Let me check what songs were sung on Christmas!", "confidence": 0.9}}
-"Songs from last Sunday" → {{"command": "date", "parameters": {{"date": "{last_sunday_str}"}}, "response_text": "I'll look up the songs sung on last Sunday for you!", "confidence": 0.95}}
-"Find H-44" → {{"command": "search", "parameters": {{"query": "H-44"}}, "response_text": "Searching for hymn H-44...", "confidence": 0.95}}
-"When was hymn 21 last sung?" → {{"command": "last", "parameters": {{"song_code": "H-21"}}, "response_text": "Let me check when Hymn 21 was last sung!", "confidence": 0.95}}
-"When was convention 21 sung?" → {{"command": "last", "parameters": {{"song_code": "C-21"}}, "response_text": "Let me check when Convention 21 was last sung!", "confidence": 0.95}}
-"Get notation for hymn 21" → {{"command": null, "parameters": {{}}, "response_text": "To access sheet music notation, please use the /notation command. This feature requires authorization.", "confidence": 1.0}}
-"Who made this bot?" → {{"command": null, "parameters": {{}}, "response_text": "This bot was created by Samuel Kurian Roy to help our church choir manage songs and information. How can I assist you today?", "confidence": 1.0}}
-"Hello" → {{"command": null, "parameters": {{}}, "response_text": "Hello! I'm here to help you with choir songs. You can ask me things like 'What songs were sung on Christmas?' or 'Find H-44'.", "confidence": 1.0}}
+MULTI-STEP COMMAND EXAMPLES:
+"Christmas hymns" → {{"command": "theme", "parameters": {{"category": "H", "theme": "christmas"}}, "use_rag": true, "confidence": 0.95}}
+"funeral songs" → {{"command": "theme", "parameters": {{"category": "L", "theme": "funeral"}}, "use_rag": true, "confidence": 0.9}}
+"songs assigned to Henel" → {{"command": "organist", "parameters": {{"organist_name": "Henel"}}, "use_rag": true, "confidence": 0.95}}
+"unused hymns this year" → {{"command": "unused", "parameters": {{"duration": "thisyear", "category": "H"}}, "use_rag": true, "confidence": 0.95}}
+"What did we sing on Christmas?" → {{"command": "date", "parameters": {{"date": "25/12/{current_year}"}}, "use_rag": true, "confidence": 0.9}}
+"When was H-21 last sung?" → {{"command": "last", "parameters": {{"song_code": "H-21"}}, "use_rag": true, "confidence": 0.95}}
+"Show help" → {{"command": "help", "parameters": {{}}, "use_rag": false, "confidence": 1.0}}
 """
 
         # Call Gemini
