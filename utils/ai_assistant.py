@@ -15,7 +15,10 @@ _gemini_model = None
 _groq_client = None
 
 def initialize_gemini():
-    """Initialize Gemini API with the API key from config"""
+    """
+    Initialize Gemini API with the API key from config.
+    Does NOT test the connection to save quota.
+    """
     global _gemini_model
     
     try:
@@ -29,38 +32,13 @@ def initialize_gemini():
         # Initialize client with new API
         client = genai.Client(api_key=api_key)
         
-        # Try different model names in order of preference (must include 'models/' prefix)
-        model_names = [
-            'models/gemini-2.5-flash',           # Primary - working on free tier
-            'models/gemini-2.5-flash-lite',      # Lighter, faster version
-            'models/gemini-flash-latest',        # Latest flash version
-            'models/gemini-2.0-flash-lite',      # 2.0 lite version
-            'models/gemini-flash-lite-latest',   # Latest lite version
-        ]
+        # Use known working model (no testing to save quota)
+        model_name = 'models/gemini-2.5-flash'  # Confirmed working on free tier
         
-        for model_name in model_names:
-            try:
-                user_logger.info(f"Trying model: {model_name}")
-                
-                # Test the model with new API
-                test_response = client.models.generate_content(
-                    model=model_name,
-                    contents="Say OK"
-                )
-                
-                # If successful, store the client and model name
-                _gemini_model = (client, model_name)
-                user_logger.info(f"Model {model_name} works! Test: {test_response.text[:20]}")
-                user_logger.info(f"✅ Gemini AI initialized with {model_name}")
-                return True
-                
-            except Exception as model_error:
-                user_logger.warning(f"Model {model_name} failed: {str(model_error)[:100]}")
-                continue
-        
-        # If we get here, no model worked
-        user_logger.error("All Gemini models failed to initialize")
-        return False
+        # Store the client and model name without testing
+        _gemini_model = (client, model_name)
+        user_logger.info(f"✅ Gemini AI initialized with {model_name} (no test)")
+        return True
         
     except Exception as e:
         user_logger.error(f"Failed to initialize Gemini: {str(e)[:200]}")

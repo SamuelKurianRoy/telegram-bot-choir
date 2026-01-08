@@ -1903,6 +1903,8 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/reply` `<message>` - Reply to user comments/feedback
 • `/list` - Show this admin commands list
 • `/model` - Check current AI model status (Gemini/Groq)
+• `/switchmodel <provider>` - Switch AI provider (gemini/groq/both)
+• `/testmodel` - Test AI providers with actual requests (uses quota)
 
 **General Commands (also available to admin):**
 • `/start` - Welcome message and user tracking
@@ -1994,6 +1996,204 @@ async def admin_check_ai_model(update: Update, context: CallbackContext) -> None
     except Exception as e:
         await update.message.reply_text(f"❌ Error checking AI model: {str(e)}")
         user_logger.error(f"Error in admin_check_ai_model: {e}")
+
+async def admin_switch_ai_model(update: Update, context: CallbackContext) -> None:
+    """Admin command to switch between AI providers"""
+    user = update.effective_user
+    
+    # Check if user is admin
+    config = get_config()
+    admin_id = config.ADMIN_ID
+    if user.id != admin_id:
+        await update.message.reply_text("❌ Admin access required")
+        return
+    
+    # Check if a provider was specified
+    args = context.args
+    
+    if not args:
+        # Show options
+        from utils import ai_assistant
+        
+        status_lines = ["🔄 *Switch AI Model*\n"]
+        status_lines.append("Current status:")
+        
+        if ai_assistant._gemini_model is not None:
+            status_lines.append("• Gemini: ✅ Active")
+        else:
+            status_lines.append("• Gemini: ❌ Inactive")
+        
+        if ai_assistant._groq_client is not None:
+            status_lines.append("• Groq: ✅ Active")
+        else:
+            status_lines.append("• Groq: ❌ Inactive")
+        
+        status_lines.append("\n*Usage:*")
+        status_lines.append("• `/switchmodel gemini` - Switch to Gemini")
+        status_lines.append("• `/switchmodel groq` - Switch to Groq")
+        status_lines.append("• `/switchmodel both` - Initialize both")
+        
+        await update.message.reply_text("\n".join(status_lines), parse_mode="Markdown")
+        return
+    
+    provider = args[0].lower()
+    
+    try:
+        from utils import ai_assistant
+        
+        if provider == "gemini":
+            # Force reinitialize Gemini (no test to save quota)
+            ai_assistant._gemini_model = None
+            success = ai_assistant.initialize_gemini()
+            
+            if success:
+                await update.message.reply_text(
+                    "✅ *Switched to Gemini*\n\n"
+                    "AI requests will now use Gemini as primary provider.",
+                    parse_mode="Markdown"
+                )
+                user_logger.info(f"Admin {user.id} switched to Gemini")
+            else:
+                await update.message.reply_text(
+                    "❌ *Failed to initialize Gemini*\n\n"
+                    "Check if:\n"
+                    "• GEMINI_API_KEY is valid\n"
+                    "• Quota is not exceeded\n"
+                    "• Network connection is working",
+                    parse_mode="Markdown"
+                )
+        
+        elif provider == "groq":
+            # Force reinitialize Groq
+            ai_assistant._groq_client = None
+            success = ai_assistant.initialize_groq()
+            
+            if success:
+                await update.message.reply_text(
+                    "✅ *Switched to Groq*\n\n"
+                    "AI requests will now use Groq as primary provider.",
+                    parse_mode="Markdown"
+                )
+                user_logger.info(f"Admin {user.id} switched to Groq")
+            else:
+                await update.message.reply_text(
+                    "❌ *Failed to initialize Groq*\n\n"
+                    "Check if:\n"
+                    "• GROQ_API_KEY is set in config\n"
+                    "• groq package is installed (`pip install groq`)\n"
+                    "• Network connection is working",
+                    parse_mode="Markdown"
+                )
+        
+        elif provider == "both":
+            # Initialize both (no tests to save quota)
+            ai_assistant._gemini_model = None
+            ai_assistant._groq_client = None
+            
+            gemini_ok = ai_assistant.initialize_gemini()
+            groq_ok = ai_assistant.initialize_groq()
+            
+            results = []
+            if gemini_ok:
+                results.append("✅ Gemini initialized")
+            else:
+                results.append("❌ Gemini failed")
+            
+            if groq_ok:
+                results.append("✅ Groq initialized")
+            else:
+                results.append("❌ Groq failed")
+            
+            await update.message.reply_text(
+                "🔄 *Initialized Both Providers*\n\n" + "\n".join(results),
+                parse_mode="Markdown"
+            )
+            user_logger.info(f"Admin {user.id} initialized both AI providers")
+        
+        else:
+            await update.message.reply_text(
+                f"❌ Unknown provider: `{provider}`\n\n"
+                f"Use: `gemini`, `groq`, or `both`",
+                parse_mode="Markdown"
+            )
+    
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error switching model: {str(e)}")
+        user_logger.error(f"Error in admin_switch_ai_model: {e}")
+
+async def admin_test_ai_model(update: Update, context: CallbackContext) -> None:
+    """Admin command to test AI providers with actual requests"""
+    user = update.effective_user
+    
+    # Check if user is admin
+    config = get_config()
+    admin_id = config.ADMIN_ID
+    if user.id != admin_id:
+        await update.message.reply_text("❌ Admin access required")
+        return
+    
+    try:
+        from utils import ai_assistant
+        
+        status_msg = await update.message.reply_text("🧪 Testing AI models...")
+        
+        results = ["🧪 *AI Model Test Results*\n"]
+        
+        # Test Gemini
+        results.append("*Testing Gemini:*")
+        if ai_assistant._gemini_model is None:
+            results.append("❌ Not initialized")
+            results.append("")
+        else:
+            try:
+                client, model_name = ai_assistant._gemini_model
+                test_response = client.models.generate_content(
+                    model=model_name,
+                    contents="Reply with just 'OK'"
+                )
+                response_text = test_response.text.strip()
+                results.append(f"✅ Working!")
+                results.append(f"   Model: `{model_name}`")
+                results.append(f"   Response: {response_text[:30]}")
+                results.append("")
+            except Exception as e:
+                error_msg = str(e)[:100]
+                if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                    results.append(f"⚠️ Quota exceeded")
+                    results.append(f"   Switch to Groq: `/switchmodel groq`")
+                else:
+                    results.append(f"❌ Error: {error_msg}")
+                results.append("")
+        
+        # Test Groq
+        results.append("*Testing Groq:*")
+        if ai_assistant._groq_client is None:
+            results.append("❌ Not initialized")
+            results.append("   Initialize: `/switchmodel groq`")
+        else:
+            try:
+                test_response = ai_assistant._groq_client.chat.completions.create(
+                    messages=[{"role": "user", "content": "Reply with just 'OK'"}],
+                    model="llama-3.3-70b-versatile",
+                    max_tokens=10
+                )
+                response_text = test_response.choices[0].message.content.strip()
+                results.append(f"✅ Working!")
+                results.append(f"   Model: `llama-3.3-70b-versatile`")
+                results.append(f"   Response: {response_text[:30]}")
+            except Exception as e:
+                results.append(f"❌ Error: {str(e)[:100]}")
+        
+        results.append("")
+        results.append("💡 *Note:* Testing uses API quota")
+        
+        response = "\n".join(results)
+        await status_msg.edit_text(response, parse_mode="Markdown")
+        user_logger.info(f"Admin {user.id} tested AI models")
+    
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error testing models: {str(e)}")
+        user_logger.error(f"Error in admin_test_ai_model: {e}")
 
 # === FEATURE CONTROL ADMIN COMMANDS ===
 
