@@ -77,8 +77,20 @@ def upload_file_to_drive(file_path: str, original_filename: str, uploader_name: 
         return True, f"✅ Successfully uploaded!\n\n📁 Filename: `{new_filename}`\n🔗 [View on Drive]({file_link})"
         
     except Exception as e:
-        user_logger.error(f"❌ Failed to upload file to Drive: {str(e)}")
-        return False, f"❌ Upload failed: {str(e)[:100]}"
+        error_msg = str(e)
+        user_logger.error(f"❌ Failed to upload file to Drive: {error_msg}")
+        
+        # Provide helpful message for permission errors
+        if "403" in error_msg or "HttpError 403" in error_msg:
+            return False, (
+                "❌ Upload failed: Permission denied\n\n"
+                "⚠️ The service account needs access to the Drive folder.\n"
+                "Please share the folder with:\n"
+                "`choir-chatbot@angelic-ivy-454609-g3.iam.gserviceaccount.com`\n\n"
+                "Give it 'Editor' permissions."
+            )
+        
+        return False, f"❌ Upload failed: {error_msg[:100]}"
 
 def list_uploaded_files(limit: int = 10) -> str:
     """

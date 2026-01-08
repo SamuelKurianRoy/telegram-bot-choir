@@ -4283,11 +4283,18 @@ async def upload_description_received(update: Update, context: ContextTypes.DEFA
         context.user_data.pop('upload_file_name', None)
         
         if success:
-            final_message = (
-                f"{message_text}\n\n"
-                f"📝 Description: {description if description.lower() != 'skip' else 'No description provided'}\n\n"
-                "Thank you for contributing! 🎵"
-            )
+            # Add description only if provided
+            if description.lower() != 'skip':
+                final_message = (
+                    f"{message_text}\n\n"
+                    f"📝 Description: {description}\n\n"
+                    "Thank you for contributing! 🎵"
+                )
+            else:
+                final_message = (
+                    f"{message_text}\n\n"
+                    "Thank you for contributing! 🎵"
+                )
             await status_msg.edit_text(final_message, parse_mode="Markdown")
             user_logger.info(f"✅ Upload completed by user {user.id} ({user.full_name})")
         else:
