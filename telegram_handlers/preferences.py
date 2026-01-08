@@ -68,9 +68,7 @@ async def setting_start(update: Update, context: CallbackContext) -> int:
         ["🔍 Search Results Limit", "📥 Download Behavior"],
         ["🎵 Download Quality", "🎼 Show Tunes in Date"],
         ["📤 Upload Preference", "📊 View All Settings"],
-        [", "📥 Download Behavior"],
-        ["🎵 Download Quality", "🎼 Show Tunes in Date"],
-        ["📊 View All Settings", "❌ Cancel"]
+        ["❌ Cancel"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     
