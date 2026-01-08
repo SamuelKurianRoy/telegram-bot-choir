@@ -4286,13 +4286,13 @@ async def upload_description_received(update: Update, context: ContextTypes.DEFA
             # Add description only if provided
             if description.lower() != 'skip':
                 final_message = (
-                    f"{message_text}\n\n"
+                   # f"{message_text}\n\n"
                     f"📝 Description: {description}\n\n"
                     "Thank you for contributing! 🎵"
                 )
             else:
                 final_message = (
-                    f"{message_text}\n\n"
+                    #f"{message_text}\n\n"
                     "Thank you for contributing! 🎵"
                 )
             await status_msg.edit_text(final_message, parse_mode="Markdown")
