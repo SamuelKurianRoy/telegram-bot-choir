@@ -37,6 +37,9 @@ def upload_file_to_drive(file_path: str, original_filename: str, uploader_name: 
         # Use the filename as provided by user (already has extension)
         new_filename = original_filename
         
+        # Extract extension for MIME type
+        _, ext = os.path.splitext(original_filename)
+        
         # Prepare file metadata
         file_metadata = {
             'name': new_filename,
