@@ -34,12 +34,8 @@ def upload_file_to_drive(file_path: str, original_filename: str, uploader_name: 
             user_logger.error("GOOGLE_DRIVE_FOLDER_ID not found in secrets")
             return False, "Configuration error: Upload folder not set"
         
-        # Create a descriptive filename with timestamp and uploader info
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Clean the original filename
-        name, ext = os.path.splitext(original_filename)
-        safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).strip()
-        new_filename = f"{timestamp}_{safe_name}_by_{uploader_name}{ext}"
+        # Use the filename as provided by user (already has extension)
+        new_filename = original_filename
         
         # Prepare file metadata
         file_metadata = {
