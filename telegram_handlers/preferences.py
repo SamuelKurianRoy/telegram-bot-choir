@@ -36,6 +36,8 @@ async def setting_start(update: Update, context: CallbackContext) -> int:
     game_lang = get_user_game_language(user.id)
     search_limit = get_user_preference(user.id, 'search_results_limit', 10)
     download_pref = get_user_download_preference(user.id)
+    download_quality = get_user_download_quality(user.id)
+    show_tunes = get_user_show_tunes_in_date(user.id)
     upload_skip_filename = get_user_upload_skip_filename(user.id)
     upload_skip_description = get_user_upload_skip_description(user.id)
     
