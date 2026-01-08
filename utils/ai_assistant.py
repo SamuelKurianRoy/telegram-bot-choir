@@ -1,7 +1,8 @@
 # utils/ai_assistant.py
 # AI Assistant for natural language command interpretation using Google Gemini
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from config import get_config
 from logging_utils import setup_loggers
 import json
@@ -24,23 +25,29 @@ def initialize_gemini():
             user_logger.warning("GEMINI_API_KEY not found in secrets. AI assistant disabled.")
             return False
         
-        genai.configure(api_key=api_key)
+        # Initialize client with new API
+        client = genai.Client(api_key=api_key)
         
         # Try different model names in order of preference
-        # Based on test_gemini_api.py verification - only using confirmed working models
         model_names = [
-            'models/gemini-2.5-flash',  # Primary - fast and reliable (confirmed working)
-            'models/gemini-2.5-pro',    # Fallback - more capable
-            'models/gemini-2.0-flash',  # Alternative - if 2.5 unavailable
+            'gemini-2.0-flash-exp',  # Primary - latest flash model
+            'gemini-2.0-flash',      # Stable flash model
+            'gemini-1.5-flash',      # Fallback flash model
+            'gemini-1.5-pro',        # More capable but slower
         ]
         
         for model_name in model_names:
             try:
                 user_logger.info(f"Trying model: {model_name}")
-                _gemini_model = genai.GenerativeModel(model_name)
                 
-                # Test the model
-                test_response = _gemini_model.generate_content("Say OK")
+                # Test the model with new API
+                test_response = client.models.generate_content(
+                    model=model_name,
+                    contents="Say OK"
+                )
+                
+                # If successful, store the client and model name
+                _gemini_model = (client, model_name)
                 user_logger.info(f"Model {model_name} works! Test: {test_response.text[:20]}")
                 user_logger.info(f"✅ Gemini AI initialized with {model_name}")
                 return True
@@ -168,8 +175,12 @@ Examples:
 "Hello" → {{"command": null, "parameters": {{}}, "response_text": "Hello! I'm here to help you with choir songs. You can ask me things like 'What songs were sung on Christmas?' or 'Find H-44'.", "confidence": 1.0}}
 """
 
-        # Call Gemini
-        response = _gemini_model.generate_content(prompt)
+        # Call Gemini with new API
+        client, model_name = _gemini_model
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt
+        )
         response_text = response.text.strip()
         
         # Clean up response - remove markdown code blocks if present
