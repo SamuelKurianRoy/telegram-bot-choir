@@ -2386,6 +2386,10 @@ CATEGORY_SELECTION, EXPORT_CONFIRMATION = range(2)
 
 # Unused songs states
 UNUSED_DURATION_SELECT, UNUSED_CATEGORY_SELECT = range(2)
+
+# Upload sheet music states
+UPLOAD_FILE, UPLOAD_FILENAME, UPLOAD_DESCRIPTION = range(3)
+
 ADMIN_ID = int(st.secrets["ADMIN_ID"])
 
 async def start_vocabulary(update: Update, context: CallbackContext) -> int:
@@ -4116,4 +4120,213 @@ async def cancel_unused_songs(update: Update, context: ContextTypes.DEFAULT_TYPE
         reply_markup=ReplyKeyboardRemove()
     )
     return ConversationHandler.END
+
+
+# ===== UPLOAD SHEET MUSIC HANDLERS =====
+
+async def upload_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start the upload process for sheet music"""
+    user = update.effective_user
+    
+    await update.message.reply_text(
+        "📤 *Upload Sheet Music*\n\n"
+        "You can contribute sheet music files to our collection!\n\n"
+        "Please send me the file you want to upload.\n"
+        "Supported formats: PDF, Images (JPG, PNG), DOC, DOCX\n\n"
+        "Use /cancel to stop.",
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    
+    user_logger.info(f"User {user.id} ({user.full_name}) started upload process")
+    return UPLOAD_FILE
+
+
+async def upload_file_received(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle the file received from user"""
+    user = update.effective_user
+    message = update.message
+    
+    # Check if user sent a document or photo
+    if not (message.document or message.photo):
+        await update.message.reply_text(
+            "❌ Please send a file (document or photo).\n\n"
+            "Use /cancel to stop."
+        )
+        return UPLOAD_FILE
+    
+    try:
+        # Show processing message
+        status_msg = await update.message.reply_text("📥 Downloading file...")
+        
+        # Get file info
+        if message.document:
+            file = message.document
+            file_obj = await context.bot.get_file(file.file_id)
+            file_name = file.file_name
+        else:  # photo
+            # Get largest photo
+            file = message.photo[-1]
+            file_obj = await context.bot.get_file(file.file_id)
+            file_name = f"photo_{file.file_unique_id}.jpg"
+        
+        # Download file to temp location
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+        file_path = os.path.join(temp_dir, file_name)
+        await file_obj.download_to_drive(file_path)
+        
+        user_logger.info(f"Downloaded file: {file_name} from user {user.id}")
+        
+        # Store file info in context for next step
+        context.user_data['upload_file_path'] = file_path
+        context.user_data['upload_original_name'] = file_name
+        
+        await status_msg.edit_text(
+            "✅ File received!\n\n"
+            f"📁 *Original filename:* `{file_name}`\n\n"
+            "What name would you like to save this file as?\n"
+            "(Without extension - it will be added automatically)\n\n"
+            "Examples:\n"
+            "• `H-44 Emmanuel`\n"
+            "• `Advent Lyrics Collection`\n"
+            "• `Christmas Songs 2026`\n\n"
+            "Or type 'skip' to keep the original filename.",
+            parse_mode="Markdown"
+        )
+        
+        return UPLOAD_FILENAME
+        
+    except Exception as e:
+        user_logger.error(f"Error receiving upload file: {str(e)}")
+        await update.message.reply_text(
+            f"❌ Error receiving file: {str(e)[:100]}\n\n"
+            "Please try again or use /cancel to stop."
+        )
+        return UPLOAD_FILE
+
+
+async def upload_filename_received(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle custom filename from user"""
+    user = update.effective_user
+    custom_name = update.message.text.strip()
+    
+    # Get original filename
+    original_name = context.user_data.get('upload_original_name')
+    
+    if custom_name.lower() == 'skip':
+        # Keep original filename
+        final_name = original_name
+    else:
+        # Use custom name with original extension
+        name, ext = os.path.splitext(original_name)
+        # Clean the custom name
+        clean_name = "".join(c for c in custom_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        if not clean_name:
+            await update.message.reply_text(
+                "❌ Invalid filename. Please try again or type 'skip'."
+            )
+            return UPLOAD_FILENAME
+        final_name = f"{clean_name}{ext}"
+    
+    # Store the final filename
+    context.user_data['upload_file_name'] = final_name
+    
+    await update.message.reply_text(
+        f"✅ File will be saved as: `{final_name}`\n\n"
+        "Now, please provide a brief description for this file\n"
+        "(e.g., 'H-44 Emmanuel notation', 'Lyrics for Advent songs', etc.)\n\n"
+        "Or type 'skip' to upload without description.",
+        parse_mode="Markdown"
+    )
+    
+    return UPLOAD_DESCRIPTION
+
+
+async def upload_description_received(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle description and complete the upload"""
+    user = update.effective_user
+    description = update.message.text.strip()
+    
+    # Get file info from context
+    file_path = context.user_data.get('upload_file_path')
+    file_name = context.user_data.get('upload_file_name')
+    
+    if not file_path or not os.path.exists(file_path):
+        await update.message.reply_text(
+            "❌ File not found. Please start over with /upload"
+        )
+        return ConversationHandler.END
+    
+    try:
+        status_msg = await update.message.reply_text("☁️ Uploading to Google Drive...")
+        
+        # Import upload function
+        from data.sheet_upload import upload_file_to_drive
+        
+        # Upload to Drive
+        success, message_text = upload_file_to_drive(
+            file_path=file_path,
+            original_filename=file_name,
+            uploader_name=user.full_name or user.first_name or f"User{user.id}",
+            uploader_id=user.id
+        )
+        
+        # Clean up temp file
+        try:
+            os.remove(file_path)
+        except:
+            pass
+        
+        # Clear context
+        context.user_data.pop('upload_file_path', None)
+        context.user_data.pop('upload_file_name', None)
+        
+        if success:
+            final_message = (
+                f"{message_text}\n\n"
+                f"📝 Description: {description if description.lower() != 'skip' else 'No description provided'}\n\n"
+                "Thank you for contributing! 🎵"
+            )
+            await status_msg.edit_text(final_message, parse_mode="Markdown")
+            user_logger.info(f"✅ Upload completed by user {user.id} ({user.full_name})")
+        else:
+            await status_msg.edit_text(message_text, parse_mode="Markdown")
+            user_logger.error(f"❌ Upload failed for user {user.id}: {message_text}")
+        
+    except Exception as e:
+        user_logger.error(f"Error completing upload: {str(e)}")
+        await update.message.reply_text(
+            f"❌ Upload error: {str(e)[:100]}"
+        )
+        
+        # Clean up
+        try:
+            if file_path and os.path.exists(file_path):
+                os.remove(file_path)
+        except:
+            pass
+    
+    return ConversationHandler.END
+
+
+async def cancel_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel the upload process"""
+    # Clean up temp file if exists
+    file_path = context.user_data.get('upload_file_path')
+    if file_path and os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except:
+            pass
+    
+    context.user_data.pop('upload_file_path', None)
+    context.user_data.pop('upload_file_name', None)
+    
+    await update.message.reply_text(
+        "❌ Upload cancelled.",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
+
 

@@ -3132,3 +3132,22 @@ async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
         await update.message.reply_text(
             f"I had trouble executing that command. Please try using /{command} directly."
         )
+
+
+async def list_uploads_command(update: Update, context: CallbackContext) -> None:
+    """Command to list recently uploaded files (available to all users)"""
+    user = update.effective_user
+    
+    try:
+        from data.sheet_upload import list_uploaded_files
+        
+        status_msg = await update.message.reply_text("📂 Loading uploaded files...")
+        
+        file_list = list_uploaded_files(limit=10)
+        
+        await status_msg.edit_text(file_list, parse_mode="Markdown", disable_web_page_preview=True)
+        user_logger.info(f"User {user.id} ({user.full_name}) listed uploaded files")
+    
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)[:100]}")
+        user_logger.error(f"Error in list_uploads_command: {e}")

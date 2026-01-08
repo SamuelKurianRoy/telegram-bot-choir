@@ -24,6 +24,7 @@ try:
         admin_disable_feature, admin_enable_feature, admin_feature_status,
         admin_restrict_access, admin_unrestrict_access, admin_debug_features, admin_add_missing_features, admin_restore_all_features,
         admin_check_ai_model, admin_switch_ai_model, admin_test_ai_model,
+        list_uploads_command,
         ai_message_handler
     )
     from telegram_handlers.conversations import (
@@ -41,7 +42,8 @@ try:
         update_sunday_songs,
         update_date_songs,
         assign_songs_start, assign_song_selected, assign_organist_selected, assign_continue_or_done, cancel_assign_songs, ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT,
-        unused_songs_start, unused_duration_selected, unused_category_selected, cancel_unused_songs, UNUSED_DURATION_SELECT, UNUSED_CATEGORY_SELECT
+        unused_songs_start, unused_duration_selected, unused_category_selected, cancel_unused_songs, UNUSED_DURATION_SELECT, UNUSED_CATEGORY_SELECT,
+        upload_start, upload_file_received, upload_filename_received, upload_description_received, cancel_upload, UPLOAD_FILE, UPLOAD_FILENAME, UPLOAD_DESCRIPTION
     )
     from telegram_handlers.preferences import (
         setting_start, setting_menu_handler, bible_language_handler, game_language_handler,
@@ -257,6 +259,17 @@ unused_songs_conv_handler = ConversationHandler(
     fallbacks=[CommandHandler("cancel", cancel_unused_songs)],
 )
 
+# Register the upload sheet music conversation handler
+upload_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("upload", upload_start)],
+    states={
+        UPLOAD_FILE: [MessageHandler((filters.Document.ALL | filters.PHOTO) & ~filters.COMMAND, upload_file_received)],
+        UPLOAD_FILENAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, upload_filename_received)],
+        UPLOAD_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, upload_description_received)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel_upload)],
+)
+
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
 app.add_handler(bible_conv_handler)
@@ -295,6 +308,10 @@ app.add_handler(CommandHandler("restore_all_features", admin_restore_all_feature
 app.add_handler(CommandHandler("model", admin_check_ai_model))
 app.add_handler(CommandHandler("switchmodel", admin_switch_ai_model))
 app.add_handler(CommandHandler("testmodel", admin_test_ai_model))
+
+# Upload list command
+app.add_handler(CommandHandler("listuploads", list_uploads_command))
+
 app.add_handler(CallbackQueryHandler(handle_notation_callback, pattern="^notation:"))
 
 app.add_handler(tune_conv_handler)
@@ -310,6 +327,7 @@ app.add_handler(notation_conv_handler)
 app.add_handler(organist_roster_conv_handler)
 app.add_handler(assign_songs_conv_handler)
 app.add_handler(unused_songs_conv_handler)
+app.add_handler(upload_conv_handler)
 app.add_handler(CommandHandler("updatesunday", update_sunday_songs))
 app.add_handler(CommandHandler("updatedate", update_date_songs))
 app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
