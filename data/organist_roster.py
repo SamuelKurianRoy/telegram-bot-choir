@@ -257,10 +257,12 @@ def parse_date_input(date_str):
     Parse user's date input in various formats.
     
     Supported formats:
-    - DD/MM/YYYY or DD-MM-YYYY
-    - DD/MM/YY or DD-MM-YY
-    - YYYY-MM-DD
-    - "today" or "tomorrow"
+    - DD/MM/YYYY or DD-MM-YYYY (full date)
+    - DD/MM/YY or DD-MM-YY (2-digit year)
+    - DD/MM or DD-MM (uses current year)
+    - DD (uses current month and year)
+    - YYYY-MM-DD (ISO format)
+    - "today" or "tomorrow" (keywords)
     
     Args:
         date_str: Date string from user
@@ -271,12 +273,15 @@ def parse_date_input(date_str):
     if not date_str:
         return False, None, "No date provided"
     
+    original_str = date_str
     date_str = date_str.strip().lower()
     
     # Get current date in IST
     ist_offset = timezone(timedelta(hours=5, minutes=30))
     ist_now = datetime.now(ist_offset)
     today = ist_now.date()
+    current_year = today.year
+    current_month = today.month
     
     # Handle special keywords
     if date_str == "today":
@@ -284,24 +289,42 @@ def parse_date_input(date_str):
     elif date_str == "tomorrow":
         return True, today + timedelta(days=1), None
     
-    # Try different date formats
-    date_formats = [
-        '%d/%m/%Y',  # 08/01/2026
-        '%d-%m-%Y',  # 08-01-2026
-        '%d/%m/%y',  # 08/01/26
-        '%d-%m-%y',  # 08-01-26
-        '%Y-%m-%d',  # 2026-01-08
-    ]
+    # Normalize input: replace '-' with '/' for easier parsing
+    date_str = date_str.replace('-', '/')
+    parts = date_str.split('/')
     
-    for fmt in date_formats:
+    try:
+        if len(parts) == 3:
+            # DD/MM/YYYY or DD/MM/YY
+            day, month, year = map(int, parts)
+            # Handle 2-digit year
+            if year < 100:
+                year += 2000
+            parsed_date = date(year, month, day)
+            user_logger.info(f"Parsed '{original_str}' as {parsed_date.strftime('%d/%m/%Y')} (full date)")
+            return True, parsed_date, None
+        elif len(parts) == 2:
+            # DD/MM - use current year
+            day, month = map(int, parts)
+            parsed_date = date(current_year, month, day)
+            user_logger.info(f"Parsed '{original_str}' as {parsed_date.strftime('%d/%m/%Y')} (day/month)")
+            return True, parsed_date, None
+        elif len(parts) == 1:
+            # DD - use current month and year
+            day = int(parts[0])
+            parsed_date = date(current_year, current_month, day)
+            user_logger.info(f"Parsed '{original_str}' as {parsed_date.strftime('%d/%m/%Y')} (day only)")
+            return True, parsed_date, None
+        else:
+            return False, None, f"Invalid date format. Use DD, DD/MM, or DD/MM/YYYY"
+    except ValueError as e:
+        # If the above parsing failed, try ISO format (YYYY-MM-DD)
         try:
-            parsed_date = datetime.strptime(date_str, fmt).date()
-            user_logger.info(f"Parsed date '{date_str}' as {parsed_date.strftime('%d/%m/%Y')} using format {fmt}")
+            parsed_date = datetime.strptime(original_str.strip(), '%Y-%m-%d').date()
+            user_logger.info(f"Parsed '{original_str}' as {parsed_date.strftime('%d/%m/%Y')} (ISO format)")
             return True, parsed_date, None
         except ValueError:
-            continue
-    
-    return False, None, f"Could not parse date '{date_str}'. Use format: DD/MM/YYYY"
+            return False, None, f"Invalid date: {str(e)}"
 
 def get_next_sunday():
     """

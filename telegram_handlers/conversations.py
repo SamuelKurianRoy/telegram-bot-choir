@@ -3418,12 +3418,14 @@ async def update_date_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if not context.args:
         await update.message.reply_text(
             "❌ Please provide a date.\n\n"
-            "Usage: `/updatedate DD/MM/YYYY`\n\n"
+            "Usage: `/updatedate <date>`\n\n"
             "Examples:\n"
-            "• `/updatedate 12/01/2026`\n"
+            "• `/updatedate 31` (31st of current month)\n"
+            "• `/updatedate 25/12` (25th December this year)\n"
+            "• `/updatedate 12/01/2026` (full date)\n"
             "• `/updatedate today`\n"
             "• `/updatedate tomorrow`\n\n"
-            "Supported formats: DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD",
+            "Supported formats: DD, DD/MM, DD/MM/YYYY",
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -3437,9 +3439,9 @@ async def update_date_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             f"❌ *Invalid Date Format*\n\n"
             f"{error_msg}\n\n"
             f"Please use one of these formats:\n"
+            f"• DD (e.g., 31 for 31st of current month)\n"
+            f"• DD/MM (e.g., 25/12 for 25th December)\n"
             f"• DD/MM/YYYY (e.g., 12/01/2026)\n"
-            f"• DD-MM-YYYY (e.g., 12-01-2026)\n"
-            f"• YYYY-MM-DD (e.g., 2026-01-12)\n"
             f"• 'today' or 'tomorrow'",
             parse_mode=ParseMode.MARKDOWN
         )
