@@ -38,6 +38,7 @@ try:
         initialize_theme_components,
         organist_roster_start, organist_selection, cancel_organist, ORGANIST_SELECTION,
         update_sunday_songs,
+        update_date_songs,
         assign_songs_start, assign_song_selected, assign_organist_selected, assign_continue_or_done, cancel_assign_songs, ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT,
         unused_songs_start, unused_duration_selected, unused_category_selected, cancel_unused_songs, UNUSED_DURATION_SELECT, UNUSED_CATEGORY_SELECT
     )
@@ -304,6 +305,7 @@ app.add_handler(organist_roster_conv_handler)
 app.add_handler(assign_songs_conv_handler)
 app.add_handler(unused_songs_conv_handler)
 app.add_handler(CommandHandler("updatesunday", update_sunday_songs))
+app.add_handler(CommandHandler("updatedate", update_date_songs))
 app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
 
 # AI Message Handler - Must be LAST to catch all unhandled text messages

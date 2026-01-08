@@ -112,8 +112,9 @@ Available commands:
 9. /games - Play Bible quiz games
 10. /download - Download audio from YouTube/Spotify links
 11. /help - Show help information
-12. /updatesunday - Update Songs for Sunday sheet
-13. None - If the message is just casual conversation or doesn't match any command
+12. /updatesunday - Update Songs for Sunday sheet with next Sunday's songs
+13. /updatedate <date> - Update Songs for Sunday sheet with songs for a specific date (e.g., /updatedate 25/12/2025)
+14. None - If the message is just casual conversation or doesn't match any command
 
 NOTE: /notation is NOT available through AI - it requires authorization. If user asks for notation, respond conversationally and suggest using /notation command directly.
 

@@ -252,6 +252,57 @@ def get_full_roster_table():
         user_logger.error(f"Error getting full table: {str(e)[:50]}")
         return []
 
+def parse_date_input(date_str):
+    """
+    Parse user's date input in various formats.
+    
+    Supported formats:
+    - DD/MM/YYYY or DD-MM-YYYY
+    - DD/MM/YY or DD-MM-YY
+    - YYYY-MM-DD
+    - "today" or "tomorrow"
+    
+    Args:
+        date_str: Date string from user
+        
+    Returns:
+        tuple: (success: bool, date_obj: date or None, error_msg: str or None)
+    """
+    if not date_str:
+        return False, None, "No date provided"
+    
+    date_str = date_str.strip().lower()
+    
+    # Get current date in IST
+    ist_offset = timezone(timedelta(hours=5, minutes=30))
+    ist_now = datetime.now(ist_offset)
+    today = ist_now.date()
+    
+    # Handle special keywords
+    if date_str == "today":
+        return True, today, None
+    elif date_str == "tomorrow":
+        return True, today + timedelta(days=1), None
+    
+    # Try different date formats
+    date_formats = [
+        '%d/%m/%Y',  # 08/01/2026
+        '%d-%m-%Y',  # 08-01-2026
+        '%d/%m/%y',  # 08/01/26
+        '%d-%m-%y',  # 08-01-26
+        '%Y-%m-%d',  # 2026-01-08
+    ]
+    
+    for fmt in date_formats:
+        try:
+            parsed_date = datetime.strptime(date_str, fmt).date()
+            user_logger.info(f"Parsed date '{date_str}' as {parsed_date.strftime('%d/%m/%Y')} using format {fmt}")
+            return True, parsed_date, None
+        except ValueError:
+            continue
+    
+    return False, None, f"Could not parse date '{date_str}'. Use format: DD/MM/YYYY"
+
 def get_next_sunday():
     """
     Get the next Sunday date. If today is Sunday, return today.
@@ -460,6 +511,114 @@ def update_songs_for_sunday():
     
     except Exception as e:
         user_logger.error(f"Error updating Sunday songs: {str(e)[:100]}")
+        return False, f"Error: {str(e)[:100]}", None
+
+def update_date_songs(target_date):
+    """
+    Update the "Songs for Sunday" sheet with songs from a specific date or nearest available date.
+    Only updates the "Songs" column, leaves "Organist" column unchanged.
+    
+    Args:
+        target_date: date object for the desired date
+    
+    Returns:
+        tuple: (success: bool, message: str, date_used: date)
+    """
+    try:
+        config = get_config()
+        roster_sheet_id = config.secrets.get("ORGANIST_ROSTER_SHEET_ID")
+        
+        if not roster_sheet_id:
+            return False, "ORGANIST_ROSTER_SHEET_ID not found in secrets", None
+        
+        # Get songs for that date (or nearest available)
+        songs = get_songs_for_date(target_date)
+        
+        user_logger.info(f"Retrieved {len(songs)} songs for {target_date.strftime('%d/%m/%Y')}")
+        
+        if not songs:
+            return False, f"No songs found for {target_date.strftime('%d/%m/%Y')} or any later date", target_date
+        
+        drive_service = get_drive_service()
+        
+        # Download the current Excel file
+        request = drive_service.files().export_media(
+            fileId=roster_sheet_id,
+            mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        file_data = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_data, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        file_data.seek(0)
+        
+        # Load workbook with openpyxl to preserve formulas in other sheets
+        wb = load_workbook(file_data)
+        
+        # Check if "Songs for Sunday" sheet exists
+        if "Songs for Sunday" not in wb.sheetnames:
+            available_sheets = ', '.join(wb.sheetnames)
+            return False, f"'Songs for Sunday' sheet not found. Available: {available_sheets}", target_date
+        
+        user_logger.info(f"Available sheets: {wb.sheetnames}")
+        
+        # Get the target sheet
+        ws = wb["Songs for Sunday"]
+        
+        # Read current data to preserve organists
+        current_data = []
+        for row in ws.iter_rows(min_row=2, values_only=True):  # Skip header
+            current_data.append(row)
+        
+        user_logger.info(f"Current 'Songs for Sunday' has {len(current_data)} rows")
+        
+        # Get existing organists (column B, index 1)
+        existing_organists = []
+        for row in current_data:
+            if len(row) > 1:
+                existing_organists.append(row[1] if row[1] is not None else '')
+            else:
+                existing_organists.append('')
+        
+        # Match the number of organists to the number of songs
+        if len(existing_organists) < len(songs):
+            # Pad with empty strings
+            organists = existing_organists + [''] * (len(songs) - len(existing_organists))
+        else:
+            # Truncate to match songs
+            organists = existing_organists[:len(songs)]
+        
+        # Clear the sheet data (keep header row)
+        ws.delete_rows(2, ws.max_row)
+        
+        # Write new data
+        for i, (song, organist) in enumerate(zip(songs, organists), start=2):
+            ws.cell(row=i, column=1, value=song)  # Column A: Songs
+            ws.cell(row=i, column=2, value=organist)  # Column B: Organist
+        
+        # Save to BytesIO
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # Upload the file back
+        media = MediaIoBaseUpload(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            resumable=True
+        )
+        
+        drive_service.files().update(
+            fileId=roster_sheet_id,
+            media_body=media
+        ).execute()
+        
+        user_logger.info(f"✅ Updated Songs for Sunday with {len(songs)} songs for {target_date.strftime('%d/%m/%Y')}")
+        return True, f"✅ Updated {len(songs)} songs for {target_date.strftime('%d/%m/%Y')}", target_date
+    
+    except Exception as e:
+        user_logger.error(f"Error updating date songs: {str(e)[:100]}")
         return False, f"Error: {str(e)[:100]}", None
 
 

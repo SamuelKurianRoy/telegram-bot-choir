@@ -3407,6 +3407,75 @@ async def update_sunday_songs(update: Update, context: ContextTypes.DEFAULT_TYPE
         await status_msg.edit_text(f"❌ {error_msg}")
 
 
+async def update_date_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Update the Songs for Sunday sheet with songs from a specific date or nearest available date"""
+    from data.organist_roster import update_date_songs as update_date_songs_func, parse_date_input
+    
+    user = update.effective_user
+    user_logger.info(f"User {user.id} initiated date songs update")
+    
+    # Check if date argument was provided
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Please provide a date.\n\n"
+            "Usage: `/updatedate DD/MM/YYYY`\n\n"
+            "Examples:\n"
+            "• `/updatedate 12/01/2026`\n"
+            "• `/updatedate today`\n"
+            "• `/updatedate tomorrow`\n\n"
+            "Supported formats: DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    # Parse the date from arguments
+    date_str = ' '.join(context.args)
+    success, target_date, error_msg = parse_date_input(date_str)
+    
+    if not success:
+        await update.message.reply_text(
+            f"❌ *Invalid Date Format*\n\n"
+            f"{error_msg}\n\n"
+            f"Please use one of these formats:\n"
+            f"• DD/MM/YYYY (e.g., 12/01/2026)\n"
+            f"• DD-MM-YYYY (e.g., 12-01-2026)\n"
+            f"• YYYY-MM-DD (e.g., 2026-01-12)\n"
+            f"• 'today' or 'tomorrow'",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    # Send "updating..." message
+    status_msg = await update.message.reply_text(
+        f"⏳ Updating Songs for Sunday sheet for {target_date.strftime('%d/%m/%Y')}..."
+    )
+    
+    try:
+        # Call the update function
+        success, message, date_used = update_date_songs_func(target_date)
+        
+        if success:
+            response = (
+                f"✅ *Songs Updated Successfully!*\n\n"
+                f"📅 Requested Date: {target_date.strftime('%d/%m/%Y')}\n"
+                f"📅 Date Used: {date_used.strftime('%d/%m/%Y')}\n"
+                f"{message}"
+            )
+            if target_date != date_used:
+                response += f"\n\n💡 No songs found for {target_date.strftime('%d/%m/%Y')}, used nearest available date."
+            user_logger.info(f"User {user.id} successfully updated date songs for {date_used}")
+        else:
+            response = f"❌ *Update Failed*\n\n{message}"
+            user_logger.warning(f"User {user.id} failed to update date songs: {message}")
+        
+        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN)
+    
+    except Exception as e:
+        error_msg = f"Error updating date songs: {str(e)[:100]}"
+        user_logger.error(f"User {user.id} encountered error: {error_msg}")
+        await status_msg.edit_text(f"❌ {error_msg}")
+
+
 # ==========================================
 # ASSIGN SONGS TO ORGANISTS
 # ==========================================
