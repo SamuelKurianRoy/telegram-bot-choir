@@ -128,8 +128,7 @@ def list_uploaded_files(limit: int = 10) -> str:
             
             output.append(f"{i}. [{name}]({link})")
             output.append(f"   📅 {date_str}")
-            if description:
-                output.append(f"   ℹ️ {description}")
+            # Description contains uploader info - don't show to users
             output.append("")
         
         return "\n".join(output)
