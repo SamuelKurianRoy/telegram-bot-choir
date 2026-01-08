@@ -10,6 +10,8 @@ from data.udb import (
     get_user_download_preference, update_user_download_preference,
     get_user_download_quality, update_user_download_quality,
     get_user_show_tunes_in_date, update_user_show_tunes_in_date,
+    get_user_upload_skip_filename, update_user_upload_skip_filename,
+    get_user_upload_skip_description, update_user_upload_skip_description,
     track_user_fast, save_if_pending
 )
 from config import get_config
@@ -19,7 +21,7 @@ from logging_utils import setup_loggers
 bot_logger, user_logger = setup_loggers()
 
 # Conversation states
-SETTING_MENU, BIBLE_LANGUAGE_CHOICE, GAME_LANGUAGE_CHOICE, SEARCH_LIMIT_INPUT, DOWNLOAD_PREFERENCE_CHOICE, DOWNLOAD_QUALITY_CHOICE, TUNE_DISPLAY_CHOICE = range(7)
+SETTING_MENU, BIBLE_LANGUAGE_CHOICE, GAME_LANGUAGE_CHOICE, SEARCH_LIMIT_INPUT, DOWNLOAD_PREFERENCE_CHOICE, DOWNLOAD_QUALITY_CHOICE, TUNE_DISPLAY_CHOICE, UPLOAD_PREFERENCE_CHOICE = range(8)
 
 async def setting_start(update: Update, context: CallbackContext) -> int:
     """Start the settings management conversation"""
@@ -34,8 +36,18 @@ async def setting_start(update: Update, context: CallbackContext) -> int:
     game_lang = get_user_game_language(user.id)
     search_limit = get_user_preference(user.id, 'search_results_limit', 10)
     download_pref = get_user_download_preference(user.id)
-    download_quality = get_user_download_quality(user.id)
-    show_tunes = get_user_show_tunes_in_date(user.id)
+    upload_skip_filename = get_user_upload_skip_filename(user.id)
+    upload_skip_description = get_user_upload_skip_description(user.id)
+    
+    # Format upload preference
+    if upload_skip_filename and upload_skip_description:
+        upload_pref = "Skip Both"
+    elif upload_skip_filename:
+        upload_pref = "Skip Filename"
+    elif upload_skip_description:
+        upload_pref = "Skip Description"
+    else:
+        upload_pref = "Ask All"
 
     # Create settings menu
     welcome_text = (
@@ -46,13 +58,17 @@ async def setting_start(update: Update, context: CallbackContext) -> int:
         f"🔍 Search Results Limit: *{search_limit}*\n"
         f"📥 Download Behavior: *{download_pref.title()}*\n"
         f"🎵 Download Quality: *{download_quality.title()}*\n"
-        f"🎼 Show Tunes in Date: *{'Yes' if show_tunes else 'No'}*\n\n"
+        f"🎼 Show Tunes in Date: *{'Yes' if show_tunes else 'No'}*\n"
+        f"📤 Upload Preference: *{upload_pref}*\n\n"
         "What would you like to change?"
     )
     
     keyboard = [
         ["📖 Bible Language", "🎮 Game Language"],
         ["🔍 Search Results Limit", "📥 Download Behavior"],
+        ["🎵 Download Quality", "🎼 Show Tunes in Date"],
+        ["📤 Upload Preference", "📊 View All Settings"],
+        [", "📥 Download Behavior"],
         ["🎵 Download Quality", "🎼 Show Tunes in Date"],
         ["📊 View All Settings", "❌ Cancel"]
     ]
@@ -175,8 +191,39 @@ async def setting_menu_handler(update: Update, context: CallbackContext) -> int:
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
 
         await update.message.reply_text(tune_display_text, parse_mode="Markdown", reply_markup=reply_markup)
-        return TUNE_DISPLAY_CHOICE
-
+        return TUNE_DISPLAY_CHOICE    
+    elif user_input == "📤 Upload Preference":
+        upload_skip_filename = get_user_upload_skip_filename(user.id)
+        upload_skip_description = get_user_upload_skip_description(user.id)
+        
+        if upload_skip_filename and upload_skip_description:
+            current = "Skip Both"
+        elif upload_skip_filename:
+            current = "Skip Filename"
+        elif upload_skip_description:
+            current = "Skip Description"
+        else:
+            current = "Ask All"
+        
+        upload_text = (
+            "📤 *Upload Preference Setting*\n\n"
+            f"Current setting: *{current}*\n\n"
+            "Choose how the /upload command should behave:\n\n"
+            "• *Ask All* - Ask for both filename and description\n"
+            "• *Skip Filename* - Use original filename, ask for description\n"
+            "• *Skip Description* - Ask for filename, skip description\n"
+            "• *Skip Both* - Use original filename, no description"
+        )
+        
+        keyboard = [
+            ["Ask All", "Skip Filename"],
+            ["Skip Description", "Skip Both"],
+            ["🔙 Back to Menu", "❌ Cancel"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        
+        await update.message.reply_text(upload_text, parse_mode="Markdown", reply_markup=reply_markup)
+        return UPLOAD_PREFERENCE_CHOICE
     elif user_input == "📊 View All Settings":
         # Get all current settings
         bible_lang = get_user_bible_language(user.id)
@@ -596,7 +643,79 @@ async def tune_display_handler(update: Update, context: CallbackContext) -> int:
             reply_markup=ReplyKeyboardRemove()
         )
         return await setting_start(update, context)
-
+async def upload_preference_handler(update: Update, context: CallbackContext) -> int:
+    """Handle upload preference selection"""
+    user = update.effective_user
+    user_input = update.message.text.strip()
+    
+    if user_input == "Ask All":
+        update_user_upload_skip_filename(user.id, False)
+        update_user_upload_skip_description(user.id, False)
+        save_if_pending()
+        await update.message.reply_text(
+            "✅ Upload preference set to *Ask All*.\n\n"
+            "The bot will ask for both filename and description when you upload.",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        user_logger.info(f"{user.full_name} (ID: {user.id}) set upload preference to Ask All")
+        return ConversationHandler.END
+    
+    elif user_input == "Skip Filename":
+        update_user_upload_skip_filename(user.id, True)
+        update_user_upload_skip_description(user.id, False)
+        save_if_pending()
+        await update.message.reply_text(
+            "✅ Upload preference set to *Skip Filename*.\n\n"
+            "The bot will use the original filename and ask for description.",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        user_logger.info(f"{user.full_name} (ID: {user.id}) set upload preference to Skip Filename")
+        return ConversationHandler.END
+    
+    elif user_input == "Skip Description":
+        update_user_upload_skip_filename(user.id, False)
+        update_user_upload_skip_description(user.id, True)
+        save_if_pending()
+        await update.message.reply_text(
+            "✅ Upload preference set to *Skip Description*.\n\n"
+            "The bot will ask for filename but skip description.",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        user_logger.info(f"{user.full_name} (ID: {user.id}) set upload preference to Skip Description")
+        return ConversationHandler.END
+    
+    elif user_input == "Skip Both":
+        update_user_upload_skip_filename(user.id, True)
+        update_user_upload_skip_description(user.id, True)
+        save_if_pending()
+        await update.message.reply_text(
+            "✅ Upload preference set to *Skip Both*.\n\n"
+            "The bot will use original filename and skip description prompt.",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        user_logger.info(f"{user.full_name} (ID: {user.id}) set upload preference to Skip Both")
+        return ConversationHandler.END
+    
+    elif user_input == "🔙 Back to Menu":
+        return await setting_start(update, context)
+    
+    elif user_input == "❌ Cancel":
+        await update.message.reply_text(
+            "✅ Settings cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    else:
+        await update.message.reply_text(
+            "Please select a valid option.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return await setting_start(update, context)
 async def cancel_settings(update: Update, context: CallbackContext) -> int:
     """Cancel the settings conversation"""
     await update.message.reply_text(

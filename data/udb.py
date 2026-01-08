@@ -693,6 +693,22 @@ def update_user_show_tunes_in_date(user_id, show_tunes):
 
     return update_user_preference(user_id, 'show_tunes_in_date', show_tunes)
 
+def get_user_upload_skip_filename(user_id):
+    """Get user's upload preference for skipping filename prompt"""
+    return get_user_preference(user_id, 'upload_skip_filename', False)
+
+def update_user_upload_skip_filename(user_id, skip_filename):
+    """Update user's upload preference for skipping filename prompt"""
+    return update_user_preference(user_id, 'upload_skip_filename', skip_filename)
+
+def get_user_upload_skip_description(user_id):
+    """Get user's upload preference for skipping description prompt"""
+    return get_user_preference(user_id, 'upload_skip_description', False)
+
+def update_user_upload_skip_description(user_id, skip_description):
+    """Update user's upload preference for skipping description prompt"""
+    return update_user_preference(user_id, 'upload_skip_description', skip_description)
+
 def update_google_sheet_structure():
     """
     Updates the Google Sheet to include all required columns.

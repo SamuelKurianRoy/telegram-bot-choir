@@ -4182,20 +4182,45 @@ async def upload_file_received(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['upload_file_path'] = file_path
         context.user_data['upload_original_name'] = file_name
         
-        await status_msg.edit_text(
-            "✅ File received!\n\n"
-            f"📁 *Original filename:* `{file_name}`\n\n"
-            "What name would you like to save this file as?\n"
-            "(Without extension - it will be added automatically)\n\n"
-            "Examples:\n"
-            "• `H-44 Emmanuel`\n"
-            "• `Advent Lyrics Collection`\n"
-            "• `Christmas Songs 2026`\n\n"
-            "Or type 'skip' to keep the original filename.",
-            parse_mode="Markdown"
-        )
+        # Check user preference for skipping filename
+        from data.udb import get_user_upload_skip_filename, get_user_upload_skip_description
+        skip_filename = get_user_upload_skip_filename(user.id)
+        skip_description = get_user_upload_skip_description(user.id)
         
-        return UPLOAD_FILENAME
+        if skip_filename:
+            # User wants to skip filename, use original
+            context.user_data['upload_file_name'] = file_name
+            
+            if skip_description:
+                # Skip both - upload directly
+                context.user_data['upload_description'] = 'skip'
+                return await upload_complete(update, context, status_msg)
+            else:
+                # Skip filename, ask for description
+                await status_msg.edit_text(
+                    f"✅ File received: `{file_name}`\n\n"
+                    "Please provide a brief description for this file\n"
+                    "(e.g., 'H-44 Emmanuel notation', 'Lyrics for Advent songs', etc.)\n\n"
+                    "Or type 'skip' to upload without description.",
+                    parse_mode="Markdown"
+                )
+                return UPLOAD_DESCRIPTION
+        else:
+            # Ask for filename
+            await status_msg.edit_text(
+                "✅ File received!\n\n"
+                f"📁 *Original filename:* `{file_name}`\n\n"
+                "What name would you like to save this file as?\n"
+                "(Without extension - it will be added automatically)\n\n"
+                "Examples:\n"
+                "• `H-44 Emmanuel`\n"
+                "• `Advent Lyrics Collection`\n"
+                "• `Christmas Songs 2026`\n\n"
+                "Or type 'skip' to keep the original filename.",
+                parse_mode="Markdown"
+            )
+            
+            return UPLOAD_FILENAME
         
     except Exception as e:
         user_logger.error(f"Error receiving upload file: {str(e)}")
@@ -4232,6 +4257,16 @@ async def upload_filename_received(update: Update, context: ContextTypes.DEFAULT
     # Store the final filename
     context.user_data['upload_file_name'] = final_name
     
+    # Check if user wants to skip description
+    from data.udb import get_user_upload_skip_description
+    skip_description = get_user_upload_skip_description(user.id)
+    
+    if skip_description:
+        # Skip description, upload directly
+        context.user_data['upload_description'] = 'skip'
+        status_msg = await update.message.reply_text("☁️ Uploading to Google Drive...")
+        return await upload_complete(update, context, status_msg)
+    
     await update.message.reply_text(
         f"✅ File will be saved as: `{final_name}`\n\n"
         "Now, please provide a brief description for this file\n"
@@ -4244,9 +4279,18 @@ async def upload_filename_received(update: Update, context: ContextTypes.DEFAULT
 
 
 async def upload_description_received(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle description and complete the upload"""
-    user = update.effective_user
+    """Handle description input"""
     description = update.message.text.strip()
+    context.user_data['upload_description'] = description
+    
+    status_msg = await update.message.reply_text("☁️ Uploading to Google Drive...")
+    return await upload_complete(update, context, status_msg)
+
+
+async def upload_complete(update: Update, context: ContextTypes.DEFAULT_TYPE, status_msg=None) -> int:
+    """Complete the upload process"""
+    user = update.effective_user
+    description = context.user_data.get('upload_description', 'skip')
     
     # Get file info from context
     file_path = context.user_data.get('upload_file_path')
