@@ -13,6 +13,7 @@ bot_logger, user_logger = setup_loggers()
 # Initialize AI providers
 _gemini_model = None
 _groq_client = None
+_preferred_provider = "gemini"  # Track user's preferred provider: 'gemini', 'groq', or 'both'
 
 def initialize_gemini():
     """
@@ -99,6 +100,7 @@ def parse_user_intent(user_message: str) -> dict:
     """
     global _gemini_model
     global _groq_client
+    global _preferred_provider
     
     # Try to initialize Gemini if not already done
     if _gemini_model is None:
@@ -205,7 +207,10 @@ Examples:
         response_text = None
         used_provider = None
         
-        if _gemini_model is not None:
+        # Determine which provider to try first based on preference
+        primary_provider = _preferred_provider if _preferred_provider in ['gemini', 'groq'] else 'gemini'
+        
+        if primary_provider == 'gemini' and _gemini_model is not None:
             try:
                 client, model_name = _gemini_model
                 response = client.models.generate_content(
@@ -220,30 +225,72 @@ Examples:
                 user_logger.warning(f"Gemini failed: {str(gemini_error)[:100]}, trying Groq fallback...")
                 response_text = None
         
-        # If Gemini failed or wasn't available, use Groq
+        elif primary_provider == 'groq' and _groq_client is not None:
+            try:
+                # Use Groq as primary
+                groq_response = _groq_client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    model="llama-3.3-70b-versatile",
+                    temperature=0.3,
+                    max_tokens=500
+                )
+                response_text = groq_response.choices[0].message.content.strip()
+                used_provider = "Groq"
+                
+            except Exception as groq_error:
+                # If Groq fails, try Gemini fallback
+                user_logger.warning(f"Groq failed: {str(groq_error)[:100]}, trying Gemini fallback...")
+                response_text = None
+        
+        # If primary provider failed or wasn't available, try fallback
         if response_text is None:
-            if _groq_client is None:
-                if not initialize_groq():
+            # Try the other provider as fallback
+            if primary_provider == 'gemini' and _groq_client is not None:
+                # Gemini failed, use Groq as fallback
+                if _groq_client is None:
+                    if not initialize_groq():
+                        return {
+                            "command": None,
+                            "parameters": {},
+                            "response_text": "AI assistant encountered an error. Please use /help.",
+                            "confidence": 0.0
+                        }
+                
+                groq_response = _groq_client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    model="llama-3.3-70b-versatile",
+                    temperature=0.3,
+                    max_tokens=500
+                )
+                response_text = groq_response.choices[0].message.content.strip()
+                used_provider = "Groq (fallback)"
+                user_logger.info("✅ Used Groq fallback successfully")
+                
+            elif primary_provider == 'groq' and _gemini_model is not None:
+                # Groq failed, use Gemini as fallback
+                try:
+                    client, model_name = _gemini_model
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt
+                    )
+                    response_text = response.text.strip()
+                    used_provider = "Gemini (fallback)"
+                    user_logger.info("✅ Used Gemini fallback successfully")
+                except Exception as e:
+                    user_logger.error(f"Both providers failed: {str(e)[:100]}")
                     return {
                         "command": None,
                         "parameters": {},
                         "response_text": "AI assistant encountered an error. Please use /help.",
                         "confidence": 0.0
                     }
-            
-            # Use Groq as fallback
-            groq_response = _groq_client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
-                    {"role": "user", "content": prompt}
-                ],
-                model="llama-3.3-70b-versatile",
-                temperature=0.3,
-                max_tokens=500
-            )
-            response_text = groq_response.choices[0].message.content.strip()
-            used_provider = "Groq"
-            user_logger.info("✅ Used Groq fallback successfully")
         
         # Clean up response - remove markdown code blocks if present
         response_text = re.sub(r'^```json\s*', '', response_text)

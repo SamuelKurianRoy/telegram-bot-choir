@@ -1960,34 +1960,60 @@ async def admin_check_ai_model(update: Update, context: CallbackContext) -> None
             client, model_name = ai_assistant._gemini_model
             response_lines.append(f"✅ *Gemini:* Active")
             response_lines.append(f"   Model: `{model_name}`")
-            response_lines.append(f"   Status: Primary AI provider")
         else:
             response_lines.append(f"❌ *Gemini:* Not initialized")
-            response_lines.append(f"   Reason: Failed to initialize or quota exceeded")
         
         response_lines.append("")
         
         # Check Groq
         if ai_assistant._groq_client is not None:
-            response_lines.append(f"✅ *Groq:* Active (Fallback)")
+            response_lines.append(f"✅ *Groq:* Active")
             response_lines.append(f"   Model: `llama-3.3-70b-versatile`")
-            response_lines.append(f"   Status: Free tier backup")
         else:
             response_lines.append(f"⚠️ *Groq:* Not initialized")
-            response_lines.append(f"   Note: No fallback available")
         
         response_lines.append("")
         response_lines.append("*Current Behavior:*")
         
-        if ai_assistant._gemini_model is not None:
-            response_lines.append("• Using Gemini as primary")
-            response_lines.append("• Will fallback to Groq if Gemini fails")
-        elif ai_assistant._groq_client is not None:
-            response_lines.append("• Using Groq as primary")
-            response_lines.append("• Gemini unavailable")
-        else:
-            response_lines.append("• ⚠️ No AI providers available")
-            response_lines.append("• AI features disabled")
+        # Show behavior based on preferred provider
+        preferred = getattr(ai_assistant, '_preferred_provider', 'gemini')
+        
+        if preferred == 'gemini':
+            if ai_assistant._gemini_model is not None:
+                response_lines.append("• Using *Gemini* as primary")
+                if ai_assistant._groq_client is not None:
+                    response_lines.append("• Will fallback to Groq if Gemini fails")
+                else:
+                    response_lines.append("• No fallback available")
+            else:
+                if ai_assistant._groq_client is not None:
+                    response_lines.append("• Gemini unavailable, using Groq")
+                else:
+                    response_lines.append("• ⚠️ No AI providers available")
+        
+        elif preferred == 'groq':
+            if ai_assistant._groq_client is not None:
+                response_lines.append("• Using *Groq* as primary")
+                if ai_assistant._gemini_model is not None:
+                    response_lines.append("• Will fallback to Gemini if Groq fails")
+                else:
+                    response_lines.append("• No fallback available")
+            else:
+                if ai_assistant._gemini_model is not None:
+                    response_lines.append("• Groq unavailable, using Gemini")
+                else:
+                    response_lines.append("• ⚠️ No AI providers available")
+        
+        elif preferred == 'both':
+            if ai_assistant._gemini_model is not None and ai_assistant._groq_client is not None:
+                response_lines.append("• Using *both* providers (Gemini primary)")
+                response_lines.append("• Will fallback to Groq if Gemini fails")
+            elif ai_assistant._gemini_model is not None:
+                response_lines.append("• Only Gemini available")
+            elif ai_assistant._groq_client is not None:
+                response_lines.append("• Only Groq available")
+            else:
+                response_lines.append("• ⚠️ No AI providers available")
         
         response = "\n".join(response_lines)
         await update.message.reply_text(response, parse_mode="Markdown")
@@ -2044,6 +2070,7 @@ async def admin_switch_ai_model(update: Update, context: CallbackContext) -> Non
         if provider == "gemini":
             # Force reinitialize Gemini (no test to save quota)
             ai_assistant._gemini_model = None
+            ai_assistant._preferred_provider = "gemini"
             success = ai_assistant.initialize_gemini()
             
             if success:
@@ -2066,6 +2093,7 @@ async def admin_switch_ai_model(update: Update, context: CallbackContext) -> Non
         elif provider == "groq":
             # Force reinitialize Groq
             ai_assistant._groq_client = None
+            ai_assistant._preferred_provider = "groq"
             success = ai_assistant.initialize_groq()
             
             if success:
@@ -2089,6 +2117,7 @@ async def admin_switch_ai_model(update: Update, context: CallbackContext) -> Non
             # Initialize both (no tests to save quota)
             ai_assistant._gemini_model = None
             ai_assistant._groq_client = None
+            ai_assistant._preferred_provider = "both"
             
             gemini_ok = ai_assistant.initialize_gemini()
             groq_ok = ai_assistant.initialize_groq()
