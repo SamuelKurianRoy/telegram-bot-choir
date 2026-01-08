@@ -23,6 +23,7 @@ try:
         admin_reply_start, admin_reply_select_user, admin_reply_send_message, REPLY_SELECT_USER, REPLY_ENTER_MESSAGE, admin_reply_legacy,
         admin_disable_feature, admin_enable_feature, admin_feature_status,
         admin_restrict_access, admin_unrestrict_access, admin_debug_features, admin_add_missing_features, admin_restore_all_features,
+        admin_check_ai_model,
         ai_message_handler
     )
     from telegram_handlers.conversations import (
@@ -289,6 +290,9 @@ app.add_handler(CommandHandler("unrestrict_access", admin_unrestrict_access))
 app.add_handler(CommandHandler("debug_features", admin_debug_features))
 app.add_handler(CommandHandler("add_missing_features", admin_add_missing_features))
 app.add_handler(CommandHandler("restore_all_features", admin_restore_all_features))
+
+# AI model status command
+app.add_handler(CommandHandler("model", admin_check_ai_model))
 app.add_handler(CallbackQueryHandler(handle_notation_callback, pattern="^notation:"))
 
 app.add_handler(tune_conv_handler)

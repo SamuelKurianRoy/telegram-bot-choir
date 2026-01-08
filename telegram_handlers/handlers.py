@@ -1902,6 +1902,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/dnstest` - Test DNS resolution and network connectivity
 • `/reply` `<message>` - Reply to user comments/feedback
 • `/list` - Show this admin commands list
+• `/model` - Check current AI model status (Gemini/Groq)
 
 **General Commands (also available to admin):**
 • `/start` - Welcome message and user tracking
@@ -1935,6 +1936,64 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
     except Exception as e:
         await update.message.reply_text(f"❌ Error retrieving admin commands: {str(e)}")
         user_logger.error(f"Error in admin_list_commands: {e}")
+
+async def admin_check_ai_model(update: Update, context: CallbackContext) -> None:
+    """Admin command to check which AI model is currently active"""
+    user = update.effective_user
+    
+    # Check if user is admin
+    config = get_config()
+    admin_id = config.ADMIN_ID
+    if user.id != admin_id:
+        await update.message.reply_text("❌ Admin access required")
+        return
+    
+    try:
+        from utils import ai_assistant
+        
+        response_lines = ["🤖 *AI Model Status*\n"]
+        
+        # Check Gemini
+        if ai_assistant._gemini_model is not None:
+            client, model_name = ai_assistant._gemini_model
+            response_lines.append(f"✅ *Gemini:* Active")
+            response_lines.append(f"   Model: `{model_name}`")
+            response_lines.append(f"   Status: Primary AI provider")
+        else:
+            response_lines.append(f"❌ *Gemini:* Not initialized")
+            response_lines.append(f"   Reason: Failed to initialize or quota exceeded")
+        
+        response_lines.append("")
+        
+        # Check Groq
+        if ai_assistant._groq_client is not None:
+            response_lines.append(f"✅ *Groq:* Active (Fallback)")
+            response_lines.append(f"   Model: `llama-3.3-70b-versatile`")
+            response_lines.append(f"   Status: Free tier backup")
+        else:
+            response_lines.append(f"⚠️ *Groq:* Not initialized")
+            response_lines.append(f"   Note: No fallback available")
+        
+        response_lines.append("")
+        response_lines.append("*Current Behavior:*")
+        
+        if ai_assistant._gemini_model is not None:
+            response_lines.append("• Using Gemini as primary")
+            response_lines.append("• Will fallback to Groq if Gemini fails")
+        elif ai_assistant._groq_client is not None:
+            response_lines.append("• Using Groq as primary")
+            response_lines.append("• Gemini unavailable")
+        else:
+            response_lines.append("• ⚠️ No AI providers available")
+            response_lines.append("• AI features disabled")
+        
+        response = "\n".join(response_lines)
+        await update.message.reply_text(response, parse_mode="Markdown")
+        user_logger.info(f"Admin {user.id} checked AI model status")
+    
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error checking AI model: {str(e)}")
+        user_logger.error(f"Error in admin_check_ai_model: {e}")
 
 # === FEATURE CONTROL ADMIN COMMANDS ===
 
