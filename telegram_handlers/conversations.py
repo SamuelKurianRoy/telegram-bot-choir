@@ -3375,14 +3375,14 @@ async def cancel_organist(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return ConversationHandler.END
 
 async def update_sunday_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Update the Songs for Sunday sheet with songs from today (if Sunday) or next Sunday"""
+    """Update the Songs for Sunday sheet with songs from the next available date in the database"""
     from data.organist_roster import update_songs_for_sunday
     
     user = update.effective_user
     user_logger.info(f"User {user.id} initiated Sunday songs update")
     
     # Send "updating..." message
-    status_msg = await update.message.reply_text("⏳ Updating Songs for Sunday sheet...")
+    status_msg = await update.message.reply_text("⏳ Updating Songs for Sunday sheet with next available date...")
     
     try:
         # Call the update function
@@ -3391,7 +3391,7 @@ async def update_sunday_songs(update: Update, context: ContextTypes.DEFAULT_TYPE
         if success:
             response = (
                 f"✅ *Songs Updated Successfully!*\n\n"
-                f"📅 Date: {date_used.strftime('%d/%m/%Y')}\n"
+                f"📅 Date: {date_used.strftime('%d/%m/%Y')} ({date_used.strftime('%A')})\n"
                 f"{message}"
             )
             user_logger.info(f"User {user.id} successfully updated Sunday songs for {date_used}")

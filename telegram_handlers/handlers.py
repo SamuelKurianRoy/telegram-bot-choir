@@ -190,8 +190,8 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "  - *Description:* View organist assignments for songs. See which songs are assigned to each organist or view unassigned songs.\n"
         "  - *Example:* Type `/organist`, select an organist from the list, or choose 'Unassigned Songs' to see songs without an organist.\n\n"
         "• **/updatesunday**\n"
-        "  - *Description:* Update the 'Songs for Sunday' sheet with songs from today (if Sunday) or the next Sunday.\n"
-        "  - *Example:* Type `/updatesunday` to automatically populate the sheet with the latest songs.\n\n"
+        "  - *Description:* Update the 'Songs for Sunday' sheet with songs from the next available date in the database.\n"
+        "  - *Example:* Type `/updatesunday` to automatically populate the sheet with songs from the next scheduled date.\n\n"
         "• **/updatedate**\n"
         "  - *Description:* Update the 'Songs for Sunday' sheet with songs from a specific date or nearest available date.\n"
         "  - *Example:* Type `/updatedate 25/12/2025` or `/updatedate today` to populate the sheet with songs for that date.\n\n"
@@ -1920,7 +1920,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/comment` - Send feedback to admin
 • `/setting` - Manage personal settings
 • `/organist` - View organist assignments for songs
-• `/updatesunday` - Update Songs for Sunday sheet (admin only)
+• `/updatesunday` - Update Songs for Sunday sheet with next available date (admin only)
 • `/updatedate` - Update Songs for Sunday sheet with custom date (admin only)
 • `/assignsongs` - Assign Sunday songs to organists
 • `/unused` - Find songs not sung in a specific period

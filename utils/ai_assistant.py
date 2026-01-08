@@ -112,7 +112,7 @@ Available commands:
 9. /games - Play Bible quiz games
 10. /download - Download audio from YouTube/Spotify links
 11. /help - Show help information
-12. /updatesunday - Update Songs for Sunday sheet with next Sunday's songs
+12. /updatesunday - Update Songs for Sunday sheet with next available date
 13. /updatedate <date> - Update Songs for Sunday sheet with songs for a specific date (e.g., /updatedate 25/12/2025)
 14. None - If the message is just casual conversation or doesn't match any command
 

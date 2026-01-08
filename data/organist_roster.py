@@ -355,6 +355,49 @@ def get_next_sunday():
     
     return next_sunday
 
+def get_next_available_date():
+    """
+    Get the next available date with songs in the database.
+    Looks for any date >= today in the database.
+    
+    Returns:
+        date: The next available date, or None if no future dates exist
+    """
+    try:
+        from data.datasets import get_all_data
+        
+        # Get current date in IST
+        ist_offset = timezone(timedelta(hours=5, minutes=30))
+        ist_now = datetime.now(ist_offset)
+        today = ist_now.date()
+        
+        data = get_all_data()
+        df = data["df"]
+        
+        if df is None or df.empty:
+            user_logger.error("Main database is empty")
+            return None
+        
+        # Ensure 'Date' column is datetime.date
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.date
+        df.dropna(subset=['Date'], inplace=True)
+        
+        # Get all dates >= today
+        available_dates = sorted(df['Date'].unique())
+        future_dates = [d for d in available_dates if d >= today]
+        
+        if not future_dates:
+            user_logger.warning(f"No future dates found in database. Last date: {available_dates[-1].strftime('%d/%m/%Y') if available_dates else 'None'}")
+            return None
+        
+        next_date = future_dates[0]
+        user_logger.info(f"Next available date: {next_date.strftime('%d/%m/%Y')} ({next_date.strftime('%A')})")
+        return next_date
+    
+    except Exception as e:
+        user_logger.error(f"Error getting next available date: {str(e)[:100]}")
+        return None
+
 def get_songs_for_date(target_date):
     """
     Get songs for a specific date from the main database.
@@ -430,7 +473,7 @@ def get_songs_for_date(target_date):
 
 def update_songs_for_sunday():
     """
-    Update the "Songs for Sunday" sheet with songs from today (if Sunday) or next Sunday.
+    Update the "Songs for Sunday" sheet with songs from the next available date in the database.
     Only updates the "Songs" column, leaves "Organist" column unchanged.
     
     Returns:
@@ -443,16 +486,19 @@ def update_songs_for_sunday():
         if not roster_sheet_id:
             return False, "ORGANIST_ROSTER_SHEET_ID not found in secrets", None
         
-        # Get next Sunday date
-        sunday_date = get_next_sunday()
+        # Get next available date from database
+        next_date = get_next_available_date()
+        
+        if not next_date:
+            return False, "No future dates found in database", None
         
         # Get songs for that date
-        songs = get_songs_for_date(sunday_date)
+        songs = get_songs_for_date(next_date)
         
-        user_logger.info(f"Retrieved {len(songs)} songs for {sunday_date.strftime('%d/%m/%Y')}")
+        user_logger.info(f"Retrieved {len(songs)} songs for {next_date.strftime('%d/%m/%Y')}")
         
         if not songs:
-            return False, f"No songs found for {sunday_date.strftime('%d/%m/%Y')}", sunday_date
+            return False, f"No songs found for {next_date.strftime('%d/%m/%Y')}", next_date
         
         drive_service = get_drive_service()
         
@@ -474,7 +520,7 @@ def update_songs_for_sunday():
         # Check if "Songs for Sunday" sheet exists
         if "Songs for Sunday" not in wb.sheetnames:
             available_sheets = ', '.join(wb.sheetnames)
-            return False, f"'Songs for Sunday' sheet not found. Available: {available_sheets}", sunday_date
+            return False, f"'Songs for Sunday' sheet not found. Available: {available_sheets}", next_date
         
         user_logger.info(f"Available sheets: {wb.sheetnames}")
         
@@ -529,8 +575,8 @@ def update_songs_for_sunday():
             media_body=media
         ).execute()
         
-        user_logger.info(f"✅ Updated Songs for Sunday with {len(songs)} songs for {sunday_date.strftime('%d/%m/%Y')}")
-        return True, f"✅ Updated {len(songs)} songs for {sunday_date.strftime('%d/%m/%Y')}", sunday_date
+        user_logger.info(f"✅ Updated Songs for Sunday with {len(songs)} songs for {next_date.strftime('%d/%m/%Y')}")
+        return True, f"✅ Updated {len(songs)} songs for {next_date.strftime('%d/%m/%Y')}", next_date
     
     except Exception as e:
         user_logger.error(f"Error updating Sunday songs: {str(e)[:100]}")
