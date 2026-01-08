@@ -10,8 +10,9 @@ import re
 
 bot_logger, user_logger = setup_loggers()
 
-# Initialize Gemini
+# Initialize AI providers
 _gemini_model = None
+_groq_client = None
 
 def initialize_gemini():
     """Initialize Gemini API with the API key from config"""
@@ -28,12 +29,13 @@ def initialize_gemini():
         # Initialize client with new API
         client = genai.Client(api_key=api_key)
         
-        # Try different model names in order of preference
+        # Try different model names in order of preference (must include 'models/' prefix)
         model_names = [
-            'gemini-2.0-flash-exp',  # Primary - latest flash model
-            'gemini-2.0-flash',      # Stable flash model
-            'gemini-1.5-flash',      # Fallback flash model
-            'gemini-1.5-pro',        # More capable but slower
+            'models/gemini-2.5-flash',           # Primary - working on free tier
+            'models/gemini-2.5-flash-lite',      # Lighter, faster version
+            'models/gemini-flash-latest',        # Latest flash version
+            'models/gemini-2.0-flash-lite',      # 2.0 lite version
+            'models/gemini-flash-lite-latest',   # Latest lite version
         ]
         
         for model_name in model_names:
@@ -66,6 +68,43 @@ def initialize_gemini():
         user_logger.error(f"Init traceback: {traceback.format_exc()[:500]}")
         return False
 
+def initialize_groq():
+    """Initialize Groq API as a free fallback option"""
+    global _groq_client
+    
+    try:
+        # Try importing groq
+        try:
+            from groq import Groq
+        except ImportError:
+            user_logger.warning("Groq package not installed. Install with: pip install groq")
+            return False
+        
+        config = get_config()
+        api_key = config.secrets.get("GROQ_API_KEY")
+        
+        if not api_key:
+            user_logger.warning("GROQ_API_KEY not found in secrets. Free AI fallback disabled.")
+            user_logger.info("To enable free fallback: Get API key from https://console.groq.com/keys")
+            return False
+        
+        # Initialize Groq client
+        _groq_client = Groq(api_key=api_key)
+        
+        # Test the client
+        test_response = _groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": "Say OK"}],
+            model="llama-3.3-70b-versatile",  # Fast and free
+            max_tokens=10
+        )
+        
+        user_logger.info(f"✅ Groq AI (free) initialized as fallback")
+        return True
+        
+    except Exception as e:
+        user_logger.error(f"Failed to initialize Groq: {str(e)[:200]}")
+        return False
+
 def parse_user_intent(user_message: str) -> dict:
     """
     Parse user's natural language message to determine intent and extract parameters.
@@ -81,9 +120,18 @@ def parse_user_intent(user_message: str) -> dict:
             - confidence: Confidence score (0-1)
     """
     global _gemini_model
+    global _groq_client
     
+    # Try to initialize Gemini if not already done
     if _gemini_model is None:
-        if not initialize_gemini():
+        gemini_ok = initialize_gemini()
+        if not gemini_ok:
+            user_logger.warning("Gemini not available, will try Groq fallback")
+    
+    # If Gemini is still not available, try Groq
+    if _gemini_model is None and _groq_client is None:
+        groq_ok = initialize_groq()
+        if not groq_ok:
             return {
                 "command": None,
                 "parameters": {},
@@ -175,13 +223,49 @@ Examples:
 "Hello" → {{"command": null, "parameters": {{}}, "response_text": "Hello! I'm here to help you with choir songs. You can ask me things like 'What songs were sung on Christmas?' or 'Find H-44'.", "confidence": 1.0}}
 """
 
-        # Call Gemini with new API
-        client, model_name = _gemini_model
-        response = client.models.generate_content(
-            model=model_name,
-            contents=prompt
-        )
-        response_text = response.text.strip()
+        # Try Gemini first (if available)
+        response_text = None
+        used_provider = None
+        
+        if _gemini_model is not None:
+            try:
+                client, model_name = _gemini_model
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt
+                )
+                response_text = response.text.strip()
+                used_provider = "Gemini"
+                
+            except Exception as gemini_error:
+                # If Gemini fails (rate limit, quota, etc.), try Groq fallback
+                user_logger.warning(f"Gemini failed: {str(gemini_error)[:100]}, trying Groq fallback...")
+                response_text = None
+        
+        # If Gemini failed or wasn't available, use Groq
+        if response_text is None:
+            if _groq_client is None:
+                if not initialize_groq():
+                    return {
+                        "command": None,
+                        "parameters": {},
+                        "response_text": "AI assistant encountered an error. Please use /help.",
+                        "confidence": 0.0
+                    }
+            
+            # Use Groq as fallback
+            groq_response = _groq_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
+                    {"role": "user", "content": prompt}
+                ],
+                model="llama-3.3-70b-versatile",
+                temperature=0.3,
+                max_tokens=500
+            )
+            response_text = groq_response.choices[0].message.content.strip()
+            used_provider = "Groq"
+            user_logger.info("✅ Used Groq fallback successfully")
         
         # Clean up response - remove markdown code blocks if present
         response_text = re.sub(r'^```json\s*', '', response_text)
@@ -189,7 +273,7 @@ Examples:
         response_text = re.sub(r'\s*```$', '', response_text)
         response_text = response_text.strip()
         
-        user_logger.info(f"Gemini raw response: {response_text[:200]}")
+        user_logger.info(f"{used_provider} raw response: {response_text[:200]}")
         
         # Parse JSON response
         try:

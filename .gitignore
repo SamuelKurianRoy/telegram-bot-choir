@@ -17,6 +17,7 @@ test_downloader.py
 test_ffmpeg.py
 requirements_new.txt
 requirements_backup.txt
+discover_gemini_models.py
 
 # Test files
 test_*.py

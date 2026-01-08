@@ -6,6 +6,9 @@ google-auth-httplib2
 googleapis-common-protos
 google-genai>=1.0.0
 
+# AI/LLM providers
+groq>=0.4.0  # Free tier fallback for AI assistant
+
 # Data manipulation and file handling
 pandas>=1.3.0
 XlsxWriter>=3.0.0
