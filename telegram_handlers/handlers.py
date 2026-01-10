@@ -201,6 +201,9 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "• **/unused**\n"
         "  - *Description:* Find songs that haven't been sung in a specific time period. Filter by hymns, lyrics, or conventions, and choose durations like 3 months, 6 months, this year, or 1 year.\n"
         "  - *Example:* Type `/unused`, select a duration like '3 Months', then choose a category like 'Hymns'.\n\n"
+        "• **/upload**\n"
+        "  - *Description:* Upload and contribute sheet music files to the collection. Supports PDF, images (JPG, PNG), DOC, and DOCX formats.\n"
+        "  - *Example:* Type `/upload`, send your file, provide a filename and description when prompted.\n\n"
         "• **/vocabulary**\n"
         "  - *Description:* Starts the vocabulary export conversation.\n"
         "  - *Example:* Type `/vocabulary` and follow the instructions.\n\n"
@@ -1927,6 +1930,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/updatedate` - Update Songs for Sunday sheet with custom date (admin only)
 • `/assignsongs` - Assign Sunday songs to organists
 • `/unused` - Find songs not sung in a specific period
+• `/upload` - Upload sheet music files to the collection
 
 **Usage Examples:**
 • `/admin_user_info 757438955`
