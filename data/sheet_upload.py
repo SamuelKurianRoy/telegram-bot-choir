@@ -148,3 +148,99 @@ def list_uploaded_files(limit: int = 10) -> str:
     except Exception as e:
         user_logger.error(f"❌ Failed to list uploaded files: {str(e)}")
         return f"❌ Error listing files: {str(e)[:100]}"
+
+def search_uploaded_file_by_lyric(lyric_number: int) -> tuple[bool, str, str]:
+    """
+    Search for a lyric file in the upload folder by lyric number.
+    Looks for filenames containing 'L-XX' pattern.
+    
+    Args:
+        lyric_number: The lyric number to search for (e.g., 32 for L-32)
+        
+    Returns:
+        Tuple of (found: bool, file_id: str, filename: str)
+    """
+    try:
+        config = get_config()
+        drive_service = get_drive_service()
+        
+        folder_id = config.secrets.get("GOOGLE_DRIVE_FOLDER_ID")
+        if not folder_id:
+            user_logger.error("GOOGLE_DRIVE_FOLDER_ID not found in secrets")
+            return False, "", ""
+        
+        # Search for files containing the lyric pattern
+        search_patterns = [
+            f"L-{lyric_number}",
+            f"L{lyric_number}",
+            f"Lyric-{lyric_number}",
+            f"Lyric {lyric_number}"
+        ]
+        
+        user_logger.info(f"Searching upload folder for lyric L-{lyric_number}")
+        
+        # Query all PDF files in the folder
+        results = drive_service.files().list(
+            q=f"'{folder_id}' in parents and trashed=false and mimeType='application/pdf'",
+            pageSize=100,
+            fields="files(id, name, createdTime)"
+        ).execute()
+        
+        files = results.get('files', [])
+        
+        # Search for matching files
+        for file in files:
+            filename = file.get('name', '')
+            # Check if any search pattern is in the filename (case-insensitive)
+            for pattern in search_patterns:
+                if pattern.lower() in filename.lower():
+                    user_logger.info(f"✅ Found matching file in uploads: {filename}")
+                    return True, file.get('id'), filename
+        
+        user_logger.info(f"❌ No matching file found in uploads for L-{lyric_number}")
+        return False, "", ""
+        
+    except Exception as e:
+        user_logger.error(f"Error searching uploaded files: {str(e)[:100]}")
+        return False, "", ""
+
+def download_uploaded_file(file_id: str, filename: str, temp_dir: str) -> str:
+    """
+    Download a file from the upload folder to a temporary location.
+    
+    Args:
+        file_id: Google Drive file ID
+        filename: Original filename
+        temp_dir: Temporary directory to save the file
+        
+    Returns:
+        Path to the downloaded file, or None if failed
+    """
+    try:
+        drive_service = get_drive_service()
+        
+        # Create temp directory if it doesn't exist
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # Download the file
+        from googleapiclient.http import MediaIoBaseDownload
+        request = drive_service.files().get_media(fileId=file_id)
+        file_data = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_data, request)
+        
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        
+        # Write to temp file
+        file_path = os.path.join(temp_dir, filename)
+        file_data.seek(0)
+        with open(file_path, 'wb') as f:
+            f.write(file_data.read())
+        
+        user_logger.info(f"✅ Downloaded file from uploads: {filename}")
+        return file_path
+        
+    except Exception as e:
+        user_logger.error(f"Error downloading uploaded file: {str(e)[:100]}")
+        return None
