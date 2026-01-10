@@ -322,7 +322,12 @@ lyrics_file_map = fetch_lyrics_file_map(LYRICS_FOLDER_URL)
 # --- /notation command (interactive only, no arguments supported) ---
 async def notation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📖 Please enter the hymn or lyric number (e.g. H-86 or L-222):",
+        "📖 *Notation Search*\n\n"
+        "Enter hymn/lyric number or search by keyword:\n"
+        "• H-86 or L-222 (exact format)\n"
+        "• 'handel' or 'advent' (search uploaded files)\n\n"
+        "Type /cancel to stop.",
+        parse_mode="Markdown",
         reply_markup=ReplyKeyboardRemove()
     )
     return NOTATION_TYPE
@@ -447,7 +452,104 @@ async def notation_code_input(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Enter another hymn or lyric number, or type /cancel to stop.")
         return NOTATION_TYPE
     else:
-        await update.message.reply_text("❌ Invalid format. Please use H-<number> or L-<number> (e.g. H-86 or L-222). Try again or type /cancel to stop.")
+        # Invalid format - search in upload folder by text
+        search_text = code_input_raw.strip()
+        searching_msg = await update.message.reply_text(f"🔍 Searching uploaded files for '{search_text}'...")
+        
+        try:
+            from data.sheet_upload import search_uploaded_file_by_text, download_uploaded_file
+            matching_files = search_uploaded_file_by_text(search_text)
+            
+            if matching_files:
+                if len(matching_files) == 1:
+                    # Only one match - download and send it directly
+                    file_id, filename = matching_files[0]
+                    await searching_msg.edit_text(f"✅ Found: {filename}\n⏳ Downloading...")
+                    
+                    upload_pdf_path = download_uploaded_file(file_id, filename, DOWNLOAD_DIR)
+                    
+                    if upload_pdf_path and os.path.exists(upload_pdf_path):
+                        await searching_msg.delete()
+                        
+                        # Verify file size before sending
+                        file_size = os.path.getsize(upload_pdf_path)
+                        if file_size > 50 * 1024 * 1024:  # 50MB limit
+                            await update.message.reply_text(f"❌ PDF file is too large to send via Telegram.")
+                        else:
+                            with open(upload_pdf_path, 'rb') as pdf_file:
+                                await update.message.reply_document(
+                                    document=pdf_file,
+                                    filename=filename,
+                                    caption=f"📁 Notation found in uploads\nSearch: '{search_text}'"
+                                )
+                            user_logger.info(f"✅ Sent notation from uploads for search '{search_text}': {filename}")
+                        
+                        # Clean up
+                        try:
+                            os.remove(upload_pdf_path)
+                        except:
+                            pass
+                    else:
+                        await searching_msg.delete()
+                        await update.message.reply_text(f"❌ Could not download the file: {filename}")
+                else:
+                    # Multiple matches - show list with buttons
+                    await searching_msg.delete()
+                    
+                    if len(matching_files) > 10:
+                        # Too many results - show message
+                        await update.message.reply_text(
+                            f"🔍 *Found {len(matching_files)} files matching '{search_text}'*\n\n"
+                            f"Too many results to display. Please be more specific.\n\n"
+                            f"💡 Try using format H-22 or L-32 for exact matches.",
+                            parse_mode="Markdown"
+                        )
+                    else:
+                        # Show list of matches
+                        file_list = "\n".join([f"{i+1}. {filename}" for i, (_, filename) in enumerate(matching_files)])
+                        
+                        # Create inline keyboard for selection
+                        keyboard = []
+                        for i, (file_id, filename) in enumerate(matching_files):
+                            # Truncate long filenames for button display
+                            display_name = filename[:50] + "..." if len(filename) > 50 else filename
+                            keyboard.append([InlineKeyboardButton(
+                                f"{i+1}. {display_name}", 
+                                callback_data=f"upload_notation:{file_id}|{filename}"
+                            )])
+                        
+                        reply_markup = InlineKeyboardMarkup(keyboard)
+                        await update.message.reply_text(
+                            f"🔍 *Found {len(matching_files)} files matching '{search_text}'*\n\n"
+                            f"Select a file to view:",
+                            reply_markup=reply_markup,
+                            parse_mode="Markdown"
+                        )
+                        user_logger.info(f"Showed {len(matching_files)} results for search '{search_text}'")
+            else:
+                # No matches found
+                await searching_msg.delete()
+                await update.message.reply_text(
+                    f"❌ *No matches found*\n\n"
+                    f"'{search_text}' was not found in uploaded files.\n\n"
+                    f"💡 *Tip:* Use proper format for exact search:\n"
+                    f"• For Hymn 22: Type `H-22`\n"
+                    f"• For Lyric 32: Type `L-32`\n\n"
+                    f"Or try different keywords to search uploaded files.",
+                    parse_mode="Markdown"
+                )
+                user_logger.info(f"❌ No uploads found for search '{search_text}'")
+        
+        except Exception as e:
+            await searching_msg.delete()
+            await update.message.reply_text(
+                f"❌ Error searching uploads: {str(e)[:100]}\n\n"
+                f"💡 Try using format H-22 or L-32 for exact matches."
+            )
+            user_logger.error(f"Error in text search for '{search_text}': {str(e)}")
+        
+        await update.message.reply_text("Enter another hymn or lyric number, or type /cancel to stop.")
+        return NOTATION_TYPE
         await update.message.reply_text("Enter another hymn or lyric number, or type /cancel to stop.")
         return NOTATION_TYPE
 
@@ -889,6 +991,60 @@ async def handle_notation_callback(update: Update, context: ContextTypes.DEFAULT
     await send_notation_image(update, context, tune_name.strip(), song_id.strip())
     # Delete the downloading message
     await downloading_msg.delete()
+
+# Callback handler for uploaded notation files selection
+async def handle_upload_notation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle selection of uploaded notation file from search results"""
+    query = update.callback_query
+    await query.answer()
+
+    if not query.data.startswith("upload_notation:"):
+        return
+
+    try:
+        data = query.data.replace("upload_notation:", "")
+        file_id, filename = data.split("|", 1)
+    except ValueError:
+        await query.edit_message_text("⚠️ Invalid callback format.")
+        return
+
+    # Show downloading message
+    await query.edit_message_text(f"⏳ Downloading: {filename}...")
+    
+    try:
+        from data.sheet_upload import download_uploaded_file
+        
+        # Download the file
+        upload_pdf_path = download_uploaded_file(file_id, filename, DOWNLOAD_DIR)
+        
+        if upload_pdf_path and os.path.exists(upload_pdf_path):
+            # Verify file size before sending
+            file_size = os.path.getsize(upload_pdf_path)
+            if file_size > 50 * 1024 * 1024:  # 50MB limit
+                await query.edit_message_text(f"❌ PDF file is too large to send via Telegram.")
+            else:
+                await query.delete_message()
+                
+                with open(upload_pdf_path, 'rb') as pdf_file:
+                    await context.bot.send_document(
+                        chat_id=query.message.chat_id,
+                        document=pdf_file,
+                        filename=filename,
+                        caption=f"📁 Notation from uploads\n{filename}"
+                    )
+                user_logger.info(f"✅ Sent uploaded notation: {filename}")
+            
+            # Clean up
+            try:
+                os.remove(upload_pdf_path)
+            except:
+                pass
+        else:
+            await query.edit_message_text(f"❌ Could not download the file: {filename}")
+            
+    except Exception as e:
+        await query.edit_message_text(f"❌ Error: {str(e)[:100]}")
+        user_logger.error(f"Error in upload notation callback: {str(e)}")
 
 
 

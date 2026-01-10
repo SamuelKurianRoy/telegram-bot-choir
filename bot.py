@@ -35,7 +35,7 @@ try:
         theme_type_choice, handle_theme_type, handle_theme_selection, handle_year_filter, handle_theme_typo_confirm, THEME_TYPE, THEME_SELECTION, YEAR_FILTER, TYPO_CONFIRM,
         start_vocabulary, category_selection, CATEGORY_SELECTION,
         download_start, download_url_input, download_playlist_choice, download_quality_selection, ENTER_URL, PLAYLIST_CHOICE, SELECT_QUALITY,
-        start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback, handle_song_code,
+        start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback, handle_upload_notation_callback, handle_song_code,
         bible_game_start, bible_game_language_handler, bible_game_difficulty_handler, bible_game_question_handler, BIBLE_GAME_LANGUAGE, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION,
         initialize_theme_components,
         organist_roster_start, organist_selection, cancel_organist, ORGANIST_SELECTION,
@@ -314,6 +314,7 @@ app.add_handler(CommandHandler("testmodel", admin_test_ai_model))
 app.add_handler(CommandHandler("listuploads", list_uploads_command))
 
 app.add_handler(CallbackQueryHandler(handle_notation_callback, pattern="^notation:"))
+app.add_handler(CallbackQueryHandler(handle_upload_notation_callback, pattern="^upload_notation:"))
 
 app.add_handler(tune_conv_handler)
 app.add_handler(last_conv_handler)

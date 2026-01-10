@@ -244,3 +244,52 @@ def download_uploaded_file(file_id: str, filename: str, temp_dir: str) -> str:
     except Exception as e:
         user_logger.error(f"Error downloading uploaded file: {str(e)[:100]}")
         return None
+def search_uploaded_file_by_text(search_text: str) -> list[tuple[str, str]]:
+    """
+    Search for files in the upload folder by text/keyword.
+    Returns all files that contain the search text in their filename.
+    
+    Args:
+        search_text: Text to search for in filenames (e.g., "handel", "advent")
+        
+    Returns:
+        List of tuples: [(file_id, filename), ...]
+    """
+    try:
+        config = get_config()
+        drive_service = get_drive_service()
+        
+        folder_id = config.secrets.get("GOOGLE_DRIVE_FOLDER_ID")
+        if not folder_id:
+            user_logger.error("GOOGLE_DRIVE_FOLDER_ID not found in secrets")
+            return []
+        
+        search_text_lower = search_text.lower().strip()
+        user_logger.info(f"Searching upload folder for text: '{search_text}'")
+        
+        # Query all PDF files in the folder
+        results = drive_service.files().list(
+            q=f"'{folder_id}' in parents and trashed=false and mimeType='application/pdf'",
+            pageSize=100,
+            fields="files(id, name, createdTime)"
+        ).execute()
+        
+        files = results.get('files', [])
+        matching_files = []
+        
+        # Search for matching files (case-insensitive)
+        for file in files:
+            filename = file.get('name', '')
+            if search_text_lower in filename.lower():
+                matching_files.append((file.get('id'), filename))
+        
+        if matching_files:
+            user_logger.info(f"✅ Found {len(matching_files)} matching file(s) in uploads")
+        else:
+            user_logger.info(f"❌ No matching files found in uploads for '{search_text}'")
+        
+        return matching_files
+        
+    except Exception as e:
+        user_logger.error(f"Error searching uploaded files by text: {str(e)[:100]}")
+        return []
