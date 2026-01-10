@@ -98,6 +98,12 @@ class FeatureController:
                 'description': 'Search songs by theme and topic',
                 'commands': '/theme, theme finder',
                 'enabled': True
+            },
+            'upload': {
+                'name': 'Upload Sheet Music',
+                'description': 'Upload and contribute sheet music files',
+                'commands': '/upload, file uploads',
+                'enabled': True
             }
         }
     

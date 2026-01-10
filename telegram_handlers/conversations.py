@@ -4339,6 +4339,23 @@ async def upload_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     """Start the upload process for sheet music"""
     user = update.effective_user
     
+    # Check if upload feature is enabled and user has access
+    try:
+        from data.feature_control import can_user_access_feature
+        
+        can_access, error_message = can_user_access_feature('upload', user.id)
+        if not can_access:
+            await update.message.reply_text(
+                error_message,
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            user_logger.info(f"Upload access blocked for {user.full_name} ({user.id}) - {error_message[:50]}...")
+            return ConversationHandler.END
+    except Exception as feature_check_error:
+        user_logger.error(f"Error checking upload feature access: {feature_check_error}")
+        # Continue with normal flow if feature check fails
+    
     await update.message.reply_text(
         "📤 *Upload Sheet Music*\n\n"
         "You can contribute sheet music files to our collection!\n\n"
