@@ -7,6 +7,9 @@
 
 namespace ChoirBot {
 
+// Forward declarations
+class SongParser;
+
 /**
  * Main bot application class
  * Manages the Telegram bot lifecycle and handlers
@@ -36,6 +39,19 @@ private:
     std::unique_ptr<TgBot::Bot> bot;
     std::atomic<bool> running;
     
+    // Conversation state management
+    enum class ConversationState {
+        None,
+        WaitingForCheckSong,
+        WaitingForLastSong,
+        WaitingForDate
+    };
+    std::map<int64_t, ConversationState> userStates;
+    
+    void setUserState(int64_t userId, ConversationState state);
+    ConversationState getUserState(int64_t userId) const;
+    void clearUserState(int64_t userId);
+    
     // Handler registration
     void registerHandlers();
     void registerBasicCommands();
@@ -47,6 +63,16 @@ private:
     void registerAdminCommands();
     void registerSettingsCommands();
     void registerAIHandler();
+    
+    // Song code handling
+    void handleSongCodeMessage(TgBot::Message::Ptr message, 
+                               const struct SongParser::ParsedCode& parsed);
+    
+    // Conversation handling
+    void handleConversationMessage(TgBot::Message::Ptr message, ConversationState state);
+    void handleCheckSongInput(TgBot::Message::Ptr message);
+    void handleLastSongInput(TgBot::Message::Ptr message);
+    void handleDateInput(TgBot::Message::Ptr message);
     
     // Helper methods
     bool isAuthorized(int64_t userId) const;

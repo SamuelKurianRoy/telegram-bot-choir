@@ -1,7 +1,12 @@
 #include "Application.hpp"
 #include "models/Config.hpp"
 #include "utils/Logger.hpp"
+#include "utils/SongParser.hpp"
+#include "data/Database.hpp"
 #include <iostream>
+#include <sstream>
+#include <iomanip>
+#include <ctime>
 
 namespace ChoirBot {
 
@@ -187,6 +192,7 @@ void Application::registerBasicCommands() {
     
     // /cancel command
     bot->getEvents().onCommand("cancel", [this](TgBot::Message::Ptr message) {
+        clearUserState(message->from->id);
         bot->getApi().sendMessage(
             message->chat->id,
             "❌ Operation cancelled.",
@@ -203,31 +209,44 @@ void Application::registerSongCommands() {
     // /check command
     bot->getEvents().onCommand("check", [this](TgBot::Message::Ptr message) {
         logUserInteraction(message);
+        setUserState(message->from->id, ConversationState::WaitingForCheckSong);
         bot->getApi().sendMessage(
             message->chat->id,
-            "Please enter a song code to check (e.g., H-27, L-5, C-12):"
+            "🔍 *Check Song*\n\n"
+            "Please enter a song code to check (e.g., *H-27*, *L-5*, *C-12*):\n\n"
+            "Format examples:\n"
+            "• H-27 (Hymn 27)\n"
+            "• L-5 (Lyric 5)\n"
+            "• C-12 (Convention 12)",
+            false, 0, nullptr, "Markdown"
         );
-        // TODO: Implement conversation handler
     });
     
     // /last command
     bot->getEvents().onCommand("last", [this](TgBot::Message::Ptr message) {
         logUserInteraction(message);
+        setUserState(message->from->id, ConversationState::WaitingForLastSong);
         bot->getApi().sendMessage(
             message->chat->id,
-            "Please enter a song code (e.g., H-27, L-5, C-12):"
+            "📅 *Last Sung Date*\n\n"
+            "Please enter a song code (e.g., *H-27*, *L-5*, *C-12*):",
+            false, 0, nullptr, "Markdown"
         );
-        // TODO: Implement conversation handler
     });
     
     // /date command
     bot->getEvents().onCommand("date", [this](TgBot::Message::Ptr message) {
         logUserInteraction(message);
+        setUserState(message->from->id, ConversationState::WaitingForDate);
         bot->getApi().sendMessage(
             message->chat->id,
-            "Please enter a date in DD/MM/YYYY format:"
+            "📆 *Find Songs by Date*\n\n"
+            "Please enter a date in one of these formats:\n"
+            "• DD/MM/YYYY (e.g., 25/12/2024)\n"
+            "• DD/MM (e.g., 25/12)\n"
+            "• DD (e.g., 25)",
+            false, 0, nullptr, "Markdown"
         );
-        // TODO: Implement conversation handler
     });
 }
 
@@ -385,15 +404,32 @@ void Application::registerAIHandler() {
     bot->getEvents().onNonCommandMessage([this](TgBot::Message::Ptr message) {
         if (!message->text.empty()) {
             logUserInteraction(message);
+            int64_t userId = message->from->id;
+            ConversationState state = getUserState(userId);
             
-            // TODO: Implement AI natural language processing
+            // Check if user is in a conversation
+            if (state != ConversationState::None) {
+                handleConversationMessage(message, state);
+                return;
+            }
+            
+            
             LOG_BOT_INFO("AI handler received message: {}", message->text);
             
-            // For now, echo back
+            // Try to parse as song code first
+            auto parsed = SongParser::extractFirst(message->text);
+            if (parsed) {
+                handleSongCodeMessage(message, *parsed);
+                return;
+            }
+            
+            // If not a song code, reply with help
             bot->getApi().sendMessage(
                 message->chat->id,
-                "I received your message: " + message->text + "\n"
-                "(AI processing not yet implemented)"
+                "I didn't understand that. Try:\n"
+                "• A song code like *H-27* or *L-5*\n"
+                "• Use */help* to see all commands",
+                false, 0, nullptr, "Markdown"
             );
         }
     });
@@ -419,6 +455,165 @@ void Application::logUserInteraction(const TgBot::Message::Ptr& message) {
     
     LOG_USER_INFO("{} (@{}, ID: {}) sent: {}", 
         name, username, message->from->id, text);
+}
+
+void Application::setUserState(int64_t userId, ConversationState state) {
+    userStates[userId] = state;
+}
+
+Application::ConversatioConversationMessage(TgBot::Message::Ptr message, ConversationState state) {
+    switch (state) {
+        case ConversationState::WaitingForCheckSong:
+            handleCheckSongInput(message);
+            break;
+        case ConversationState::WaitingForLastSong:
+            handleLastSongInput(message);
+            break;
+        case ConversationState::WaitingForDate:
+            handleDateInput(message);
+            break;
+        default:
+            clearUserState(message->from->id);
+            break;
+    }
+}
+
+void Application::handleCheckSongInput(TgBot::Message::Ptr message) {
+    auto parsed = SongParser::parse(message->text);
+    if (!parsed) {
+        bot->getApi().sendMessage(
+            message->chat->id,
+            "❌ Invalid song code format.\n"
+            "Please enter a valid code like *H-27*, *L-5*, or *C-12*\n"
+            "Or use */cancel* to exit.",
+            false, 0, nullptr, "Markdown"
+        );
+        return;
+    }
+    
+    clearUserState(message->from->id);
+    
+    std::string songCode = SongParser::format(parsed->category, parsed->number);
+    auto& db = getDatabase();
+    auto song = db.findByNumber(parsed->number, parsed->category);
+    
+    if (!song) {
+        bot->getApi().sendMessage(
+            message->chat->id,
+            "❌ Song *" + songCode + "* does not exist in the vocabulary.",
+            false, 0, nullptr, "Markdown"
+        );
+    } else {
+        bot->getApi().sendMessage(
+            message->chat->id,
+            "✅ Song *" + songCode + "* exists in the vocabulary!\n\n"
+            "📖 *Title:* " + song->title,
+            false, 0, nullptr, "Markdown"
+        );
+    }
+}
+
+void Application::handleLastSongInput(TgBot::Message::Ptr message) {
+    auto parsed = SongParser::parse(message->text);
+    if (!parsed) {
+        bot->getApi().sendMessage(
+            message->chat->id,
+            "❌ Invalid song code format.\n"
+            "Please enter a valid code like *H-27*, *L-5*, or *C-12*\n"
+            "Or use */cancel* to exit.",
+            false, 0, nullptr, "Markdown"
+        );
+        return;
+    }
+    
+    clearUserState(message->from->id);
+    handleSongCodeMessage(message, *parsed);
+}
+
+void Application::handleDateInput(TgBot::Message::Ptr message) {
+    clearUserState(message->from->id);
+    
+    // TODO: Implement date parsing and lookup
+    bot->getApi().sendMessage(
+        message->chat->id,
+        "📆 Date lookup functionality is coming soon!\n"
+        "Date received: " + message->text,
+        false, 0, nullptr, "Markdown"
+    );
+}
+
+void Application::handlenState Application::getUserState(int64_t userId) const {
+    auto it = userStates.find(userId);
+    return (it != userStates.end()) ? it->second : ConversationState::None;
+}
+
+void Application::clearUserState(int64_t userId) {
+    userStates.erase(userId);
+}
+
+void Application::handleSongCodeMessage(TgBot::Message::Ptr message, 
+                                       const SongParser::ParsedCode& parsed) {
+    std::string songCode = SongParser::format(parsed.category, parsed.number);
+    LOG_BOT_INFO("Detected song code: {}", songCode);
+    
+    // Query database for song
+    auto& db = getDatabase();
+    auto song = db.findByNumber(parsed.number, parsed.category);
+    
+    if (!song) {
+        bot->getApi().sendMessage(
+            message->chat->id,
+            "❌ Song *" + songCode + "* not found in the database.\n"
+            "Use */check* to verify if a song exists.",
+            false, 0, nullptr, "Markdown"
+        );
+        return;
+    }
+    
+    // Build response message
+    std::stringstream response;
+    response << "🎵 *" << songCode << "* - " << song->title << "\n\n";
+    
+    // Add index if available
+    if (!song->index.empty()) {
+        response << "📖 *Index:* " << song->index << "\n";
+    }
+    
+    // Add tune if available
+    std::string tune = db.getTuneName(songCode);
+    if (!tune.empty()) {
+        response << "🎼 *Tune:* " << tune << "\n";
+    }
+    
+    // Get last sung date
+    auto lastDate = db.getLastSungDate(songCode);
+    if (lastDate) {
+        auto time_t_date = std::chrono::system_clock::to_time_t(*lastDate);
+        std::tm tm_date;
+        #ifdef _WIN32
+        localtime_s(&tm_date, &time_t_date);
+        #else
+        localtime_r(&time_t_date, &tm_date);
+        #endif
+        
+        char dateStr[32];
+        std::strftime(dateStr, sizeof(dateStr), "%d/%m/%Y", &tm_date);
+        response << "📅 *Last Sung:* " << dateStr << "\n";
+        
+        // Check if there are multiple dates
+        auto allDates = db.getAllDates(songCode);
+        if (allDates.size() > 1) {
+            response << "\n_This song has been sung " << allDates.size() << " times._";
+        }
+    } else {
+        response << "📅 *Last Sung:* Not recorded\n";
+    }
+    
+    bot->getApi().sendMessage(
+        message->chat->id,
+        response.str(),
+        false, 0, nullptr, "Markdown"
+    );
 }
 
 // Global functions
