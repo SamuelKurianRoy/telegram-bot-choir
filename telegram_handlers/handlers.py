@@ -282,7 +282,7 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
         # Reload datasets
         msg3 = await update.message.reply_text("📊 Reloading datasets...")
         progress_messages.append(msg3.message_id)
-        dfH, dfL, dfC, yr23, yr24, yr25, df, dfTH, dfTD = load_datasets()
+        dfH, dfL, dfC, year_data, df, dfTH, dfTD = load_datasets()
         yrDataPreprocessing()
         dfcleaning()
         standardize_song_columns()  # Now modifies global df in-place
@@ -1284,6 +1284,31 @@ def get_songs_by_date(input_date):
             song = row[col]
             if pd.notna(song) and str(song).strip() != '':
                 songs.append(song.strip())
+
+    # If date exists but has no songs, find next date with actual songs
+    if not songs:
+        next_dates = [d for d in available_dates if d > input_date]
+        if not next_dates:
+            return f"No songs found on {input_date.strftime('%d/%m/%Y')} or any later date."
+        
+        # Find the next date that actually has songs
+        for next_date in next_dates:
+            matching_rows = df[df['Date'] == next_date]
+            temp_songs = []
+            for _, row in matching_rows.iterrows():
+                for col in song_columns:
+                    song = row[col]
+                    if pd.notna(song) and str(song).strip() != '':
+                        temp_songs.append(song.strip())
+            
+            if temp_songs:  # Found a date with actual songs
+                songs = temp_songs
+                message = f"No songs found on {input_date.strftime('%d/%m/%Y')}. Showing songs from next available date: {next_date.strftime('%d/%m/%Y')}"
+                break
+        
+        # If still no songs found after checking all future dates
+        if not songs:
+            return f"No songs found on {input_date.strftime('%d/%m/%Y')} or any later date."
 
     return {
         "date": next_date.strftime('%d/%m/%Y'),

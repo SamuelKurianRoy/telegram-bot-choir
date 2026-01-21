@@ -69,7 +69,7 @@ from data.sync_manager import get_sync_manager
 # === Load Data and Initialize Global State ===
 load_datasets()
 config = get_config()
-dfH, dfL, dfC, yr23, yr24, yr25, df, dfTH, dfTD = reload_all_datasets()
+dfH, dfL, dfC, year_data, df, dfTH, dfTD = reload_all_datasets()
 # Build vocabulary
 Vocabulary, Hymn_Vocabulary, Lyric_Vocabulary, Convention_Vocabulary = ChoirVocabulary(df, dfH, dfL, dfC)
 # Setup search

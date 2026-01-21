@@ -226,15 +226,14 @@ class Config:
 
 **Global Datasets:**
 ```python
-dfH   # Hymn List DataFrame
-dfL   # Lyric List DataFrame
-dfC   # Convention List DataFrame
-yr23  # 2023 sung songs
-yr24  # 2024 sung songs
-yr25  # 2025 sung songs
-df    # Combined historical data
-dfTH  # Hymn Tune database
-dfTD  # Doxology Tune database
+dfH         # Hymn List DataFrame
+dfL         # Lyric List DataFrame
+dfC         # Convention List DataFrame
+year_data   # Dictionary of year dataframes: {2023: df23, 2024: df24, ...}
+            # Automatically loads from 2023 to current year
+df          # Combined historical data
+dfTH        # Hymn Tune database
+dfTD        # Doxology Tune database
 ```
 
 **Key Functions:**
@@ -244,8 +243,15 @@ def load_datasets():
     """
     Downloads Excel files from Google Drive
     Populates all global DataFrames
+    Dynamically loads year sheets from 2023 to datetime.now().year
     Returns: tuple of all DataFrames
     """
+
+def get_year_df(year):
+    """Get dataframe for a specific year (e.g., 2023, 2024, 2026)"""
+
+def get_available_years():
+    """Get list of all loaded years"""
 
 def yrDataPreprocessing():
     """
