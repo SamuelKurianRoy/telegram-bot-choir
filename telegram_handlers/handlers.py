@@ -12,7 +12,7 @@ from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
 from data.udb import track_user_interaction, user_exists, get_user_by_id, save_user_database, track_user_fast, save_if_pending, get_user_bible_language, get_user_show_tunes_in_date
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import pandas as pd
-from datetime import date
+from datetime import date, timezone, timedelta
 import asyncio
 import re
 
@@ -533,7 +533,10 @@ async def sync_info_command(update: Update, context: CallbackContext) -> None:
                 for file_id, timestamp in list(last_events.items())[:3]:
                     try:
                         dt = datetime.fromisoformat(timestamp)
-                        time_str = dt.strftime("%H:%M:%S")
+                        # Convert to IST (UTC+5:30)
+                        ist = timezone(timedelta(hours=5, minutes=30))
+                        dt_ist = dt.astimezone(ist)
+                        time_str = dt_ist.strftime("%H:%M:%S")
                         info_text += f"• {file_id[:8]}... at {time_str}\n"
                     except:
                         pass
@@ -571,11 +574,14 @@ async def sync_info_command(update: Update, context: CallbackContext) -> None:
         
         # Last sync times
         if status['last_sync_times']:
-            info_text += f"**🕐 Last Syncs**\n"
+            info_text += f"**🕐 Last Syncs (IST)**\n"
             for file_name, sync_time in list(status['last_sync_times'].items())[:5]:
                 try:
                     sync_dt = datetime.fromisoformat(sync_time)
-                    time_str = sync_dt.strftime("%Y-%m-%d %H:%M:%S")
+                    # Convert to IST (UTC+5:30)
+                    ist = timezone(timedelta(hours=5, minutes=30))
+                    sync_dt_ist = sync_dt.astimezone(ist)
+                    time_str = sync_dt_ist.strftime("%Y-%m-%d %H:%M:%S")
                     info_text += f"• {file_name}: {time_str}\n"
                 except:
                     info_text += f"• {file_name}: {sync_time}\n"
@@ -997,15 +1003,21 @@ async def date_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         valid_songs = [s for s in result["songs"] if s and str(s).strip()]
 
         if show_tunes:
-            # Show tunes for hymns
-            songs_text = "\n".join(
-                f"{i + 1}. {s} - {IndexFinder(s)}{get_tune_info(s)}" for i, s in enumerate(valid_songs)
-            )
+            # Show tunes for hymns, filter out entries with empty IndexFinder results
+            songs_with_indices = [(s, IndexFinder(s)) for s in valid_songs]
+            songs_list = [
+                f"{i + 1}. {s} - {idx}{get_tune_info(s)}" 
+                for i, (s, idx) in enumerate(songs_with_indices) if idx
+            ]
+            songs_text = "\n".join(songs_list)
         else:
-            # Don't show tunes
-            songs_text = "\n".join(
-                f"{i + 1}. {s} - {IndexFinder(s)}" for i, s in enumerate(valid_songs)
-            )
+            # Don't show tunes, filter out entries with empty IndexFinder results
+            songs_with_indices = [(s, IndexFinder(s)) for s in valid_songs]
+            songs_list = [
+                f"{i + 1}. {s} - {idx}" 
+                for i, (s, idx) in enumerate(songs_with_indices) if idx
+            ]
+            songs_text = "\n".join(songs_list)
 
         second_message = f"{result['date']}:\n\n{songs_text}"
         await update.message.reply_text(second_message, parse_mode='Markdown')
