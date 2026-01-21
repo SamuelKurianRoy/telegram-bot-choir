@@ -2175,6 +2175,9 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 
 **Bot Management:**
 • `/refresh` - Reload all datasets from Google Drive
+• `/syncstatus` - Check auto-sync status and last sync times
+• `/syncinfo` - Detailed sync analytics (mode, API usage, performance)
+• `/forcesync` - Manually trigger dataset sync
 • `/dnstest` - Test DNS resolution and network connectivity
 • `/reply` `<message>` - Reply to user comments/feedback
 • `/list` - Show this admin commands list
