@@ -5,6 +5,8 @@
 #include <sstream>
 #include <regex>
 #include <iomanip>
+#include <fstream>
+#include <algorithm>
 
 namespace ChoirBot {
 
@@ -341,48 +343,110 @@ bool Database::loadMainDatabase() {
     auto& config = Config::getInstance();
     auto& drive = getDriveService();
     
-    // The main file contains multiple sheets (2023, 2024, 2025)
-    std::vector<std::string> sheets = {"2023", "2024", "2025"};
+    // The main_file_id is an Excel file - download as binary and parse
+    LOG_BOT_INFO("Downloading Excel file as binary...");
+    auto binaryData = drive.downloadBinaryFile(config.driveFiles.mainFileId);
     
-    for (const auto& sheetName : sheets) {
-        std::string csvData = drive.getSheetData(config.driveFiles.mainFileId, sheetName);
-        if (csvData.empty()) {
-            LOG_BOT_WARN("Failed to download year sheet: {}", sheetName);
-            continue;
+    if (binaryData.empty()) {
+        LOG_BOT_ERROR("Failed to download main database file");
+        return false;
+    }
+    
+    LOG_BOT_INFO("Downloaded {} bytes, parsing Excel file...", binaryData.size());
+    
+    // Save to temporary file for parsing
+    std::string tempFile = "/tmp/choir_main_database.xlsx";
+    std::ofstream out(tempFile, std::ios::binary);
+    out.write(reinterpret_cast<const char*>(binaryData.data()), binaryData.size());
+    out.close();
+    
+    LOG_BOT_INFO("Saved to temp file, attempting to parse with Python...");
+    
+    // Create a Python script to parse Excel
+    std::string scriptPath = "/tmp/parse_excel.py";
+    std::ofstream script(scriptPath);
+    script << "import pandas as pd\n"
+           << "import sys\n"
+           << "try:\n"
+           << "    for sheet in ['2023', '2024', '2025']:\n"
+           << "        df = pd.read_excel('/tmp/choir_main_database.xlsx', sheet_name=sheet)\n"
+           << "        df.to_csv(f'/tmp/choir_{sheet}.csv', index=False)\n"
+           << "    print('SUCCESS')\n"
+           << "except Exception as e:\n"
+           << "    print(f'ERROR: {e}', file=sys.stderr)\n"
+           << "    sys.exit(1)\n";
+    script.close();
+    
+    // Use venv_linux Python if available, otherwise system python3
+    std::string pythonCmd = "if [ -f /mnt/d/Choir/Telegram_Bot/venv_linux/bin/python3 ]; then /mnt/d/Choir/Telegram_Bot/venv_linux/bin/python3 /tmp/parse_excel.py 2>&1; else python3 /tmp/parse_excel.py 2>&1; fi";
+    
+    FILE* pipe = popen(pythonCmd.c_str(), "r");
+    if (pipe) {
+        char buffer[256];
+        std::string result;
+        while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+            result += buffer;
         }
+        int exitCode = pclose(pipe);
         
-        auto rows = parseCSV(csvData);
-        if (rows.size() < 2) continue; // Need header + data
-        
-        // Expected columns: Date, 1st Song, 2nd Song, 3rd Song, 4th Song, 5th Song
-        // Skip header row
-        for (size_t i = 1; i < rows.size(); ++i) {
-            const auto& row = rows[i];
-            if (row.empty()) continue;
+        if (exitCode == 0 && result.find("SUCCESS") != std::string::npos) {
+            LOG_BOT_INFO("Excel conversion successful, loading CSV data...");
             
-            auto date = parseDate(row[0]);
-            if (!date) continue;
-            
-            // Process all song columns (1st Song, 2nd Song, etc.)
-            for (size_t col = 1; col < row.size() && col <= 5; ++col) {
-                std::string songCode = row[col];
-                if (songCode.empty() || songCode == "0" || songCode == "nan") continue;
+            // Load each year's CSV
+            std::vector<std::string> years = {"2023", "2024", "2025"};
+            for (const auto& year : years) {
+                std::string csvFile = "/tmp/choir_" + year + ".csv";
+                std::ifstream file(csvFile);
+                if (!file.is_open()) continue;
                 
-                // Normalize song code
-                std::regex pattern("([HhLlCc])[-]?(\\d+)");
-                std::smatch match;
-                if (std::regex_search(songCode, match, pattern)) {
-                    std::string prefix = match[1].str();
-                    std::transform(prefix.begin(), prefix.end(), prefix.begin(), ::toupper);
-                    std::string number = match[2].str();
-                    std::string normalized = prefix + "-" + number;
-                    data->sungDates[normalized].push_back(*date);
+                std::string csvData((std::istreambuf_iterator<char>(file)),
+                                   std::istreambuf_iterator<char>());
+                file.close();
+                
+                auto rows = parseCSV(csvData);
+                if (rows.size() < 2) continue;
+                
+                // Parse dates and songs
+                for (size_t i = 1; i < rows.size(); ++i) {
+                    const auto& row = rows[i];
+                    if (row.empty()) continue;
+                    
+                    auto date = parseDate(row[0]);
+                    if (!date) continue;
+                    
+                    // Process song columns (1-5)
+                    for (size_t col = 1; col < std::min(row.size(), size_t(6)); ++col) {
+                        std::string songCode = row[col];
+                        if (songCode.empty() || songCode == "0" || songCode == "nan") continue;
+                        
+                        // Normalize song code
+                        std::regex pattern("([HhLlCc])[-]?(\\d+)");
+                        std::smatch match;
+                        if (std::regex_search(songCode, match, pattern)) {
+                            std::string prefix = match[1].str();
+                            std::transform(prefix.begin(), prefix.end(), prefix.begin(), ::toupper);
+                            std::string number = match[2].str();
+                            std::string normalized = prefix + "-" + number;
+                            data->sungDates[normalized].push_back(*date);
+                        }
+                    }
                 }
+                
+                // Clean up temp file
+                std::remove(csvFile.c_str());
             }
+            
+            LOG_BOT_INFO("Loaded sung dates for {} songs", data->sungDates.size());
+        } else {
+            LOG_BOT_ERROR("Excel conversion failed: {}", result);
+            LOG_BOT_WARN("Install pandas: pip3 install pandas openpyxl");
+            return false;
         }
     }
     
-    LOG_BOT_INFO("Loaded sung dates for {} songs", data->sungDates.size());
+    // Clean up temp Excel file
+    std::remove(tempFile.c_str());
+    
     return true;
 }
 
