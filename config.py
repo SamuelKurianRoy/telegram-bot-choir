@@ -32,6 +32,9 @@ class Config:
         self.KEY_PATH = "/tmp/service_account.json"
         # Log upload interval (seconds)
         self.LOG_UPLOAD_INTERVAL = int(os.environ.get("LOG_UPLOAD_INTERVAL", 3600))
+        # Auto-sync settings
+        self.AUTO_SYNC_ENABLED = os.environ.get("AUTO_SYNC_ENABLED", "true").lower() == "true"
+        self.AUTO_SYNC_INTERVAL = int(os.environ.get("AUTO_SYNC_INTERVAL", 120))  # seconds
 
     def _load_service_account_data(self):
         # Reconstruct private key from split lines if needed

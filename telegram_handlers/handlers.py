@@ -217,9 +217,17 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "• **/setting**\n"
         "  - *Description:* Manage your personal settings including default Bible language, game language, and search results limit.\n"
         "  - *Example:* Type `/setting` to access your settings menu.\n\n"
+        "• **/syncstatus** _(Admin Only)_\n"
+        "  - *Description:* Check the status of automatic dataset synchronization. Shows when files were last synced from Google Drive.\n"
+        "  - *Note:* The bot now automatically detects and syncs changes from Drive every 2 minutes!\n"
+        "  - *Example:* Type `/syncstatus` to see sync status.\n\n"
+        "• **/forcesync** _(Admin Only)_\n"
+        "  - *Description:* Manually trigger a dataset sync from Google Drive.\n"
+        "  - *Example:* Type `/forcesync` to immediately reload all datasets.\n\n"
         "• **/cancel**\n"
         "  - *Description:* Cancels the current operation.\n"
         "  - *Example:* If you are in a conversation, type `/cancel` to stop it.\n\n"
+        "🔄 *Auto-Sync:* The bot automatically detects changes to Excel/Sheets on Drive and updates data within 2 minutes - no manual refresh needed!\n\n"
         "If you need further assistance, feel free to ask!"
     )
 
@@ -336,6 +344,99 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
                 await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_id)
             except Exception as delete_error:
                 user_logger.warning(f"Could not delete progress message {msg_id}: {delete_error}")
+
+# Auto-Sync Status Command (Admin Only)
+async def sync_status_command(update: Update, context: CallbackContext) -> None:
+    """Check the status of the automatic sync system"""
+    user = update.effective_user
+    config = get_config()
+    
+    # Check if user is admin
+    if user.id != config.ADMIN_ID:
+        await update.message.reply_text(
+            "🚫 **Access Denied**\n\n"
+            "The `/syncstatus` command is restricted to administrators only.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    user_logger.info(f"Admin {user.full_name} checked sync status")
+    
+    try:
+        from data.sync_manager import get_sync_status
+        from datetime import datetime
+        
+        status = get_sync_status()
+        
+        # Format the status message
+        running_status = "🟢 Running" if status['running'] else "🔴 Stopped"
+        monitored_count = status['monitored_files']
+        
+        status_text = (
+            f"📊 **Auto-Sync Status**\n\n"
+            f"**Status:** {running_status}\n"
+            f"**Monitored Files:** {monitored_count}\n\n"
+        )
+        
+        # Show last sync times if available
+        if status['last_sync_times']:
+            status_text += "**Last Syncs:**\n"
+            for file_name, sync_time in status['last_sync_times'].items():
+                try:
+                    sync_dt = datetime.fromisoformat(sync_time)
+                    time_str = sync_dt.strftime("%Y-%m-%d %H:%M:%S")
+                except:
+                    time_str = sync_time
+                status_text += f"  • {file_name}: {time_str}\n"
+        else:
+            status_text += "_No syncs have occurred yet_\n"
+        
+        # Show which files are currently syncing
+        syncing = [f for f, is_syncing in status['sync_in_progress'].items() if is_syncing]
+        if syncing:
+            status_text += f"\n⏳ **Currently Syncing:** {', '.join(syncing)}\n"
+        
+        await update.message.reply_text(status_text, parse_mode="Markdown")
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error getting sync status: {e}")
+        user_logger.error(f"Sync status command error: {e}")
+
+
+async def force_sync_command(update: Update, context: CallbackContext) -> None:
+    """Manually trigger a dataset sync"""
+    user = update.effective_user
+    config = get_config()
+    
+    # Check if user is admin
+    if user.id != config.ADMIN_ID:
+        await update.message.reply_text(
+            "🚫 **Access Denied**\n\n"
+            "The `/forcesync` command is restricted to administrators only.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    user_logger.info(f"Admin {user.full_name} triggered manual sync")
+    
+    try:
+        from data.sync_manager import force_manual_sync
+        
+        msg = await update.message.reply_text("🔄 Triggering manual sync of all datasets...")
+        
+        force_manual_sync()
+        
+        await msg.edit_text(
+            "✅ **Manual Sync Triggered**\n\n"
+            "The datasets are being reloaded in the background.\n"
+            "Use `/syncstatus` to check progress.",
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error triggering sync: {e}")
+        user_logger.error(f"Force sync command error: {e}")
+
 
 # DNS Testing Command (Admin Only)
 async def dns_test_command(update: Update, context: CallbackContext) -> None:
