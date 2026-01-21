@@ -14,7 +14,7 @@ try:
     from utils.search import setup_search
     from telegram_handlers.handlers import (
         start, help_command, refresh_command, cancel, dns_test_command,
-        sync_status_command, force_sync_command,
+        sync_status_command, force_sync_command, sync_info_command,
         check_song_start, last_sung_start, check_song_input, ENTER_SONG,
         last_sung_input, ENTER_LAST_SONG,
         date_start, date_input, ASK_DATE, last_show_all_dates_callback,
@@ -69,7 +69,7 @@ from data.sync_manager import get_sync_manager
 # === Load Data and Initialize Global State ===
 load_datasets()
 config = get_config()
-dfH, dfL, dfC, yr23, yr24, yr25, df, dfTH, dfTD = reload_all_datasets()
+dfH, dfL, dfC, year_data, df, dfTH, dfTD = reload_all_datasets()
 # Build vocabulary
 Vocabulary, Hymn_Vocabulary, Lyric_Vocabulary, Convention_Vocabulary = ChoirVocabulary(df, dfH, dfL, dfC)
 # Setup search
@@ -284,6 +284,7 @@ app.add_handler(date_conv_handler)
 app.add_handler(CommandHandler("refresh", refresh_command))
 app.add_handler(CommandHandler("syncstatus", sync_status_command))
 app.add_handler(CommandHandler("forcesync", force_sync_command))
+app.add_handler(CommandHandler("syncinfo", sync_info_command))
 app.add_handler(CommandHandler("dnstest", dns_test_command))
 app.add_handler(admin_reply_conv_handler)
 app.add_handler(CommandHandler("reply_legacy", admin_reply_legacy))
@@ -364,8 +365,10 @@ async def main():
     
     # Start auto-sync manager if enabled
     if config.AUTO_SYNC_ENABLED:
-        print(f"🔄 Starting auto-sync (checking every {config.AUTO_SYNC_INTERVAL}s)...")
+        mode = "hybrid (webhooks + polling)" if config.WEBHOOK_ENABLED else "polling-only"
+        print(f"🔄 Starting auto-sync in {mode} mode (interval: {config.AUTO_SYNC_INTERVAL}s)...")
         sync_manager = get_sync_manager(check_interval=config.AUTO_SYNC_INTERVAL)
+        sync_manager.detector.webhook_enabled = config.WEBHOOK_ENABLED
         # Start sync manager in background
         asyncio.create_task(sync_manager.start())
         print("✅ Auto-sync started in background")

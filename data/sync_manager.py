@@ -5,7 +5,7 @@ import asyncio
 import logging
 from typing import Optional
 from datetime import datetime
-from data.change_detector import PollingChangeDetector
+from data.hybrid_detector import HybridChangeDetector
 from data.datasets import load_datasets, get_all_data
 from data.drive import load_game_scores
 from config import get_config
@@ -19,15 +19,19 @@ class DatasetSyncManager:
     Monitors files for changes and triggers reloads when updates are detected.
     """
     
-    def __init__(self, check_interval: int = 120, auto_start: bool = True):
+    def __init__(self, check_interval: int = 120, auto_start: bool = True, webhook_enabled: bool = True):
         """
         Initialize the sync manager.
         
         Args:
             check_interval: Seconds between checking for changes (default: 120)
             auto_start: Whether to start monitoring automatically
+            webhook_enabled: Whether to try using webhooks for instant detection (default: True)
         """
-        self.detector = PollingChangeDetector(check_interval=check_interval)
+        self.detector = HybridChangeDetector(
+            polling_interval=check_interval,
+            webhook_enabled=webhook_enabled
+        )
         self.config = get_config()
         self.last_sync_times = {}
         self.sync_in_progress = {}
@@ -142,11 +146,17 @@ class DatasetSyncManager:
 
     def get_sync_status(self) -> dict:
         """Get the current sync status for all monitored files"""
+        detector_status = self.detector.get_status()
         status = {
             'last_sync_times': self.last_sync_times,
             'sync_in_progress': self.sync_in_progress,
-            'monitored_files': len(self.detector.callbacks),
-            'running': self.detector.running
+            'monitored_files': detector_status['monitored_files'],
+            'running': detector_status['running'],
+            'mode': 'hybrid' if detector_status['active_webhooks'] > 0 else 'polling',
+            'active_webhooks': detector_status['active_webhooks'],
+            'polling_interval': detector_status['polling_interval'],
+            'webhook_files': detector_status.get('webhook_files', []),
+            'last_webhook_events': detector_status.get('last_webhook_events', {})
         }
         return status
 

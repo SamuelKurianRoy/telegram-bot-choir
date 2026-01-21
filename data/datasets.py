@@ -12,7 +12,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Global dataset variables
-dfH = dfL = dfC = yr23 = yr24 = yr25 = df = dfTH = dfTD = None
+dfH = dfL = dfC = df = dfTH = dfTD = None
+year_data = {}  # Dictionary to hold year dataframes dynamically {2023: df23, 2024: df24, ...}
 
 def load_datasets():
     """
@@ -20,7 +21,7 @@ def load_datasets():
     dataset variables so that the bot uses the latest data.
     Returns all loaded DataFrames.
     """
-    global dfH, dfL, dfC, yr23, yr24, yr25, df, dfTH, dfTD
+    global dfH, dfL, dfC, df, dfTH, dfTD, year_data
     config = get_config()
     drive_service = get_drive_service()
 
@@ -58,18 +59,19 @@ def load_datasets():
         _, done = downloader.next_chunk()
     file_data.seek(0)
     xls = pd.ExcelFile(file_data)
-    try:
-        yr23 = pd.read_excel(xls, sheet_name="2023")
-    except Exception:
-        yr23 = None
-    try:
-        yr24 = pd.read_excel(xls, sheet_name="2024")
-    except Exception:
-        yr24 = None
-    try:
-        yr25 = pd.read_excel(xls, sheet_name="2025")
-    except Exception:
-        yr25 = None
+    
+    # --- Load Year DataFrames (dynamically from 2023 to current year) ---
+    year_data.clear()  # Clear previous year data
+    current_year = datetime.now().year
+    
+    for year in range(2023, current_year + 1):
+        sheet_name = str(year)
+        try:
+            year_data[year] = pd.read_excel(xls, sheet_name=sheet_name)
+        except Exception as e:
+            print(f"Warning: Could not load sheet '{sheet_name}': {e}")
+            year_data[year] = None
+    
     try:
         df = pd.read_excel(xls, sheet_name="Sheet 1")
     except Exception:
@@ -99,34 +101,31 @@ def load_datasets():
     except Exception:
         dfTH = None
         dfTD = None
-    return dfH, dfL, dfC, yr23, yr24, yr25, df, dfTH, dfTD
+    return dfH, dfL, dfC, year_data, df, dfTH, dfTD
 
 def yrDataPreprocessing():
     """
     Preprocesses the year DataFrames and fills missing values in dfH.
     """
-    global yr23, yr24, yr25, df, dfH
-    if yr23 is not None:
-        yr23.dropna(inplace=True)
-        yr23.columns = yr23.iloc[0]
-        yr23.drop(index=1, inplace=True)
-        yr23.reset_index(drop=True, inplace=True)
-        yr23['Date'] = pd.to_datetime(yr23['Date']).dt.date
-    if yr24 is not None:
-        yr24.dropna(inplace=True)
-        yr24.columns = yr24.iloc[0]
-        yr24.drop(index=1, inplace=True)
-        yr24.reset_index(drop=True, inplace=True)
-        yr24['Date'] = pd.to_datetime(yr24['Date']).dt.date
-    if yr25 is not None:
-        if 'Unnamed: 6' in yr25.columns:
-            Themes = yr25['Unnamed: 6']
-            yr25.drop('Unnamed: 6', axis=1, inplace=True)
-        yr25.dropna(inplace=True)
-        yr25.columns = yr25.iloc[0]
-        yr25.drop(index=1, inplace=True)
-        yr25.reset_index(drop=True, inplace=True)
-        yr25['Date'] = pd.to_datetime(yr25['Date']).dt.date
+    global year_data, df, dfH
+    
+    # Process each year's dataframe dynamically
+    for year, year_df in year_data.items():
+        if year_df is not None:
+            year_df.dropna(inplace=True)
+            
+            # Check if dataframe is empty after dropping NaN values
+            if year_df.empty:
+                print(f"Warning: Year {year} sheet is empty after dropping NaN values")
+                year_data[year] = None
+                continue
+            
+            year_df.columns = year_df.iloc[0]
+            year_df.drop(index=1, inplace=True)
+            year_df.reset_index(drop=True, inplace=True)
+            year_df['Date'] = pd.to_datetime(year_df['Date']).dt.date
+            year_data[year] = year_df  # Update the dict with preprocessed data
+    
     if dfH is not None:
         if 'Tunes' in dfH.columns:
             dfH['Tunes'] = dfH['Tunes'].fillna("Unknown")
@@ -201,17 +200,37 @@ def get_all_data():
     """
     Returns all loaded data as a dictionary for easy access.
     """
-    return {
+    data_dict = {
         'dfH': dfH,
         'dfL': dfL,
         'dfC': dfC,
-        'yr23': yr23,
-        'yr24': yr24,
-        'yr25': yr25,
         'df': df,
         'dfTH': dfTH,
         'dfTD': dfTD,
     }
+    # Add all year data dynamically
+    for year, year_df in year_data.items():
+        data_dict[f'yr{year}'] = year_df
+    
+    return data_dict
+
+def get_year_df(year):
+    """
+    Get a specific year's dataframe.
+    Args:
+        year (int): The year to retrieve (e.g., 2023, 2024, 2026)
+    Returns:
+        DataFrame or None: The year's dataframe if it exists, None otherwise
+    """
+    return year_data.get(year)
+
+def get_available_years():
+    """
+    Get a list of all available years in the dataset.
+    Returns:
+        list: Sorted list of available years
+    """
+    return sorted([year for year, df in year_data.items() if df is not None])
 
 def standardize_hlc_value(value):
     value = str(value).upper().strip()

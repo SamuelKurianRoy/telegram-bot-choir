@@ -34,7 +34,10 @@ class Config:
         self.LOG_UPLOAD_INTERVAL = int(os.environ.get("LOG_UPLOAD_INTERVAL", 3600))
         # Auto-sync settings
         self.AUTO_SYNC_ENABLED = os.environ.get("AUTO_SYNC_ENABLED", "true").lower() == "true"
-        self.AUTO_SYNC_INTERVAL = int(os.environ.get("AUTO_SYNC_INTERVAL", 120))  # seconds
+        self.AUTO_SYNC_INTERVAL = int(os.environ.get("AUTO_SYNC_INTERVAL", 10))  # seconds (default: 10 for fast polling)
+        # Webhook settings (for instant change detection)
+        self.WEBHOOK_ENABLED = os.environ.get("WEBHOOK_ENABLED", "true").lower() == "true"
+        self.WEBHOOK_URL = os.environ.get("WEBHOOK_URL", None)  # Optional: https://yourapp.streamlit.app/webhook
 
     def _load_service_account_data(self):
         # Reconstruct private key from split lines if needed
