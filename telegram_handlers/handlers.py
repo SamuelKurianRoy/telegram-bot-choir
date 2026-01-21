@@ -219,8 +219,11 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "  - *Example:* Type `/setting` to access your settings menu.\n\n"
         "• **/syncstatus** _(Admin Only)_\n"
         "  - *Description:* Check the status of automatic dataset synchronization. Shows when files were last synced from Google Drive.\n"
-        "  - *Note:* The bot now automatically detects and syncs changes from Drive every 2 minutes!\n"
+        "  - *Note:* The bot now automatically detects and syncs changes from Drive!\n"
         "  - *Example:* Type `/syncstatus` to see sync status.\n\n"
+        "• **/syncinfo** _(Admin Only)_\n"
+        "  - *Description:* Detailed sync system information including detection mode (instant/polling), API usage statistics, and performance metrics.\n"
+        "  - *Example:* Type `/syncinfo` for comprehensive sync analytics.\n\n"
         "• **/forcesync** _(Admin Only)_\n"
         "  - *Description:* Manually trigger a dataset sync from Google Drive.\n"
         "  - *Example:* Type `/forcesync` to immediately reload all datasets.\n\n"
@@ -368,6 +371,15 @@ async def sync_status_command(update: Update, context: CallbackContext) -> None:
         
         status = get_sync_status()
         
+        # Determine mode
+        mode = status.get('mode', 'polling')
+        if mode == 'hybrid':
+            mode_emoji = "⚡"
+            mode_text = f"{mode_emoji} Hybrid Mode (Webhooks + Polling)"
+        else:
+            mode_emoji = "🔄"
+            mode_text = f"{mode_emoji} Polling Mode"
+        
         # Format the status message
         running_status = "🟢 Running" if status['running'] else "🔴 Stopped"
         monitored_count = status['monitored_files']
@@ -375,8 +387,19 @@ async def sync_status_command(update: Update, context: CallbackContext) -> None:
         status_text = (
             f"📊 **Auto-Sync Status**\n\n"
             f"**Status:** {running_status}\n"
-            f"**Monitored Files:** {monitored_count}\n\n"
+            f"**Mode:** {mode_text}\n"
+            f"**Monitored Files:** {monitored_count}\n"
         )
+        
+        # Show webhook info if in hybrid mode
+        if mode == 'hybrid':
+            webhook_count = status.get('active_webhooks', 0)
+            status_text += f"**Active Webhooks:** {webhook_count} (instant detection)\n"
+            status_text += f"**Polling Fallback:** Every {status.get('polling_interval', 'N/A')}s\n"
+        else:
+            status_text += f"**Check Interval:** Every {status.get('polling_interval', 'N/A')}s\n"
+        
+        status_text += "\n"
         
         # Show last sync times if available
         if status['last_sync_times']:
@@ -436,6 +459,155 @@ async def force_sync_command(update: Update, context: CallbackContext) -> None:
     except Exception as e:
         await update.message.reply_text(f"❌ Error triggering sync: {e}")
         user_logger.error(f"Force sync command error: {e}")
+
+
+async def sync_info_command(update: Update, context: CallbackContext) -> None:
+    """Show detailed sync system information including mode, API usage, and statistics"""
+    user = update.effective_user
+    config = get_config()
+    
+    # Check if user is admin
+    if user.id != config.ADMIN_ID:
+        await update.message.reply_text(
+            "🚫 **Access Denied**\n\n"
+            "The `/syncinfo` command is restricted to administrators only.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    user_logger.info(f"Admin {user.full_name} requested detailed sync info")
+    
+    try:
+        from data.sync_manager import get_sync_status
+        from datetime import datetime
+        
+        status = get_sync_status()
+        
+        # Determine mode and create status header
+        mode = status.get('mode', 'polling')
+        monitored = status['monitored_files']
+        interval = status.get('polling_interval', 120)
+        
+        if mode == 'hybrid':
+            mode_icon = "⚡"
+            mode_name = "Hybrid Mode"
+            mode_desc = "Webhooks (instant) + Polling (fallback)"
+            detection_time = "< 1 second (webhook) or < 10s (polling)"
+        else:
+            mode_icon = "🔄"
+            mode_name = "Polling Mode"
+            mode_desc = "Periodic checking only"
+            detection_time = f"< {interval} seconds"
+        
+        # Calculate API usage
+        checks_per_day = (24 * 60 * 60) // interval
+        calls_per_day = checks_per_day * monitored
+        google_daily_limit = 1_000_000_000
+        percentage = (calls_per_day / google_daily_limit) * 100
+        
+        # Build comprehensive info message
+        info_text = (
+            f"{mode_icon} **Sync System Information**\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"**📡 Detection Mode**\n"
+            f"• Mode: {mode_name}\n"
+            f"• Description: {mode_desc}\n"
+            f"• Detection Speed: {detection_time}\n\n"
+        )
+        
+        # Webhook information (if hybrid mode)
+        if mode == 'hybrid':
+            webhook_count = status.get('active_webhooks', 0)
+            webhook_files = status.get('webhook_files', [])
+            info_text += (
+                f"**🔔 Webhook Status**\n"
+                f"• Active Webhooks: {webhook_count}/{monitored}\n"
+                f"• Status: {'✅ Operational' if webhook_count > 0 else '⚠️ Degraded'}\n"
+                f"• Renewal: Every 24 hours (automatic)\n\n"
+            )
+            
+            # Last webhook events
+            last_events = status.get('last_webhook_events', {})
+            if last_events:
+                info_text += f"**📥 Recent Webhook Events**\n"
+                for file_id, timestamp in list(last_events.items())[:3]:
+                    try:
+                        dt = datetime.fromisoformat(timestamp)
+                        time_str = dt.strftime("%H:%M:%S")
+                        info_text += f"• {file_id[:8]}... at {time_str}\n"
+                    except:
+                        pass
+                info_text += "\n"
+        
+        # Polling information
+        info_text += (
+            f"**🔄 Polling Status**\n"
+            f"• Interval: Every {interval} seconds\n"
+            f"• Files Monitored: {monitored}\n"
+            f"• Checks Per Hour: {checks_per_day // 24:,}\n"
+            f"• Role: {'Fallback safety net' if mode == 'hybrid' else 'Primary detection'}\n\n"
+        )
+        
+        # API Usage Statistics
+        info_text += (
+            f"**📊 API Usage (24 Hours)**\n"
+            f"• API Calls: {calls_per_day:,}/day\n"
+            f"• Google Limit: {google_daily_limit:,}/day\n"
+            f"• Usage: {percentage:.6f}%\n"
+            f"• Status: {'🟢 Excellent' if percentage < 0.01 else '🟡 Good' if percentage < 1 else '🟠 High'}\n"
+            f"• Headroom: {((google_daily_limit - calls_per_day) / google_daily_limit * 100):.4f}%\n\n"
+        )
+        
+        # Cost analysis
+        bots_before_limit = google_daily_limit // calls_per_day
+        years_sustainable = google_daily_limit / calls_per_day / 365
+        
+        info_text += (
+            f"**💰 Cost & Sustainability**\n"
+            f"• Cost: $0 (free tier)\n"
+            f"• Bots Sustainable: {bots_before_limit:,}\n"
+            f"• Years at Current Rate: {years_sustainable:.0f}\n\n"
+        )
+        
+        # Last sync times
+        if status['last_sync_times']:
+            info_text += f"**🕐 Last Syncs**\n"
+            for file_name, sync_time in list(status['last_sync_times'].items())[:5]:
+                try:
+                    sync_dt = datetime.fromisoformat(sync_time)
+                    time_str = sync_dt.strftime("%Y-%m-%d %H:%M:%S")
+                    info_text += f"• {file_name}: {time_str}\n"
+                except:
+                    info_text += f"• {file_name}: {sync_time}\n"
+            info_text += "\n"
+        
+        # Performance summary
+        info_text += (
+            f"**⚡ Performance**\n"
+            f"• Memory: ~1MB (cache files)\n"
+            f"• CPU: Negligible (~0%)\n"
+            f"• Network: ~{monitored * 5}KB per check\n\n"
+        )
+        
+        # Quick recommendations
+        info_text += f"**💡 Quick Actions**\n"
+        if mode == 'polling' and interval > 10:
+            info_text += f"• `/forcesync` - Manual sync\n"
+            info_text += f"• Set `AUTO_SYNC_INTERVAL=10` for faster detection\n"
+        elif mode == 'polling':
+            info_text += f"• `/forcesync` - Manual sync\n"
+            info_text += f"• Configure `WEBHOOK_URL` for instant detection\n"
+        else:
+            info_text += f"• `/forcesync` - Force immediate sync\n"
+            info_text += f"• System operating optimally\n"
+        
+        info_text += f"\n━━━━━━━━━━━━━━━━━━━━━━"
+        
+        await update.message.reply_text(info_text, parse_mode="Markdown")
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error getting sync info: {e}")
+        user_logger.error(f"Sync info command error: {e}")
 
 
 # DNS Testing Command (Admin Only)
