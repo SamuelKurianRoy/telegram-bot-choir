@@ -113,6 +113,13 @@ def yrDataPreprocessing():
     for year, year_df in year_data.items():
         if year_df is not None:
             year_df.dropna(inplace=True)
+            
+            # Check if dataframe is empty after dropping NaN values
+            if year_df.empty:
+                print(f"Warning: Year {year} sheet is empty after dropping NaN values")
+                year_data[year] = None
+                continue
+            
             year_df.columns = year_df.iloc[0]
             year_df.drop(index=1, inplace=True)
             year_df.reset_index(drop=True, inplace=True)
