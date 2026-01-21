@@ -10,7 +10,7 @@ const std::regex SongParser::songCodePattern(
     std::regex::icase
 );
 
-std::optional<SongParser::ParsedCode> SongParser::parse(const std::string& text) {
+std::optional<SongParserParsedCode> SongParser::parse(const std::string& text) {
     if (text.empty()) {
         return std::nullopt;
     }
@@ -60,7 +60,7 @@ std::optional<SongParser::ParsedCode> SongParser::parse(const std::string& text)
             return std::nullopt;
         }
         
-        ParsedCode result;
+        SongParserParsedCode result;
         result.category = category;
         result.number = number;
         result.original = text;
@@ -75,7 +75,7 @@ bool SongParser::containsSongCode(const std::string& text) {
     return std::regex_search(text, songCodePattern);
 }
 
-std::optional<SongParser::ParsedCode> SongParser::extractFirst(const std::string& text) {
+std::optional<SongParserParsedCode> SongParser::extractFirst(const std::string& text) {
     std::smatch match;
     if (std::regex_search(text, match, songCodePattern)) {
         return parse(match.str());

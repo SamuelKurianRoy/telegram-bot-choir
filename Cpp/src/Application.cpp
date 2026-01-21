@@ -248,6 +248,65 @@ void Application::registerSongCommands() {
             false, 0, nullptr, "Markdown"
         );
     });
+    
+    // /vocabulary command
+    bot->getEvents().onCommand("vocabulary", [this](TgBot::Message::Ptr message) {
+        logUserInteraction(message);
+        
+        auto& db = getDatabase();
+        auto vocab = db.getVocabulary();
+        
+        std::stringstream response;
+        response << "📚 *Choir Vocabulary*\n\n";
+        response << "Songs sung in the past 3 years:\n\n";
+        
+        response << "*Hymns:* " << vocab.hymnNumbers.size() << " total\n";
+        if (!vocab.hymnNumbers.empty()) {
+            response << "H-";
+            for (size_t i = 0; i < std::min(vocab.hymnNumbers.size(), size_t(10)); ++i) {
+                if (i > 0) response << ", H-";
+                response << vocab.hymnNumbers[i];
+            }
+            if (vocab.hymnNumbers.size() > 10) {
+                response << "... (+" << (vocab.hymnNumbers.size() - 10) << " more)";
+            }
+            response << "\n\n";
+        }
+        
+        response << "*Lyrics:* " << vocab.lyricNumbers.size() << " total\n";
+        if (!vocab.lyricNumbers.empty()) {
+            response << "L-";
+            for (size_t i = 0; i < std::min(vocab.lyricNumbers.size(), size_t(10)); ++i) {
+                if (i > 0) response << ", L-";
+                response << vocab.lyricNumbers[i];
+            }
+            if (vocab.lyricNumbers.size() > 10) {
+                response << "... (+" << (vocab.lyricNumbers.size() - 10) << " more)";
+            }
+            response << "\n\n";
+        }
+        
+        response << "*Conventions:* " << vocab.conventionNumbers.size() << " total\n";
+        if (!vocab.conventionNumbers.empty()) {
+            response << "C-";
+            for (size_t i = 0; i < std::min(vocab.conventionNumbers.size(), size_t(10)); ++i) {
+                if (i > 0) response << ", C-";
+                response << vocab.conventionNumbers[i];
+            }
+            if (vocab.conventionNumbers.size() > 10) {
+                response << "... (+" << (vocab.conventionNumbers.size() - 10) << " more)";
+            }
+            response << "\n\n";
+        }
+        
+        response << "_Use /check to verify if a specific song is in the vocabulary_";
+        
+        bot->getApi().sendMessage(
+            message->chat->id,
+            response.str(),
+            false, 0, nullptr, "Markdown"
+        );
+    });
 }
 
 void Application::registerSearchCommands() {
@@ -461,7 +520,16 @@ void Application::setUserState(int64_t userId, ConversationState state) {
     userStates[userId] = state;
 }
 
-Application::ConversatioConversationMessage(TgBot::Message::Ptr message, ConversationState state) {
+Application::ConversationState Application::getUserState(int64_t userId) const {
+    auto it = userStates.find(userId);
+    return (it != userStates.end()) ? it->second : ConversationState::None;
+}
+
+void Application::clearUserState(int64_t userId) {
+    userStates.erase(userId);
+}
+
+void Application::handleConversationMessage(TgBot::Message::Ptr message, ConversationState state) {
     switch (state) {
         case ConversationState::WaitingForCheckSong:
             handleCheckSongInput(message);
@@ -497,20 +565,37 @@ void Application::handleCheckSongInput(TgBot::Message::Ptr message) {
     auto& db = getDatabase();
     auto song = db.findByNumber(parsed->number, parsed->category);
     
+    std::stringstream response;
+    
     if (!song) {
-        bot->getApi().sendMessage(
-            message->chat->id,
-            "❌ Song *" + songCode + "* does not exist in the vocabulary.",
-            false, 0, nullptr, "Markdown"
-        );
+        response << "❌ Song *" << songCode << "* does not exist in the database.";
     } else {
-        bot->getApi().sendMessage(
-            message->chat->id,
-            "✅ Song *" + songCode + "* exists in the vocabulary!\n\n"
-            "📖 *Title:* " + song->title,
-            false, 0, nullptr, "Markdown"
-        );
+        bool inVocab = db.isSongInVocabulary(songCode);
+        
+        if (inVocab) {
+            response << "✅ Song *" << songCode << "* is in the choir vocabulary!\n\n";
+        } else {
+            response << "⚠️ Song *" << songCode << "* exists but is NOT in the vocabulary\n\n";
+            response << "_Note: A known song may not be in vocabulary if it hasn't been sung in the past 3 years_\n\n";
+        }
+        
+        response << "📖 *Index:* " << song->index << "\n";
+        if (!song->firstLine.empty()) {
+            response << "🎵 *First Line:* " << song->firstLine << "\n";
+        }
+        
+        // Get tune info
+        std::string tune = db.getTuneName(songCode);
+        if (!tune.empty() && tune != "Unknown") {
+            response << "🎶 *Tune:* " << tune << "\n";
+        }
     }
+    
+    bot->getApi().sendMessage(
+        message->chat->id,
+        response.str(),
+        false, 0, nullptr, "Markdown"
+    );
 }
 
 void Application::handleLastSongInput(TgBot::Message::Ptr message) {
@@ -542,17 +627,8 @@ void Application::handleDateInput(TgBot::Message::Ptr message) {
     );
 }
 
-void Application::handlenState Application::getUserState(int64_t userId) const {
-    auto it = userStates.find(userId);
-    return (it != userStates.end()) ? it->second : ConversationState::None;
-}
-
-void Application::clearUserState(int64_t userId) {
-    userStates.erase(userId);
-}
-
 void Application::handleSongCodeMessage(TgBot::Message::Ptr message, 
-                                       const SongParser::ParsedCode& parsed) {
+                                       const SongParserParsedCode& parsed) {
     std::string songCode = SongParser::format(parsed.category, parsed.number);
     LOG_BOT_INFO("Detected song code: {}", songCode);
     
@@ -572,7 +648,7 @@ void Application::handleSongCodeMessage(TgBot::Message::Ptr message,
     
     // Build response message
     std::stringstream response;
-    response << "🎵 *" << songCode << "* - " << song->title << "\n\n";
+    response << "🎵 *" << songCode << "* - " << song->index << "\n\n";
     
     // Add index if available
     if (!song->index.empty()) {

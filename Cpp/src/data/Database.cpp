@@ -1,8 +1,91 @@
 #include "data/Database.hpp"
 #include "data/DriveService.hpp"
 #include "utils/Logger.hpp"
+#include "models/Config.hpp"
+#include <sstream>
+#include <regex>
+#include <iomanip>
 
 namespace ChoirBot {
+
+// Helper function to parse CSV line
+std::vector<std::string> parseCSVLine(const std::string& line) {
+    std::vector<std::string> result;
+    std::string field;
+    bool inQuotes = false;
+    
+    for (size_t i = 0; i < line.size(); ++i) {
+        char c = line[i];
+        
+        if (c == '"') {
+            inQuotes = !inQuotes;
+        } else if (c == ',' && !inQuotes) {
+            result.push_back(field);
+            field.clear();
+        } else {
+            field += c;
+        }
+    }
+    result.push_back(field);
+    
+    // Trim whitespace from fields
+    for (auto& f : result) {
+        size_t start = f.find_first_not_of(" \t\r\n");
+        size_t end = f.find_last_not_of(" \t\r\n");
+        if (start != std::string::npos && end != std::string::npos) {
+            f = f.substr(start, end - start + 1);
+        } else {
+            f.clear();
+        }
+    }
+    
+    return result;
+}
+
+// Helper function to parse CSV data
+std::vector<std::vector<std::string>> parseCSV(const std::string& csvData) {
+    std::vector<std::vector<std::string>> rows;
+    std::istringstream stream(csvData);
+    std::string line;
+    
+    while (std::getline(stream, line)) {
+        if (!line.empty()) {
+            rows.push_back(parseCSVLine(line));
+        }
+    }
+    
+    return rows;
+}
+
+// Helper to parse date from string (format: DD-MM-YYYY or similar)
+std::optional<TimePoint> parseDate(const std::string& dateStr) {
+    if (dateStr.empty() || dateStr == "nan" || dateStr == "NaN" || dateStr == "NaT") {
+        return std::nullopt;
+    }
+    
+    std::tm tm = {};
+    std::istringstream ss(dateStr);
+    
+    // Try various date formats
+    ss >> std::get_time(&tm, "%d-%m-%Y");
+    if (ss.fail()) {
+        ss.clear();
+        ss.str(dateStr);
+        ss >> std::get_time(&tm, "%Y-%m-%d");
+    }
+    if (ss.fail()) {
+        ss.clear();
+        ss.str(dateStr);
+        ss >> std::get_time(&tm, "%m/%d/%Y");
+    }
+    
+    if (!ss.fail()) {
+        auto time = std::mktime(&tm);
+        return std::chrono::system_clock::from_time_t(time);
+    }
+    
+    return std::nullopt;
+}
 
 static std::unique_ptr<Database> globalDatabase = nullptr;
 
@@ -157,30 +240,230 @@ size_t Database::getSongCountByCategory(SongCategory category) const {
 }
 
 void Database::preprocessYearData() {
-    // TODO: Implement year data preprocessing
+    // Sort dates for each song
+    for (auto& [songCode, dates] : data->sungDates) {
+        std::sort(dates.begin(), dates.end());
+    }
 }
 
 void Database::cleanData() {
-    // TODO: Implement data cleaning
+    // Remove duplicates and clean up data
+    for (auto& [songCode, dates] : data->sungDates) {
+        auto last = std::unique(dates.begin(), dates.end());
+        dates.erase(last, dates.end());
+    }
 }
 
 void Database::buildIndices() {
-    // TODO: Build search indices
+    // Build search indices
+    data->songIndex.clear();
+    
+    for (const auto& song : data->hymns) {
+        data->songIndex[song.code] = song;
+    }
+    for (const auto& song : data->lyrics) {
+        data->songIndex[song.code] = song;
+    }
+    for (const auto& song : data->conventions) {
+        data->songIndex[song.code] = song;
+    }
+    
+    LOG_BOT_INFO("Built search index with {} songs", data->songIndex.size());
 }
 
 bool Database::loadHymnLyricConvention() {
-    // TODO: Load from Google Drive
+    LOG_BOT_INFO("Loading HLC file (hlc_file_id)...");
+    auto& config = Config::getInstance();
+    auto& drive = getDriveService();
+    
+    // Load each sheet separately using Google Sheets API
+    std::vector<std::pair<std::string, SongCategory>> sheets = {
+        {"Hymn List", SongCategory::Hymn},
+        {"Lyric List", SongCategory::Lyric},
+        {"Convention List", SongCategory::Convention}
+    };
+    
+    for (const auto& [sheetName, category] : sheets) {
+        LOG_BOT_INFO("Loading sheet: {}", sheetName);
+        std::string csvData = drive.getSheetData(config.driveFiles.hlcFileId, sheetName);
+        if (csvData.empty()) {
+            LOG_BOT_WARN("Failed to download sheet: {}", sheetName);
+            continue;
+        }
+        
+        auto rows = parseCSV(csvData);
+        if (rows.size() < 2) continue; // Need at least header + 1 row
+        
+        // Skip header row, parse data rows
+        for (size_t i = 1; i < rows.size(); ++i) {
+            const auto& row = rows[i];
+            if (row.empty()) continue;
+            
+            // Try to parse first column as number
+            try {
+                int number = static_cast<int>(std::stod(row[0]));
+                if (number <= 0) continue;
+                
+                std::string title = row.size() > 1 ? row[1] : "";
+                std::string firstLine = row.size() > 2 ? row[2] : "";
+                
+                Song song;
+                song.number = number;
+                song.index = title;
+                song.firstLine = firstLine;
+                song.category = category;
+                
+                if (category == SongCategory::Hymn) {
+                    song.code = "H-" + std::to_string(number);
+                    data->hymns.push_back(song);
+                } else if (category == SongCategory::Lyric) {
+                    song.code = "L-" + std::to_string(number);
+                    data->lyrics.push_back(song);
+                } else if (category == SongCategory::Convention) {
+                    song.code = "C-" + std::to_string(number);
+                    data->conventions.push_back(song);
+                }
+                
+            } catch (...) {
+                // Not a valid number, skip
+                continue;
+            }
+        }
+    }
+    
+    LOG_BOT_INFO("Loaded {} hymns, {} lyrics, {} conventions", 
+                 data->hymns.size(), data->lyrics.size(), data->conventions.size());
     return true;
 }
 
 bool Database::loadMainDatabase() {
-    // TODO: Load from Google Drive
+    LOG_BOT_INFO("Loading main database (main_file_id)...");
+    auto& config = Config::getInstance();
+    auto& drive = getDriveService();
+    
+    // The main file contains multiple sheets (2023, 2024, 2025)
+    std::vector<std::string> sheets = {"2023", "2024", "2025"};
+    
+    for (const auto& sheetName : sheets) {
+        std::string csvData = drive.getSheetData(config.driveFiles.mainFileId, sheetName);
+        if (csvData.empty()) {
+            LOG_BOT_WARN("Failed to download year sheet: {}", sheetName);
+            continue;
+        }
+        
+        auto rows = parseCSV(csvData);
+        if (rows.size() < 2) continue; // Need header + data
+        
+        // Expected columns: Date, 1st Song, 2nd Song, 3rd Song, 4th Song, 5th Song
+        // Skip header row
+        for (size_t i = 1; i < rows.size(); ++i) {
+            const auto& row = rows[i];
+            if (row.empty()) continue;
+            
+            auto date = parseDate(row[0]);
+            if (!date) continue;
+            
+            // Process all song columns (1st Song, 2nd Song, etc.)
+            for (size_t col = 1; col < row.size() && col <= 5; ++col) {
+                std::string songCode = row[col];
+                if (songCode.empty() || songCode == "0" || songCode == "nan") continue;
+                
+                // Normalize song code
+                std::regex pattern("([HhLlCc])[-]?(\\d+)");
+                std::smatch match;
+                if (std::regex_search(songCode, match, pattern)) {
+                    std::string prefix = match[1].str();
+                    std::transform(prefix.begin(), prefix.end(), prefix.begin(), ::toupper);
+                    std::string number = match[2].str();
+                    std::string normalized = prefix + "-" + number;
+                    data->sungDates[normalized].push_back(*date);
+                }
+            }
+        }
+    }
+    
+    LOG_BOT_INFO("Loaded sung dates for {} songs", data->sungDates.size());
     return true;
 }
 
 bool Database::loadTuneDatabase() {
-    // TODO: Load from Google Drive
+    LOG_BOT_INFO("Loading tune database (tune_file_id)...");
+    auto& config = Config::getInstance();
+    auto& drive = getDriveService();
+    
+    // Load the Hymn sheet from tune database
+    std::string csvData = drive.getSheetData(config.driveFiles.tuneFileId, "Hymn");
+    if (csvData.empty()) {
+        LOG_BOT_WARN("Failed to download tune database");
+        return false;
+    }
+    
+    auto rows = parseCSV(csvData);
+    if (rows.size() < 2) return false;
+    
+    // Expected columns: Hymn no, Tune Index (or similar)
+    // Skip header row
+    for (size_t i = 1; i < rows.size(); ++i) {
+        const auto& row = rows[i];
+        if (row.size() < 2) continue;
+        
+        try {
+            int number = static_cast<int>(std::stod(row[0]));
+            std::string tuneName = row[1];
+            
+            if (number > 0 && !tuneName.empty()) {
+                std::string songCode = "H-" + std::to_string(number);
+                data->tunes[songCode] = tuneName;
+            }
+        } catch (...) {
+            continue;
+        }
+    }
+    
+    LOG_BOT_INFO("Loaded {} tune mappings", data->tunes.size());
     return true;
+}
+
+Database::VocabularyData Database::getVocabulary() const {
+    VocabularyData vocab;
+    
+    // Get all unique song codes that have been sung
+    for (const auto& [songCode, dates] : data->sungDates) {
+        if (dates.empty()) continue;
+        
+        // Parse the song code
+        std::regex pattern("([HLC])-(\\d+)");
+        std::smatch match;
+        if (std::regex_match(songCode, match, pattern)) {
+            char category = match[1].str()[0];
+            int number = std::stoi(match[2].str());
+            
+            if (category == 'H') {
+                vocab.hymnNumbers.push_back(number);
+            } else if (category == 'L') {
+                vocab.lyricNumbers.push_back(number);
+            } else if (category == 'C') {
+                vocab.conventionNumbers.push_back(number);
+            }
+        }
+    }
+    
+    // Sort and remove duplicates
+    auto sortAndUnique = [](std::vector<int>& vec) {
+        std::sort(vec.begin(), vec.end());
+        vec.erase(std::unique(vec.begin(), vec.end()), vec.end());
+    };
+    
+    sortAndUnique(vocab.hymnNumbers);
+    sortAndUnique(vocab.lyricNumbers);
+    sortAndUnique(vocab.conventionNumbers);
+    
+    return vocab;
+}
+
+bool Database::isSongInVocabulary(const std::string& songCode) const {
+    auto it = data->sungDates.find(songCode);
+    return it != data->sungDates.end() && !it->second.empty();
 }
 
 Database& getDatabase() {

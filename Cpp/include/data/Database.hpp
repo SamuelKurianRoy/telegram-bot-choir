@@ -48,6 +48,15 @@ public:
     size_t getSongCount() const;
     size_t getSongCountByCategory(SongCategory category) const;
     
+    // Vocabulary - songs sung in past 3 years
+    struct VocabularyData {
+        std::vector<int> hymnNumbers;
+        std::vector<int> lyricNumbers;
+        std::vector<int> conventionNumbers;
+    };
+    VocabularyData getVocabulary() const;
+    bool isSongInVocabulary(const std::string& songCode) const;
+    
 private:
     struct DataFrames {
         std::vector<Song> hymns;
@@ -56,6 +65,7 @@ private:
         std::map<std::string, std::vector<TimePoint>> sungDates;  // songCode -> dates
         std::map<std::string, std::string> tunes;  // songCode -> tune name
         std::map<std::string, int> pageNumbers;    // tune name -> page number
+        std::map<std::string, Song> songIndex;     // songCode -> song
     };
     
     std::unique_ptr<DataFrames> data;

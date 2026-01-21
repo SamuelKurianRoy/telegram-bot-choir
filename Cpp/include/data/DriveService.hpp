@@ -31,6 +31,9 @@ public:
     std::string exportAsExcel(const std::string& fileId);
     std::string exportAsText(const std::string& fileId);
     
+    // Google Sheets specific operations
+    std::string getSheetData(const std::string& spreadsheetId, const std::string& sheetName);
+    
     // Folder operations
     std::vector<std::string> listFiles(const std::string& folderId);
     
@@ -48,9 +51,6 @@ private:
     std::chrono::system_clock::time_point tokenExpiry;
     
     bool refreshAccessToken();
-    std::string createJWT();
-    std::string makeRequest(const std::string& url, const std::string& method, 
-                           const std::string& body = "");
 };
 
 /**

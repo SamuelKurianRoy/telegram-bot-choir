@@ -4,11 +4,13 @@
 #include <memory>
 #include <atomic>
 #include <thread>
+#include <map>
 
 namespace ChoirBot {
 
 // Forward declarations
 class SongParser;
+struct SongParserParsedCode;
 
 /**
  * Main bot application class
@@ -66,7 +68,7 @@ private:
     
     // Song code handling
     void handleSongCodeMessage(TgBot::Message::Ptr message, 
-                               const struct SongParser::ParsedCode& parsed);
+                               const SongParserParsedCode& parsed);
     
     // Conversation handling
     void handleConversationMessage(TgBot::Message::Ptr message, ConversationState state);
