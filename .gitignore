@@ -1,13 +1,35 @@
+# Secrets and configuration
 .streamlit/
-*.json
+config.json
+secrets.toml
+*.env
+.env
+
+# API Keys and tokens (extra safety)
+*token*
+*api_key*
+*secret*
+
+# But allow example configs
+!config.json.example
+!secrets.toml.example
+
+# Logs
 user_log.txt
 bot_log.txt
 comments.txt
-__pycache__/
-tmp/
-Workshop.ipynb
-
 downloader_log.txt
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Temporary files
+tmp/
+temp/
+Workshop.ipynb
 
 # Download feature documentation and setup files
 DOWNLOAD_FEATURE_SUMMARY.md
