@@ -1,41 +1,52 @@
-.streamlit/
-*.json
-user_log.txt
-bot_log.txt
-comments.txt
-__pycache__/
-tmp/
-Workshop.ipynb
+# C++ Build artifacts
+build/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
 
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Configuration (contains secrets)
+config.json
+
+# Logs
+*.log
+*.txt
+bot_log.txt
+user_log.txt
 downloader_log.txt
 
-# Download feature documentation and setup files
-DOWNLOAD_FEATURE_SUMMARY.md
-DOWNLOAD_SETUP_GUIDE.md
-DOWNLOAD_FEATURE_README.md
-test_downloader.py
-test_ffmpeg.py
-requirements_new.txt
-requirements_backup.txt
-discover_gemini_models.py
-
-# Test files
-test_*.py
-*_test.py
-
-# Download temporary files and logs
+# Temporary files
 temp/
-download_log.txt
-*.mp3
-*.mp4
-*.wav
-*.m4a
-audio_downloader_bot.py
-audio_downloader_streamlit_app.py
-audio_downloader_debug.py
+tmp/
+*.tmp
 
-STREAMLIT_CLOUD_SETUP.md
+# Lock files
+*.lock
 
-venv_linux/
+# Core dumps
+core
+core.*
 
-docs/
+# OS
+.DS_Store
+Thumbs.db
+
+# Dependencies (FetchContent)
+_deps/
