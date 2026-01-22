@@ -84,12 +84,13 @@ def initialize_groq():
         user_logger.error(f"Failed to initialize Groq: {str(e)[:200]}")
         return False
 
-def parse_user_intent(user_message: str) -> dict:
+def parse_user_intent(user_message: str, conversation_history: list = None) -> dict:
     """
     Parse user's natural language message to determine intent and extract parameters.
     
     Args:
         user_message: The user's message text
+        conversation_history: Optional list of recent messages for context [{"role": "user"/"bot", "message": "...", "entities": {...}}]
         
     Returns:
         dict with keys:
@@ -97,6 +98,7 @@ def parse_user_intent(user_message: str) -> dict:
             - parameters: Dict of parameters needed for the command
             - response_text: Optional conversational response
             - confidence: Confidence score (0-1)
+            - mentioned_entities: Dict of entities mentioned (for context tracking)
     """
     global _gemini_model
     global _groq_client
@@ -161,7 +163,8 @@ Respond with ONLY a JSON object (no markdown, no code blocks, just the raw JSON)
     "parameters": {{"param_name": "value"}},
     "response_text": "A friendly response acknowledging their request",
     "confidence": 0.0-1.0,
-    "reasoning": "Brief explanation of why you chose this command"
+    "reasoning": "Brief explanation of why you chose this command",
+    "mentioned_entities": {{"song_code": "H-44", "date": "25/12/2024", "tune_name": "abridge"}} // Extract key entities mentioned
 }}
 
 Guidelines:
@@ -210,8 +213,8 @@ IMPORTANT: If asked about the bot creator, developer, or who made it:
 - Be friendly and mention you're here to help with choir-related tasks
 
 Examples:
-"What songs did we sing on Christmas?" → {{"command": "date", "parameters": {{"date": "25/12/{current_year}"}}, "response_text": "Let me check what songs were sung on Christmas!", "confidence": 0.9}}
-"Songs from last Sunday" → {{"command": "date", "parameters": {{"date": "{last_sunday_str}"}}, "response_text": "I'll look up the songs sung on last Sunday for you!", "confidence": 0.95}}
+"What songs did we sing on Christmas?" → {{"command": "date", "parameters": {{"date": "25/12/{current_year}"}}, "response_text": "Let me check what songs were sung on Christmas!", "confidence": 0.9, "mentioned_entities": {{"date": "25/12/{current_year}"}}}}
+"Songs from last Sunday" → {{"command": "date", "parameters": {{"date": "{last_sunday_str}"}}, "response_text": "I'll look up the songs sung on last Sunday for you!", "confidence": 0.95, "mentioned_entities": {{"date": "{last_sunday_str}"}}}}
 "Find H-44" → {{"command": "search", "parameters": {{"query": "H-44"}}, "response_text": "Searching for hymn H-44...", "confidence": 0.95}}
 "When was hymn 21 last sung?" → {{"command": "last", "parameters": {{"song_code": "H-21"}}, "response_text": "Let me check when Hymn 21 was last sung!", "confidence": 0.95}}
 "When was convention 21 sung?" → {{"command": "last", "parameters": {{"song_code": "C-21"}}, "response_text": "Let me check when Convention 21 was last sung!", "confidence": 0.95}}
@@ -326,6 +329,11 @@ Examples:
         try:
             result = json.loads(response_text)
             user_logger.info(f"Parsed intent - Command: {result.get('command')}, Confidence: {result.get('confidence')}, Reasoning: {result.get('reasoning', 'N/A')[:50]}")
+            
+            # Ensure mentioned_entities is present
+            if 'mentioned_entities' not in result:
+                result['mentioned_entities'] = {}
+            
             return result
         except json.JSONDecodeError as je:
             user_logger.error(f"JSON parse error: {str(je)}, Response: {response_text[:200]}")

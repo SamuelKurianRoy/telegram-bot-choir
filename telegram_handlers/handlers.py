@@ -3414,23 +3414,48 @@ async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     user_logger.info(f"AI processing message from {user.id}: {message_text[:50]}")
     
+    # Initialize conversation history if not present
+    if 'conversation_history' not in context.user_data:
+        context.user_data['conversation_history'] = []
+    
+    # Get recent conversation history (last 5 messages)
+    conversation_history = context.user_data['conversation_history'][-5:]
+    
     # Send "thinking" indicator
     await update.message.chat.send_action("typing")
     
     try:
-        # Parse user intent with Gemini
-        intent = parse_user_intent(message_text)
+        # Parse user intent with Gemini, including conversation history
+        intent = parse_user_intent(message_text, conversation_history)
         
         command = intent.get("command")
         parameters = intent.get("parameters", {})
         response_text = intent.get("response_text", "")
         confidence = intent.get("confidence", 0.0)
+        mentioned_entities = intent.get("mentioned_entities", {})
         
         user_logger.info(f"AI Intent: command={command}, confidence={confidence}")
+        
+        # Store user message in conversation history
+        context.user_data['conversation_history'].append({
+            'role': 'user',
+            'message': message_text,
+            'entities': mentioned_entities
+        })
+        
+        # Keep only last 10 messages to prevent memory bloat
+        if len(context.user_data['conversation_history']) > 10:
+            context.user_data['conversation_history'] = context.user_data['conversation_history'][-10:]
         
         # Send AI response first
         if response_text:
             await update.message.reply_text(response_text)
+            # Store bot response in history
+            context.user_data['conversation_history'].append({
+                'role': 'bot',
+                'message': response_text,
+                'entities': mentioned_entities
+            })
         
         # If no command or low confidence, just give conversational response
         if command is None or confidence < 0.5:
