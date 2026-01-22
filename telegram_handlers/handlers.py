@@ -3467,6 +3467,110 @@ async def execute_search(update: Update, context: CallbackContext, query: str) -
     result_text = "\n".join(response_lines)
     await update.message.reply_text(result_text, parse_mode="Markdown")
 
+async def execute_theme_search(update: Update, context: CallbackContext, theme_query: str, theme_type: str = None) -> None:
+    """
+    Helper function to execute theme search directly without conversation flow.
+    Searches for songs by theme across hymns or lyrics.
+    """
+    from data.datasets import get_all_data, IndexFinder
+    from data.vocabulary import ChoirVocabulary
+    from telegram_handlers.conversations import get_theme_model, get_theme_embeddings, find_similar_themes, get_vocabulary_cache
+    from sklearn.metrics.pairwise import cosine_similarity
+    
+    theme_query = theme_query.strip()
+    
+    if not theme_query:
+        await update.message.reply_text("❌ Please provide a theme to search for.")
+        return
+    
+    # Get data
+    data = get_all_data()
+    dfH = data.get('dfH')
+    dfL = data.get('dfL')
+    
+    if dfH is None or dfL is None:
+        await update.message.reply_text("❌ Theme database not available.")
+        return
+    
+    # Get vocabulary
+    _, Hymn_Vocabulary, Lyric_Vocabulary, _ = get_vocabulary_cache()
+    
+    # Determine which type to search (default to both)
+    search_hymns = theme_type is None or theme_type.lower() in ['hymns', 'hymn', 'h']
+    search_lyrics = theme_type is None or theme_type.lower() in ['lyrics', 'lyric', 'l']
+    
+    results = {}
+    
+    # Search hymns
+    if search_hymns:
+        hymn_themes = dfH["Themes"].dropna().str.split(",").explode().str.strip().unique()
+        theme_embeddings, theme_texts = get_theme_embeddings("hymns", hymn_themes)
+        matched_themes = find_similar_themes(theme_query, theme_texts, theme_embeddings, threshold=0.6)
+        
+        if matched_themes:
+            filtered_df = dfH[dfH["Themes"].apply(lambda x: any(t in str(x) for t in matched_themes))]
+            known = Hymn_Vocabulary.values
+            
+            # Get songs that are in vocabulary (known songs)
+            hymn_results = []
+            for _, row in filtered_df.iterrows():
+                hymn_no = int(row['Hymn no'])
+                if hymn_no in known:
+                    song_code = f"H-{hymn_no}"
+                    song_name = IndexFinder(song_code)
+                    if song_name and song_name != "Invalid Number":
+                        hymn_results.append((song_code, song_name))
+            
+            if hymn_results:
+                results['hymns'] = (hymn_results, matched_themes)
+    
+    # Search lyrics
+    if search_lyrics:
+        lyric_themes = dfL["Themes"].dropna().str.split(",").explode().str.strip().unique()
+        theme_embeddings, theme_texts = get_theme_embeddings("lyrics", lyric_themes)
+        matched_themes = find_similar_themes(theme_query, theme_texts, theme_embeddings, threshold=0.6)
+        
+        if matched_themes:
+            filtered_df = dfL[dfL["Themes"].apply(lambda x: any(t in str(x) for t in matched_themes))]
+            known = Lyric_Vocabulary.values
+            
+            # Get songs that are in vocabulary (known songs)
+            lyric_results = []
+            for _, row in filtered_df.iterrows():
+                lyric_no = int(row['Lyric no'])
+                if lyric_no in known:
+                    song_code = f"L-{lyric_no}"
+                    song_name = IndexFinder(song_code)
+                    if song_name and song_name != "Invalid Number":
+                        lyric_results.append((song_code, song_name))
+            
+            if lyric_results:
+                results['lyrics'] = (lyric_results, matched_themes)
+    
+    if not results:
+        await update.message.reply_text(f"❌ No songs found with theme '{theme_query}'.")
+        return
+    
+    # Build response
+    response_lines = [f"🎯 **Songs with theme '{theme_query}':**\n"]
+    
+    for category, (songs, themes) in results.items():
+        category_name = category.capitalize()
+        response_lines.append(f"**{category_name}:**")
+        response_lines.append(f"_Matched themes: {', '.join(themes[:3])}_\n")
+        
+        # Show up to 10 songs per category
+        for song_code, song_name in songs[:10]:
+            response_lines.append(f"• **{song_code}**: {song_name}")
+        
+        if len(songs) > 10:
+            response_lines.append(f"\n_...and {len(songs) - 10} more_")
+        
+        response_lines.append("")  # Empty line
+    
+    result_text = "\n".join(response_lines)
+    await update.message.reply_text(result_text, parse_mode="Markdown")
+
 async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle natural language messages using AI to determine intent and execute commands.
@@ -3603,7 +3707,12 @@ async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 await update.message.reply_text("Please specify a hymn number or tune name. Example: 'find tune for H-44' or 'find tune abridge'")
         
         elif command == "theme":
-            await update.message.reply_text("To search by theme, please use the /theme command and follow the interactive prompts.")
+            theme_query = parameters.get("theme", "")
+            theme_type = parameters.get("type")  # Optional: 'hymns' or 'lyrics'
+            if theme_query:
+                await execute_theme_search(update, context, theme_query, theme_type)
+            else:
+                await update.message.reply_text("Please specify a theme to search for. Example: 'songs with theme peace'")
         
         elif command == "bible":
             reference = parameters.get("reference", "")
