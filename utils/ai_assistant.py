@@ -132,8 +132,29 @@ def parse_user_intent(user_message: str, conversation_history: list = None) -> d
         last_sunday = today - timedelta(days=days_since_sunday if days_since_sunday > 0 else 7)
         last_sunday_str = last_sunday.strftime("%d/%m/%Y")
         
+        # Build conversation context if available
+        context_str = ""
+        pending_query = None
+        if conversation_history:
+            context_str = "\n\n🔍 CONVERSATION CONTEXT (use this to resolve references):\n"
+            for msg in conversation_history[-3:]:  # Last 3 messages
+                role = msg.get('role', 'user')
+                text = msg.get('message', '')
+                entities = msg.get('entities', {})
+                context_str += f"{role.upper()}: {text}\n"
+                if entities:
+                    context_str += f"  Entities mentioned: {entities}\n"
+                    # Extract pending_query if present
+                    if 'pending_query' in entities:
+                        pending_query = entities['pending_query']
+            
+            if pending_query:
+                context_str += f"\n⚠️ IMPORTANT: There's a pending query '{pending_query}' waiting for clarification!\n"
+                context_str += f"If user says 'tune' or 'tune name', execute: {{\"command\": \"tune\", \"parameters\": {{\"tune_name\": \"{pending_query}\"}}}}\n"
+                context_str += f"If user says 'song' or 'song name', execute: {{\"command\": \"search\", \"parameters\": {{\"query\": \"{pending_query}\"}}}}\n"
+        
         # Create a detailed prompt for Gemini
-        prompt = f"""You are a helpful assistant for a church choir Telegram bot. Analyze the user's message and determine which bot command they want to use.
+        prompt = f"""You are a helpful assistant for a church choir Telegram bot. Analyze the user's message and determine which bot command they want to use.{context_str}
 
 IMPORTANT: Today's date is {today.strftime("%d/%m/%Y")} (DD/MM/YYYY format). Last Sunday was {last_sunday_str}.
 
@@ -168,6 +189,11 @@ Respond with ONLY a JSON object (no markdown, no code blocks, just the raw JSON)
 }}
 
 Guidelines:
+- CRITICAL: Check conversation history FIRST for pending queries or references
+  * If user says just "tune name", "tune", "song name", or "song", look for "pending_query" in history
+  * Extract the query from history and execute immediately
+  * Example: History shows pending_query="abridge", user says "tune" → execute tune search for "abridge"
+  
 - For dates: Convert to DD/MM/YYYY format
   * "last Sunday" → {last_sunday_str}
   * "yesterday" → calculate from today's date ({(today - timedelta(days=1)).strftime("%d/%m/%Y")})
