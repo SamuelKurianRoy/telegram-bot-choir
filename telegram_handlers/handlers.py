@@ -3649,12 +3649,92 @@ async def execute_notation(update: Update, context: CallbackContext, song_code: 
     
     # Handle lyrics
     elif song_code.startswith("L-"):
-        await update.message.reply_text(
-            f"🎵 **Notation for {song_code}:**\n\n"
-            f"To get lyric notation, please use the /notation command and enter {song_code}. "
-            f"The system will download the PDF file if available.",
-            parse_mode="Markdown"
-        )
+        from data.datasets import get_lyrics_pdf_by_lyric_number, lyrics_file_map
+        from data.sheet_upload import search_uploaded_file_by_lyric, download_uploaded_file
+        from config import DOWNLOAD_DIR
+        import os
+        
+        lyric_number = int(song_code.split('-')[1])
+        downloading_msg = await update.message.reply_text("⏳ Downloading music sheet... Please wait.")
+
+        try:
+            # First, try to get from main lyrics database
+            pdf_path = get_lyrics_pdf_by_lyric_number(lyric_number, lyrics_file_map)
+
+            if pdf_path and os.path.exists(pdf_path):
+                # Found in main database
+                await downloading_msg.delete()
+                
+                # Verify file size before sending
+                file_size = os.path.getsize(pdf_path)
+                if file_size > 50 * 1024 * 1024:  # 50MB limit for Telegram
+                    await update.message.reply_text(f"❌ PDF file for {song_code} is too large to send via Telegram.")
+                else:
+                    with open(pdf_path, 'rb') as pdf_file:
+                        await update.message.reply_document(
+                            document=pdf_file,
+                            filename=f"{song_code}.pdf",
+                            caption=f"🎵 Here is the notation for {song_code}."
+                        )
+                    # Clean up the downloaded file after sending
+                    try:
+                        os.remove(pdf_path)
+                    except:
+                        pass  # Ignore cleanup errors
+            else:
+                # Not found in main database - search in upload folder
+                await downloading_msg.edit_text("⏳ Not found in main database. Searching uploaded files...")
+                
+                found, file_id, filename = search_uploaded_file_by_lyric(lyric_number)
+                
+                if found:
+                    # Found in upload folder - download and send it
+                    await downloading_msg.edit_text(f"✅ Found in uploads: {filename}\n⏳ Downloading...")
+                    
+                    # Download from upload folder
+                    upload_pdf_path = download_uploaded_file(file_id, filename, DOWNLOAD_DIR)
+                    
+                    if upload_pdf_path and os.path.exists(upload_pdf_path):
+                        await downloading_msg.delete()
+                        
+                        # Verify file size before sending
+                        file_size = os.path.getsize(upload_pdf_path)
+                        if file_size > 50 * 1024 * 1024:  # 50MB limit for Telegram
+                            await update.message.reply_text(f"❌ PDF file for {song_code} is too large to send via Telegram.")
+                        else:
+                            with open(upload_pdf_path, 'rb') as pdf_file:
+                                await update.message.reply_document(
+                                    document=pdf_file,
+                                    filename=filename,
+                                    caption=f"📁 Notation for {song_code}\n(From user uploads)"
+                                )
+                        
+                        # Clean up the downloaded file after sending
+                        try:
+                            os.remove(upload_pdf_path)
+                        except:
+                            pass  # Ignore cleanup errors
+                    else:
+                        await downloading_msg.delete()
+                        await update.message.reply_text(
+                            f"❌ Found file in uploads but could not download it.\n"
+                            f"File: {filename}"
+                        )
+                else:
+                    # Not found anywhere
+                    await downloading_msg.delete()
+                    await update.message.reply_text(
+                        f"❌ **Notation Not Found**\n\n"
+                        f"{song_code} was not found in:\n"
+                        f"• Main notation database\n"
+                        f"• User uploaded files\n\n"
+                        f"💡 You can upload the notation using /upload command.",
+                        parse_mode="Markdown"
+                    )
+                    
+        except Exception as e:
+            await downloading_msg.delete()
+            await update.message.reply_text(f"❌ Error processing {song_code}: {str(e)}")
     
     # Handle conventions
     elif song_code.startswith("C-"):
