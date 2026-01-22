@@ -3397,6 +3397,76 @@ async def execute_tune_search(update: Update, context: CallbackContext, query: s
         result = "\n".join(result_lines)
         await update.message.reply_text(result, parse_mode="Markdown", disable_web_page_preview=True)
 
+async def execute_search(update: Update, context: CallbackContext, query: str) -> None:
+    """
+    Helper function to execute song search directly without conversation flow.
+    Searches across hymns, lyrics, and conventions.
+    """
+    from utils.search import find_best_match
+    from data.datasets import IndexFinder
+    
+    query = query.strip()
+    
+    if not query:
+        await update.message.reply_text("❌ Please provide a search query.")
+        return
+    
+    # Check if it's a direct song code (H-44, L-123, C-21)
+    song_code_match = re.match(r'^([HLC])-?(\d+)$', query, re.IGNORECASE)
+    if song_code_match:
+        song_type = song_code_match.group(1).upper()
+        song_num = song_code_match.group(2)
+        song_code = f"{song_type}-{song_num}"
+        song_name = IndexFinder(song_code)
+        
+        if song_name and song_name != "Invalid Number":
+            await update.message.reply_text(f"🎵 **{song_code}**: {song_name}")
+        else:
+            await update.message.reply_text(f"❌ Song {song_code} not found.")
+        return
+    
+    # Search all categories
+    results = {}
+    for category in ['hymn', 'lyric', 'convention']:
+        try:
+            search_result = find_best_match(query, category=category, top_n=5)
+            if isinstance(search_result, tuple) and search_result[0]:
+                results[category] = search_result
+        except Exception as e:
+            user_logger.error(f"Search error for {category}: {e}")
+    
+    if not results:
+        await update.message.reply_text(f"❌ No results found for '{query}'.")
+        return
+    
+    # Build comprehensive results
+    response_lines = [f"🔍 **Search results for '{query}':**\n"]
+    
+    prefix_map = {'hymn': 'H', 'lyric': 'L', 'convention': 'C'}
+    
+    for category, (matches, column) in results.items():
+        if not matches:
+            continue
+        
+        prefix = prefix_map[category]
+        category_name = category.capitalize()
+        response_lines.append(f"**{category_name}s:**")
+        
+        for song_num, similarity, context in matches[:3]:  # Top 3 per category
+            song_code = f"{prefix}-{song_num}"
+            song_name = IndexFinder(song_code)
+            
+            if song_name and song_name != "Invalid Number":
+                line = f"  • **{song_code}**: {song_name}"
+                if similarity < 1.0:
+                    line += f" (match: {similarity:.0%})"
+                response_lines.append(line)
+        
+        response_lines.append("")  # Empty line between categories
+    
+    result_text = "\n".join(response_lines)
+    await update.message.reply_text(result_text, parse_mode="Markdown")
+
 async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle natural language messages using AI to determine intent and execute commands.
@@ -3496,9 +3566,10 @@ async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
         
         elif command == "search":
             query = parameters.get("query", "")
-            await update.message.reply_text(
-                f"To search for '{query}', please use the /search command and follow the prompts."
-            )
+            if query:
+                await execute_search(update, context, query)
+            else:
+                await update.message.reply_text("Please specify what you'd like to search for.")
         
         elif command == "organist":
             # Import and call organist handler
