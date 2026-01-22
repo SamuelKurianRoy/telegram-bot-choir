@@ -3304,6 +3304,99 @@ async def admin_restore_all_features(update: Update, context: CallbackContext) -
 
 # === AI ASSISTANT HANDLER ===
 
+async def execute_tune_search(update: Update, context: CallbackContext, query: str) -> None:
+    """
+    Helper function to execute tune search directly without conversation flow.
+    Supports both hymn number (e.g., "44", "H-44") and tune name (e.g., "abridge").
+    """
+    from data.datasets import Tune_finder_of_known_songs, Hymn_Tune_no_Finder, get_all_data
+    from utils.notation import find_tune_page_number, getNotation
+    
+    query = query.strip()
+    
+    # Try to parse as hymn number
+    hymn_match = re.match(r'^[Hh]?-?(\d+)$', query)
+    
+    if hymn_match:
+        # Search by hymn number
+        hymn_no = int(hymn_match.group(1))
+        tune_result = Tune_finder_of_known_songs(hymn_no)
+        
+        if not tune_result or tune_result == "Invalid Number":
+            await update.message.reply_text(f"❌ No tunes found for H-{hymn_no}.")
+            return
+        
+        # Parse tune names
+        tune_names = [tune.strip() for tune in str(tune_result).split(',') if tune.strip()]
+        
+        if not tune_names:
+            await update.message.reply_text(f"❌ No tunes found for H-{hymn_no}.")
+            return
+        
+        # Build result with notation links
+        all_data = get_all_data()
+        dfH = all_data.get('dfH')
+        dfTH = all_data.get('dfTH')
+        
+        result_lines = [f"🎵 **Tunes for H-{hymn_no}:**\n"]
+        
+        for i, tune_name in enumerate(tune_names, 1):
+            page_no, source = find_tune_page_number(tune_name, hymn_no, dfH, dfTH)
+            
+            line = f"{i}. ♪ {tune_name}"
+            
+            if page_no:
+                notation_link = getNotation(page_no)
+                if notation_link and "http" in str(notation_link):
+                    line += f" - [📖 Notation]({notation_link})"
+                else:
+                    line += f" - Page {page_no}"
+            
+            result_lines.append(line)
+        
+        result = "\n".join(result_lines)
+        await update.message.reply_text(result, parse_mode="Markdown", disable_web_page_preview=True)
+        
+    else:
+        # Search by tune name
+        all_data = get_all_data()
+        dfTH = all_data.get('dfTH')
+        dfH = all_data.get('dfH')
+        
+        if dfTH is None or dfTH.empty:
+            await update.message.reply_text("❌ Tune database not available.")
+            return
+        
+        result_df = Hymn_Tune_no_Finder(dfTH, query, top_n=10)
+        
+        if result_df.empty:
+            await update.message.reply_text(f"❌ No tunes found matching '{query}'.")
+            return
+        
+        # Build result with notation links
+        result_lines = [f"🎵 **Top matching hymns for tune '{query}':**\n"]
+        
+        for _, row in result_df.iterrows():
+            hymn_no = int(row['Hymn no'])
+            tune_name = row['Tune Index']
+            similarity = row['Similarity']
+            
+            page_no, source = find_tune_page_number(tune_name, hymn_no, dfH, dfTH)
+            
+            line = f"**H-{hymn_no}**: {tune_name} (match: {similarity:.0%})"
+            
+            if page_no:
+                notation_link = getNotation(page_no)
+                if notation_link and "http" in str(notation_link):
+                    line += f" - [📖 Notation]({notation_link})"
+                else:
+                    line += f" - Page {page_no}"
+            
+            result_lines.append(line)
+        
+        result = "\n".join(result_lines)
+        await update.message.reply_text(result, parse_mode="Markdown", disable_web_page_preview=True)
+
 async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle natural language messages using AI to determine intent and execute commands.
@@ -3406,11 +3499,12 @@ async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 await update.message.reply_text("Please use /check followed by a song code (e.g., /check H-44)")
         
         elif command == "tune":
-            song_code = parameters.get("song_code", "")
-            if song_code:
-                await update.message.reply_text(f"To find the tune for {song_code}, please use /tune and follow the prompts.")
+            # Get query - could be hymn number or tune name
+            query = parameters.get("song_code") or parameters.get("tune_name", "")
+            if query:
+                await execute_tune_search(update, context, query)
             else:
-                await update.message.reply_text("Please use /tune to find tune information for songs.")
+                await update.message.reply_text("Please specify a hymn number or tune name. Example: 'find tune for H-44' or 'find tune abridge'")
         
         elif command == "theme":
             await update.message.reply_text("To search by theme, please use the /theme command and follow the interactive prompts.")

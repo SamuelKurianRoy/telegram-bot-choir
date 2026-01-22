@@ -179,6 +179,23 @@ Guidelines:
   * "convention 21" → C-21
   * "H44" → H-44
   * IMPORTANT: When user says "hymn/lyric/convention NUMBER", convert to proper format (H-/L-/C-)
+
+- For tune queries: Use "tune" command with appropriate parameters
+  * If asking about hymn number's tune: use song_code parameter (e.g., "tune for H-44" → {{"song_code": "H-44"}})
+  * If asking about tune name: use tune_name parameter (e.g., "find tune abridge" → {{"tune_name": "abridge"}})
+  * IMPORTANT: If query is ambiguous (could be song name OR tune name), ask for clarification
+    - "find abridge" → ambiguous (could be song index or tune name)
+    - "where to find abridge" → ambiguous
+    - Solution: Set command to null and ask user to clarify
+  * Clear tune queries (use "tune" command):
+    - "what is the tune for H-44?" → {{"command": "tune", "parameters": {{"song_code": "H-44"}}}}
+    - "find tune abridge" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}}}
+    - "where can I find the TUNE abridge" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}}}
+  * Examples:
+    - "what is the tune for H-44?" → {{"command": "tune", "parameters": {{"song_code": "H-44"}}}}
+    - "find tune abridge" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}}}
+    - "where can I find tune moscow" → {{"command": "tune", "parameters": {{"tune_name": "moscow"}}}}
+    - "find abridge" → {{"command": null, "response_text": "Are you looking for 'abridge' as a song name or as a tune name? Please clarify:\\n• For song: Use /search abridge\\n• For tune: Use /tune and search for abridge"}}
   
 - For notation requests: Set command to null (notation requires authorization, handled separately)
   * "get notation for H-21" → command: null, response: "Please use /notation to access sheet music"
@@ -198,6 +215,11 @@ Examples:
 "Find H-44" → {{"command": "search", "parameters": {{"query": "H-44"}}, "response_text": "Searching for hymn H-44...", "confidence": 0.95}}
 "When was hymn 21 last sung?" → {{"command": "last", "parameters": {{"song_code": "H-21"}}, "response_text": "Let me check when Hymn 21 was last sung!", "confidence": 0.95}}
 "When was convention 21 sung?" → {{"command": "last", "parameters": {{"song_code": "C-21"}}, "response_text": "Let me check when Convention 21 was last sung!", "confidence": 0.95}}
+"Can you tell me where to find the tune abridge?" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}, "response_text": "I'll search for the tune 'abridge' in our database!", "confidence": 0.9}}
+"What is the tune for H-44?" → {{"command": "tune", "parameters": {{"song_code": "H-44"}}, "response_text": "Let me find the tune for Hymn 44!", "confidence": 0.95}}
+"Find tune moscow" → {{"command": "tune", "parameters": {{"tune_name": "moscow"}}, "response_text": "Searching for tune 'moscow'...", "confidence": 0.9}}
+"Where to find abridge" → {{"command": null, "parameters": {{}}, "response_text": "I need clarification: Are you looking for 'abridge' as a song name or tune name?\\n\\n• If it's a song, use: /search abridge\\n• If it's a tune, use: /tune and search for 'abridge'", "confidence": 1.0}}
+"Find abridge" → {{"command": null, "parameters": {{}}, "response_text": "Could you clarify? Are you searching for:\\n\\n• A song named 'abridge'? → Use /search\\n• A tune named 'abridge'? → Use /tune\\n\\nOr just specify: 'find tune abridge' or 'find song abridge'", "confidence": 1.0}}
 "Get notation for hymn 21" → {{"command": null, "parameters": {{}}, "response_text": "To access sheet music notation, please use the /notation command. This feature requires authorization.", "confidence": 1.0}}
 "Who made this bot?" → {{"command": null, "parameters": {{}}, "response_text": "This bot was created by Samuel Kurian Roy to help our church choir manage songs and information. How can I assist you today?", "confidence": 1.0}}
 "Hello" → {{"command": null, "parameters": {{}}, "response_text": "Hello! I'm here to help you with choir songs. You can ask me things like 'What songs were sung on Christmas?' or 'Find H-44'.", "confidence": 1.0}}
