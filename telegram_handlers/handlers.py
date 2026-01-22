@@ -3571,6 +3571,102 @@ async def execute_theme_search(update: Update, context: CallbackContext, theme_q
     result_text = "\n".join(response_lines)
     await update.message.reply_text(result_text, parse_mode="Markdown")
 
+async def execute_notation(update: Update, context: CallbackContext, song_code: str) -> None:
+    """
+    Helper function to execute notation request directly.
+    Checks if user is authorized before providing notation.
+    """
+    from data.datasets import Tune_finder_of_known_songs, get_all_data
+    from data.vocabulary import standardize_hlc_value
+    from utils.notation import find_tune_page_number, getNotation
+    from config import get_config
+    
+    user = update.effective_user
+    config = get_config()
+    
+    # Check if user is authorized (admin only)
+    if user.id != config.ADMIN_ID:
+        await update.message.reply_text(
+            "🚫 **Access Restricted**\n\n"
+            "I cannot fetch notation for you as this feature is restricted to authorized users only.\n\n"
+            "The notation feature requires special authorization. Please contact the administrator if you need access.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # User is authorized, proceed with notation
+    song_code = standardize_hlc_value(song_code.strip())
+    
+    if not song_code:
+        await update.message.reply_text("❌ Please provide a valid song code (e.g., H-44, L-323).")
+        return
+    
+    # Handle hymns
+    if song_code.startswith("H-"):
+        tunes = Tune_finder_of_known_songs(song_code)
+        
+        if not tunes or tunes == "Invalid Number":
+            await update.message.reply_text(f"❌ No tunes found for {song_code}.")
+            return
+        
+        # Parse tune names
+        if isinstance(tunes, str):
+            tune_list = [t.strip() for t in tunes.split(",") if t.strip()]
+        else:
+            await update.message.reply_text("❌ Could not parse tunes.")
+            return
+        
+        if not tune_list:
+            await update.message.reply_text("❌ No tunes available.")
+            return
+        
+        # Get notation for all tunes
+        all_data = get_all_data()
+        dfH = all_data.get('dfH')
+        dfTH = all_data.get('dfTH')
+        
+        hymn_no = int(song_code.split('-')[1])
+        result_lines = [f"🎵 **Notation for {song_code}:**\n"]
+        
+        for i, tune_name in enumerate(tune_list, 1):
+            page_no, source = find_tune_page_number(tune_name, hymn_no, dfH, dfTH)
+            
+            line = f"{i}. ♪ {tune_name}"
+            
+            if page_no:
+                notation_link = getNotation(page_no)
+                if notation_link and "http" in str(notation_link):
+                    line += f" - [📖 View Notation]({notation_link})"
+                else:
+                    line += f" - Page {page_no}"
+            else:
+                line += " - ❌ No notation found"
+            
+            result_lines.append(line)
+        
+        result = "\n".join(result_lines)
+        await update.message.reply_text(result, parse_mode="Markdown", disable_web_page_preview=True)
+    
+    # Handle lyrics
+    elif song_code.startswith("L-"):
+        await update.message.reply_text(
+            f"🎵 **Notation for {song_code}:**\n\n"
+            f"To get lyric notation, please use the /notation command and enter {song_code}. "
+            f"The system will download the PDF file if available.",
+            parse_mode="Markdown"
+        )
+    
+    # Handle conventions
+    elif song_code.startswith("C-"):
+        await update.message.reply_text(
+            f"❌ Notation for convention songs ({song_code}) is not currently available in the database."
+        )
+    
+    else:
+        await update.message.reply_text(
+            f"❌ Invalid song code format. Please use H-XX for hymns, L-XX for lyrics, or C-XX for conventions."
+        )
+
 async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle natural language messages using AI to determine intent and execute commands.
@@ -3713,6 +3809,13 @@ async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 await execute_theme_search(update, context, theme_query, theme_type)
             else:
                 await update.message.reply_text("Please specify a theme to search for. Example: 'songs with theme peace'")
+        
+        elif command == "notation":
+            song_code = parameters.get("song_code", "")
+            if song_code:
+                await execute_notation(update, context, song_code)
+            else:
+                await update.message.reply_text("Please specify a song code. Example: 'get notation for H-44'")
         
         elif command == "bible":
             reference = parameters.get("reference", "")

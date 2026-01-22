@@ -172,9 +172,10 @@ Available commands:
 11. /help - Show help information
 12. /updatesunday - Update Songs for Sunday sheet with next available date
 13. /updatedate <date> - Update Songs for Sunday sheet with songs for a specific date (e.g., /updatedate 25/12/2025)
-14. None - If the message is just casual conversation or doesn't match any command
+14. /notation <song_code> - Get sheet music notation (requires authorization, will check user permissions)
+15. None - If the message is just casual conversation or doesn't match any command
 
-NOTE: /notation is NOT available through AI - it requires authorization. If user asks for notation, respond conversationally and suggest using /notation command directly.
+NOTE: /notation requires authorization but the system will automatically check user permissions. Include it as an option if user asks for notation or sheet music.
 
 User message: "{user_message}"
 
@@ -234,8 +235,10 @@ Guidelines:
     - "find abridge" → {{"command": null, "response_text": "Are you looking for 'abridge' as a song name or as a tune name? Please clarify:\\n• For song: Use /search abridge\\n• For tune: Use /tune and search for abridge", "mentioned_entities": {{"pending_query": "abridge"}}}}
     - Context: User asked "find abridge", then says "tune name" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}, "response_text": "Searching for tune 'abridge'!", "confidence": 0.9}}
   
-- For notation requests: Set command to null (notation requires authorization, handled separately)
-  * "get notation for H-21" → command: null, response: "Please use /notation to access sheet music"
+- For notation requests: Use "notation" command with song_code parameter
+  * System will automatically check if user is authorized
+  * "get notation for H-21" → {{"command": "notation", "parameters": {{"song_code": "H-21"}}}}
+  * "show me sheet music for L-323" → {{"command": "notation", "parameters": {{"song_code": "L-323"}}}}
   
 - For searches, include the search query in parameters
 - Set confidence between 0-1 based on how clear the intent is
@@ -259,7 +262,8 @@ Examples:
 "tune name" (with context showing user asked about "abridge") → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}, "response_text": "Got it! Searching for tune 'abridge'!", "confidence": 0.95}}
 "song name" (with context showing user asked about "abridge") → {{"command": "search", "parameters": {{"query": "abridge"}}, "response_text": "Got it! Searching for song 'abridge'!", "confidence": 0.95}}
 "Find abridge" → {{"command": null, "parameters": {{}}, "response_text": "Could you clarify? Are you searching for:\\n\\n• A song named 'abridge'? → Use /search\\n• A tune named 'abridge'? → Use /tune\\n\\nOr just specify: 'find tune abridge' or 'find song abridge'", "confidence": 1.0, "mentioned_entities": {{"pending_query": "abridge"}}}}
-"Get notation for hymn 21" → {{"command": null, "parameters": {{}}, "response_text": "To access sheet music notation, please use the /notation command. This feature requires authorization.", "confidence": 1.0}}
+"Get notation for hymn 21" → {{"command": "notation", "parameters": {{"song_code": "H-21"}}, "response_text": "Let me check if I can access the notation for H-21.", "confidence": 0.95}}
+"Show me sheet music for H-44" → {{"command": "notation", "parameters": {{"song_code": "H-44"}}, "response_text": "I'll try to get the sheet music for H-44.", "confidence": 0.95}}
 "Who made this bot?" → {{"command": null, "parameters": {{}}, "response_text": "This bot was created by Samuel Kurian Roy to help our church choir manage songs and information. How can I assist you today?", "confidence": 1.0}}
 "Hello" → {{"command": null, "parameters": {{}}, "response_text": "Hello! I'm here to help you with choir songs. You can ask me things like 'What songs were sung on Christmas?' or 'Find H-44'.", "confidence": 1.0}}
 """
