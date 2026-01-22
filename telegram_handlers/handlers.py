@@ -3649,9 +3649,8 @@ async def execute_notation(update: Update, context: CallbackContext, song_code: 
     
     # Handle lyrics
     elif song_code.startswith("L-"):
-        from data.datasets import get_lyrics_pdf_by_lyric_number, lyrics_file_map
+        from telegram_handlers.conversations import get_lyrics_pdf_by_lyric_number, lyrics_file_map, DOWNLOAD_DIR
         from data.sheet_upload import search_uploaded_file_by_lyric, download_uploaded_file
-        from config import DOWNLOAD_DIR
         import os
         
         lyric_number = int(song_code.split('-')[1])
