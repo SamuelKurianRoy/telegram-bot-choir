@@ -190,6 +190,13 @@ Guidelines:
     - "find abridge" → ambiguous (could be song index or tune name)
     - "where to find abridge" → ambiguous
     - Solution: Set command to null and ask user to clarify
+  * CRITICAL: When user responds to clarification with "tune name", "tune", "song name", or "song":
+    - Look at conversation history to find what they were originally asking about
+    - If they say "tune" or "tune name", execute tune search with the original query from history
+    - If they say "song" or "song name", execute search with the original query from history
+    - Example flow:
+      User: "find abridge" → Bot: "Is it a song or tune?"
+      User: "tune name" → Extract "abridge" from history, execute: {{"command": "tune", "parameters": {{"tune_name": "abridge"}}}}
   * Clear tune queries (use "tune" command):
     - "what is the tune for H-44?" → {{"command": "tune", "parameters": {{"song_code": "H-44"}}}}
     - "find tune abridge" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}}}
@@ -198,7 +205,8 @@ Guidelines:
     - "what is the tune for H-44?" → {{"command": "tune", "parameters": {{"song_code": "H-44"}}}}
     - "find tune abridge" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}}}
     - "where can I find tune moscow" → {{"command": "tune", "parameters": {{"tune_name": "moscow"}}}}
-    - "find abridge" → {{"command": null, "response_text": "Are you looking for 'abridge' as a song name or as a tune name? Please clarify:\\n• For song: Use /search abridge\\n• For tune: Use /tune and search for abridge"}}
+    - "find abridge" → {{"command": null, "response_text": "Are you looking for 'abridge' as a song name or as a tune name? Please clarify:\\n• For song: Use /search abridge\\n• For tune: Use /tune and search for abridge", "mentioned_entities": {{"pending_query": "abridge"}}}}
+    - Context: User asked "find abridge", then says "tune name" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}, "response_text": "Searching for tune 'abridge'!", "confidence": 0.9}}
   
 - For notation requests: Set command to null (notation requires authorization, handled separately)
   * "get notation for H-21" → command: null, response: "Please use /notation to access sheet music"
@@ -221,8 +229,10 @@ Examples:
 "Can you tell me where to find the tune abridge?" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}, "response_text": "I'll search for the tune 'abridge' in our database!", "confidence": 0.9}}
 "What is the tune for H-44?" → {{"command": "tune", "parameters": {{"song_code": "H-44"}}, "response_text": "Let me find the tune for Hymn 44!", "confidence": 0.95}}
 "Find tune moscow" → {{"command": "tune", "parameters": {{"tune_name": "moscow"}}, "response_text": "Searching for tune 'moscow'...", "confidence": 0.9}}
-"Where to find abridge" → {{"command": null, "parameters": {{}}, "response_text": "I need clarification: Are you looking for 'abridge' as a song name or tune name?\\n\\n• If it's a song, use: /search abridge\\n• If it's a tune, use: /tune and search for 'abridge'", "confidence": 1.0}}
-"Find abridge" → {{"command": null, "parameters": {{}}, "response_text": "Could you clarify? Are you searching for:\\n\\n• A song named 'abridge'? → Use /search\\n• A tune named 'abridge'? → Use /tune\\n\\nOr just specify: 'find tune abridge' or 'find song abridge'", "confidence": 1.0}}
+"Where to find abridge" → {{"command": null, "parameters": {{}}, "response_text": "I need clarification: Are you looking for 'abridge' as a song name or tune name?\\n\\n• If it's a song, use: /search abridge\\n• If it's a tune, use: /tune and search for 'abridge'", "confidence": 1.0, "mentioned_entities": {{"pending_query": "abridge"}}}}
+"tune name" (with context showing user asked about "abridge") → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}, "response_text": "Got it! Searching for tune 'abridge'!", "confidence": 0.95}}
+"song name" (with context showing user asked about "abridge") → {{"command": "search", "parameters": {{"query": "abridge"}}, "response_text": "Got it! Searching for song 'abridge'!", "confidence": 0.95}}
+"Find abridge" → {{"command": null, "parameters": {{}}, "response_text": "Could you clarify? Are you searching for:\\n\\n• A song named 'abridge'? → Use /search\\n• A tune named 'abridge'? → Use /tune\\n\\nOr just specify: 'find tune abridge' or 'find song abridge'", "confidence": 1.0, "mentioned_entities": {{"pending_query": "abridge"}}}}
 "Get notation for hymn 21" → {{"command": null, "parameters": {{}}, "response_text": "To access sheet music notation, please use the /notation command. This feature requires authorization.", "confidence": 1.0}}
 "Who made this bot?" → {{"command": null, "parameters": {{}}, "response_text": "This bot was created by Samuel Kurian Roy to help our church choir manage songs and information. How can I assist you today?", "confidence": 1.0}}
 "Hello" → {{"command": null, "parameters": {{}}, "response_text": "Hello! I'm here to help you with choir songs. You can ask me things like 'What songs were sung on Christmas?' or 'Find H-44'.", "confidence": 1.0}}
