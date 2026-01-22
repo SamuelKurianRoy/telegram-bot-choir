@@ -84,12 +84,13 @@ def initialize_groq():
         user_logger.error(f"Failed to initialize Groq: {str(e)[:200]}")
         return False
 
-def parse_user_intent(user_message: str) -> dict:
+def parse_user_intent(user_message: str, conversation_history: list = None) -> dict:
     """
     Parse user's natural language message to determine intent and extract parameters.
     
     Args:
         user_message: The user's message text
+        conversation_history: Optional list of recent messages for context [{"role": "user"/"bot", "message": "...", "entities": {...}}]
         
     Returns:
         dict with keys:
@@ -97,6 +98,7 @@ def parse_user_intent(user_message: str) -> dict:
             - parameters: Dict of parameters needed for the command
             - response_text: Optional conversational response
             - confidence: Confidence score (0-1)
+            - mentioned_entities: Dict of entities mentioned (for context tracking)
     """
     global _gemini_model
     global _groq_client
@@ -130,8 +132,29 @@ def parse_user_intent(user_message: str) -> dict:
         last_sunday = today - timedelta(days=days_since_sunday if days_since_sunday > 0 else 7)
         last_sunday_str = last_sunday.strftime("%d/%m/%Y")
         
+        # Build conversation context if available
+        context_str = ""
+        pending_query = None
+        if conversation_history:
+            context_str = "\n\n🔍 CONVERSATION CONTEXT (use this to resolve references):\n"
+            for msg in conversation_history[-3:]:  # Last 3 messages
+                role = msg.get('role', 'user')
+                text = msg.get('message', '')
+                entities = msg.get('entities', {})
+                context_str += f"{role.upper()}: {text}\n"
+                if entities:
+                    context_str += f"  Entities mentioned: {entities}\n"
+                    # Extract pending_query if present
+                    if 'pending_query' in entities:
+                        pending_query = entities['pending_query']
+            
+            if pending_query:
+                context_str += f"\n⚠️ IMPORTANT: There's a pending query '{pending_query}' waiting for clarification!\n"
+                context_str += f"If user says 'tune' or 'tune name', execute: {{\"command\": \"tune\", \"parameters\": {{\"tune_name\": \"{pending_query}\"}}}}\n"
+                context_str += f"If user says 'song' or 'song name', execute: {{\"command\": \"search\", \"parameters\": {{\"query\": \"{pending_query}\"}}}}\n"
+        
         # Create a detailed prompt for Gemini
-        prompt = f"""You are a helpful assistant for a church choir Telegram bot. Analyze the user's message and determine which bot command they want to use.
+        prompt = f"""You are a helpful assistant for a church choir Telegram bot. Analyze the user's message and determine which bot command they want to use.{context_str}
 
 IMPORTANT: Today's date is {today.strftime("%d/%m/%Y")} (DD/MM/YYYY format). Last Sunday was {last_sunday_str}.
 
@@ -161,10 +184,16 @@ Respond with ONLY a JSON object (no markdown, no code blocks, just the raw JSON)
     "parameters": {{"param_name": "value"}},
     "response_text": "A friendly response acknowledging their request",
     "confidence": 0.0-1.0,
-    "reasoning": "Brief explanation of why you chose this command"
+    "reasoning": "Brief explanation of why you chose this command",
+    "mentioned_entities": {{"song_code": "H-44", "date": "25/12/2024", "tune_name": "abridge"}} // Extract key entities mentioned
 }}
 
 Guidelines:
+- CRITICAL: Check conversation history FIRST for pending queries or references
+  * If user says just "tune name", "tune", "song name", or "song", look for "pending_query" in history
+  * Extract the query from history and execute immediately
+  * Example: History shows pending_query="abridge", user says "tune" → execute tune search for "abridge"
+  
 - For dates: Convert to DD/MM/YYYY format
   * "last Sunday" → {last_sunday_str}
   * "yesterday" → calculate from today's date ({(today - timedelta(days=1)).strftime("%d/%m/%Y")})
@@ -179,6 +208,31 @@ Guidelines:
   * "convention 21" → C-21
   * "H44" → H-44
   * IMPORTANT: When user says "hymn/lyric/convention NUMBER", convert to proper format (H-/L-/C-)
+
+- For tune queries: Use "tune" command with appropriate parameters
+  * If asking about hymn number's tune: use song_code parameter (e.g., "tune for H-44" → {{"song_code": "H-44"}})
+  * If asking about tune name: use tune_name parameter (e.g., "find tune abridge" → {{"tune_name": "abridge"}})
+  * IMPORTANT: If query is ambiguous (could be song name OR tune name), ask for clarification
+    - "find abridge" → ambiguous (could be song index or tune name)
+    - "where to find abridge" → ambiguous
+    - Solution: Set command to null and ask user to clarify
+  * CRITICAL: When user responds to clarification with "tune name", "tune", "song name", or "song":
+    - Look at conversation history to find what they were originally asking about
+    - If they say "tune" or "tune name", execute tune search with the original query from history
+    - If they say "song" or "song name", execute search with the original query from history
+    - Example flow:
+      User: "find abridge" → Bot: "Is it a song or tune?"
+      User: "tune name" → Extract "abridge" from history, execute: {{"command": "tune", "parameters": {{"tune_name": "abridge"}}}}
+  * Clear tune queries (use "tune" command):
+    - "what is the tune for H-44?" → {{"command": "tune", "parameters": {{"song_code": "H-44"}}}}
+    - "find tune abridge" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}}}
+    - "where can I find the TUNE abridge" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}}}
+  * Examples:
+    - "what is the tune for H-44?" → {{"command": "tune", "parameters": {{"song_code": "H-44"}}}}
+    - "find tune abridge" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}}}
+    - "where can I find tune moscow" → {{"command": "tune", "parameters": {{"tune_name": "moscow"}}}}
+    - "find abridge" → {{"command": null, "response_text": "Are you looking for 'abridge' as a song name or as a tune name? Please clarify:\\n• For song: Use /search abridge\\n• For tune: Use /tune and search for abridge", "mentioned_entities": {{"pending_query": "abridge"}}}}
+    - Context: User asked "find abridge", then says "tune name" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}, "response_text": "Searching for tune 'abridge'!", "confidence": 0.9}}
   
 - For notation requests: Set command to null (notation requires authorization, handled separately)
   * "get notation for H-21" → command: null, response: "Please use /notation to access sheet music"
@@ -193,11 +247,18 @@ IMPORTANT: If asked about the bot creator, developer, or who made it:
 - Be friendly and mention you're here to help with choir-related tasks
 
 Examples:
-"What songs did we sing on Christmas?" → {{"command": "date", "parameters": {{"date": "25/12/{current_year}"}}, "response_text": "Let me check what songs were sung on Christmas!", "confidence": 0.9}}
-"Songs from last Sunday" → {{"command": "date", "parameters": {{"date": "{last_sunday_str}"}}, "response_text": "I'll look up the songs sung on last Sunday for you!", "confidence": 0.95}}
+"What songs did we sing on Christmas?" → {{"command": "date", "parameters": {{"date": "25/12/{current_year}"}}, "response_text": "Let me check what songs were sung on Christmas!", "confidence": 0.9, "mentioned_entities": {{"date": "25/12/{current_year}"}}}}
+"Songs from last Sunday" → {{"command": "date", "parameters": {{"date": "{last_sunday_str}"}}, "response_text": "I'll look up the songs sung on last Sunday for you!", "confidence": 0.95, "mentioned_entities": {{"date": "{last_sunday_str}"}}}}
 "Find H-44" → {{"command": "search", "parameters": {{"query": "H-44"}}, "response_text": "Searching for hymn H-44...", "confidence": 0.95}}
 "When was hymn 21 last sung?" → {{"command": "last", "parameters": {{"song_code": "H-21"}}, "response_text": "Let me check when Hymn 21 was last sung!", "confidence": 0.95}}
 "When was convention 21 sung?" → {{"command": "last", "parameters": {{"song_code": "C-21"}}, "response_text": "Let me check when Convention 21 was last sung!", "confidence": 0.95}}
+"Can you tell me where to find the tune abridge?" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}, "response_text": "I'll search for the tune 'abridge' in our database!", "confidence": 0.9}}
+"What is the tune for H-44?" → {{"command": "tune", "parameters": {{"song_code": "H-44"}}, "response_text": "Let me find the tune for Hymn 44!", "confidence": 0.95}}
+"Find tune moscow" → {{"command": "tune", "parameters": {{"tune_name": "moscow"}}, "response_text": "Searching for tune 'moscow'...", "confidence": 0.9}}
+"Where to find abridge" → {{"command": null, "parameters": {{}}, "response_text": "I need clarification: Are you looking for 'abridge' as a song name or tune name?\\n\\n• If it's a song, use: /search abridge\\n• If it's a tune, use: /tune and search for 'abridge'", "confidence": 1.0, "mentioned_entities": {{"pending_query": "abridge"}}}}
+"tune name" (with context showing user asked about "abridge") → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}, "response_text": "Got it! Searching for tune 'abridge'!", "confidence": 0.95}}
+"song name" (with context showing user asked about "abridge") → {{"command": "search", "parameters": {{"query": "abridge"}}, "response_text": "Got it! Searching for song 'abridge'!", "confidence": 0.95}}
+"Find abridge" → {{"command": null, "parameters": {{}}, "response_text": "Could you clarify? Are you searching for:\\n\\n• A song named 'abridge'? → Use /search\\n• A tune named 'abridge'? → Use /tune\\n\\nOr just specify: 'find tune abridge' or 'find song abridge'", "confidence": 1.0, "mentioned_entities": {{"pending_query": "abridge"}}}}
 "Get notation for hymn 21" → {{"command": null, "parameters": {{}}, "response_text": "To access sheet music notation, please use the /notation command. This feature requires authorization.", "confidence": 1.0}}
 "Who made this bot?" → {{"command": null, "parameters": {{}}, "response_text": "This bot was created by Samuel Kurian Roy to help our church choir manage songs and information. How can I assist you today?", "confidence": 1.0}}
 "Hello" → {{"command": null, "parameters": {{}}, "response_text": "Hello! I'm here to help you with choir songs. You can ask me things like 'What songs were sung on Christmas?' or 'Find H-44'.", "confidence": 1.0}}
@@ -304,6 +365,11 @@ Examples:
         try:
             result = json.loads(response_text)
             user_logger.info(f"Parsed intent - Command: {result.get('command')}, Confidence: {result.get('confidence')}, Reasoning: {result.get('reasoning', 'N/A')[:50]}")
+            
+            # Ensure mentioned_entities is present
+            if 'mentioned_entities' not in result:
+                result['mentioned_entities'] = {}
+            
             return result
         except json.JSONDecodeError as je:
             user_logger.error(f"JSON parse error: {str(je)}, Response: {response_text[:200]}")

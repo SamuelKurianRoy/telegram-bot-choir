@@ -247,27 +247,31 @@ def IndexFinder(Song):
         # Handle empty or invalid input
         if not song or len(song) < 2:
             return "Invalid Number"
+        
+        # Check for "nil" in the input (case-insensitive)
+        if 'NIL' in song.upper() or song.upper() == 'NIL':
+            return ""
 
         if song.startswith("H"):
             song_num = song.replace('H','').strip().replace("-", "")
-            if not song_num:  # Check if empty after processing
-                return "Invalid Number"
+            if not song_num or song_num.upper() == 'NIL':  # Check if empty or nil after processing
+                return ""
             song_num = int(song_num)
             if dfH is not None and 0 < song_num <= len(dfH):
                 return dfH['Hymn Index'][song_num-1]
             return "Invalid Number"
         elif song.startswith("L"):
             song_num = song.replace('L','').strip().replace("-", "")
-            if not song_num:  # Check if empty after processing
-                return "Invalid Number"
+            if not song_num or song_num.upper() == 'NIL':  # Check if empty or nil after processing
+                return ""
             song_num = int(song_num)
             if dfL is not None and 0 < song_num <= len(dfL):
                 return dfL['Lyric Index'][song_num-1]
             return "Invalid Number"
         elif song.startswith("C"):
             song_num = song.replace('C','').strip().replace("-", "")
-            if not song_num:  # Check if empty after processing
-                return "Invalid Number"
+            if not song_num or song_num.upper() == 'NIL':  # Check if empty or nil after processing
+                return ""
             song_num = int(song_num)
             if dfC is not None and 0 < song_num <= len(dfC):
                 return dfC['Convention Index'][song_num-1]

@@ -12,7 +12,7 @@ from data.vocabulary import standardize_hlc_value, isVocabulary, ChoirVocabulary
 from data.udb import track_user_interaction, user_exists, get_user_by_id, save_user_database, track_user_fast, save_if_pending, get_user_bible_language, get_user_show_tunes_in_date
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 import pandas as pd
-from datetime import date
+from datetime import date, timezone, timedelta
 import asyncio
 import re
 
@@ -533,7 +533,10 @@ async def sync_info_command(update: Update, context: CallbackContext) -> None:
                 for file_id, timestamp in list(last_events.items())[:3]:
                     try:
                         dt = datetime.fromisoformat(timestamp)
-                        time_str = dt.strftime("%H:%M:%S")
+                        # Convert to IST (UTC+5:30)
+                        ist = timezone(timedelta(hours=5, minutes=30))
+                        dt_ist = dt.astimezone(ist)
+                        time_str = dt_ist.strftime("%H:%M:%S")
                         info_text += f"• {file_id[:8]}... at {time_str}\n"
                     except:
                         pass
@@ -571,11 +574,14 @@ async def sync_info_command(update: Update, context: CallbackContext) -> None:
         
         # Last sync times
         if status['last_sync_times']:
-            info_text += f"**🕐 Last Syncs**\n"
+            info_text += f"**🕐 Last Syncs (IST)**\n"
             for file_name, sync_time in list(status['last_sync_times'].items())[:5]:
                 try:
                     sync_dt = datetime.fromisoformat(sync_time)
-                    time_str = sync_dt.strftime("%Y-%m-%d %H:%M:%S")
+                    # Convert to IST (UTC+5:30)
+                    ist = timezone(timedelta(hours=5, minutes=30))
+                    sync_dt_ist = sync_dt.astimezone(ist)
+                    time_str = sync_dt_ist.strftime("%Y-%m-%d %H:%M:%S")
                     info_text += f"• {file_name}: {time_str}\n"
                 except:
                     info_text += f"• {file_name}: {sync_time}\n"
@@ -997,15 +1003,21 @@ async def date_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         valid_songs = [s for s in result["songs"] if s and str(s).strip()]
 
         if show_tunes:
-            # Show tunes for hymns
-            songs_text = "\n".join(
-                f"{i + 1}. {s} - {IndexFinder(s)}{get_tune_info(s)}" for i, s in enumerate(valid_songs)
-            )
+            # Show tunes for hymns, filter out entries with empty IndexFinder results
+            songs_with_indices = [(s, IndexFinder(s)) for s in valid_songs]
+            songs_list = [
+                f"{i + 1}. {s} - {idx}{get_tune_info(s)}" 
+                for i, (s, idx) in enumerate(songs_with_indices) if idx
+            ]
+            songs_text = "\n".join(songs_list)
         else:
-            # Don't show tunes
-            songs_text = "\n".join(
-                f"{i + 1}. {s} - {IndexFinder(s)}" for i, s in enumerate(valid_songs)
-            )
+            # Don't show tunes, filter out entries with empty IndexFinder results
+            songs_with_indices = [(s, IndexFinder(s)) for s in valid_songs]
+            songs_list = [
+                f"{i + 1}. {s} - {idx}" 
+                for i, (s, idx) in enumerate(songs_with_indices) if idx
+            ]
+            songs_text = "\n".join(songs_list)
 
         second_message = f"{result['date']}:\n\n{songs_text}"
         await update.message.reply_text(second_message, parse_mode='Markdown')
@@ -3292,6 +3304,99 @@ async def admin_restore_all_features(update: Update, context: CallbackContext) -
 
 # === AI ASSISTANT HANDLER ===
 
+async def execute_tune_search(update: Update, context: CallbackContext, query: str) -> None:
+    """
+    Helper function to execute tune search directly without conversation flow.
+    Supports both hymn number (e.g., "44", "H-44") and tune name (e.g., "abridge").
+    """
+    from data.datasets import Tune_finder_of_known_songs, Hymn_Tune_no_Finder, get_all_data
+    from utils.notation import find_tune_page_number, getNotation
+    
+    query = query.strip()
+    
+    # Try to parse as hymn number
+    hymn_match = re.match(r'^[Hh]?-?(\d+)$', query)
+    
+    if hymn_match:
+        # Search by hymn number
+        hymn_no = int(hymn_match.group(1))
+        tune_result = Tune_finder_of_known_songs(hymn_no)
+        
+        if not tune_result or tune_result == "Invalid Number":
+            await update.message.reply_text(f"❌ No tunes found for H-{hymn_no}.")
+            return
+        
+        # Parse tune names
+        tune_names = [tune.strip() for tune in str(tune_result).split(',') if tune.strip()]
+        
+        if not tune_names:
+            await update.message.reply_text(f"❌ No tunes found for H-{hymn_no}.")
+            return
+        
+        # Build result with notation links
+        all_data = get_all_data()
+        dfH = all_data.get('dfH')
+        dfTH = all_data.get('dfTH')
+        
+        result_lines = [f"🎵 **Tunes for H-{hymn_no}:**\n"]
+        
+        for i, tune_name in enumerate(tune_names, 1):
+            page_no, source = find_tune_page_number(tune_name, hymn_no, dfH, dfTH)
+            
+            line = f"{i}. ♪ {tune_name}"
+            
+            if page_no:
+                notation_link = getNotation(page_no)
+                if notation_link and "http" in str(notation_link):
+                    line += f" - [📖 Notation]({notation_link})"
+                else:
+                    line += f" - Page {page_no}"
+            
+            result_lines.append(line)
+        
+        result = "\n".join(result_lines)
+        await update.message.reply_text(result, parse_mode="Markdown", disable_web_page_preview=True)
+        
+    else:
+        # Search by tune name
+        all_data = get_all_data()
+        dfTH = all_data.get('dfTH')
+        dfH = all_data.get('dfH')
+        
+        if dfTH is None or dfTH.empty:
+            await update.message.reply_text("❌ Tune database not available.")
+            return
+        
+        result_df = Hymn_Tune_no_Finder(dfTH, query, top_n=10)
+        
+        if result_df.empty:
+            await update.message.reply_text(f"❌ No tunes found matching '{query}'.")
+            return
+        
+        # Build result with notation links
+        result_lines = [f"🎵 **Top matching hymns for tune '{query}':**\n"]
+        
+        for _, row in result_df.iterrows():
+            hymn_no = int(row['Hymn no'])
+            tune_name = row['Tune Index']
+            similarity = row['Similarity']
+            
+            page_no, source = find_tune_page_number(tune_name, hymn_no, dfH, dfTH)
+            
+            line = f"**H-{hymn_no}**: {tune_name} (match: {similarity:.0%})"
+            
+            if page_no:
+                notation_link = getNotation(page_no)
+                if notation_link and "http" in str(notation_link):
+                    line += f" - [📖 Notation]({notation_link})"
+                else:
+                    line += f" - Page {page_no}"
+            
+            result_lines.append(line)
+        
+        result = "\n".join(result_lines)
+        await update.message.reply_text(result, parse_mode="Markdown", disable_web_page_preview=True)
+
 async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle natural language messages using AI to determine intent and execute commands.
@@ -3309,23 +3414,48 @@ async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     user_logger.info(f"AI processing message from {user.id}: {message_text[:50]}")
     
+    # Initialize conversation history if not present
+    if 'conversation_history' not in context.user_data:
+        context.user_data['conversation_history'] = []
+    
+    # Get recent conversation history (last 5 messages)
+    conversation_history = context.user_data['conversation_history'][-5:]
+    
     # Send "thinking" indicator
     await update.message.chat.send_action("typing")
     
     try:
-        # Parse user intent with Gemini
-        intent = parse_user_intent(message_text)
+        # Parse user intent with Gemini, including conversation history
+        intent = parse_user_intent(message_text, conversation_history)
         
         command = intent.get("command")
         parameters = intent.get("parameters", {})
         response_text = intent.get("response_text", "")
         confidence = intent.get("confidence", 0.0)
+        mentioned_entities = intent.get("mentioned_entities", {})
         
         user_logger.info(f"AI Intent: command={command}, confidence={confidence}")
+        
+        # Store user message in conversation history
+        context.user_data['conversation_history'].append({
+            'role': 'user',
+            'message': message_text,
+            'entities': mentioned_entities
+        })
+        
+        # Keep only last 10 messages to prevent memory bloat
+        if len(context.user_data['conversation_history']) > 10:
+            context.user_data['conversation_history'] = context.user_data['conversation_history'][-10:]
         
         # Send AI response first
         if response_text:
             await update.message.reply_text(response_text)
+            # Store bot response in history
+            context.user_data['conversation_history'].append({
+                'role': 'bot',
+                'message': response_text,
+                'entities': mentioned_entities
+            })
         
         # If no command or low confidence, just give conversational response
         if command is None or confidence < 0.5:
@@ -3394,11 +3524,12 @@ async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 await update.message.reply_text("Please use /check followed by a song code (e.g., /check H-44)")
         
         elif command == "tune":
-            song_code = parameters.get("song_code", "")
-            if song_code:
-                await update.message.reply_text(f"To find the tune for {song_code}, please use /tune and follow the prompts.")
+            # Get query - could be hymn number or tune name
+            query = parameters.get("song_code") or parameters.get("tune_name", "")
+            if query:
+                await execute_tune_search(update, context, query)
             else:
-                await update.message.reply_text("Please use /tune to find tune information for songs.")
+                await update.message.reply_text("Please specify a hymn number or tune name. Example: 'find tune for H-44' or 'find tune abridge'")
         
         elif command == "theme":
             await update.message.reply_text("To search by theme, please use the /theme command and follow the interactive prompts.")
