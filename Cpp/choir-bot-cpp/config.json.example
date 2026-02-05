@@ -1,0 +1,39 @@
+{
+  "token": "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz-example",
+  "admin_id": 123456789,
+  "authorized_users": [123456789, 987654321, 111111111, 222222222],
+  
+  "drive_files": {
+    "hlc_file_id": "your-hlc-spreadsheet-file-id",
+    "tune_file_id": "your-t-spreadsheet-file-id",
+    "main_file_id": "your-main-spreadsheet-file-id",
+    "hymn_sheet_music": "your-hymn-sheet-music-folder-id",
+    "bot_log_id": "your-b-spreadsheet-file-id",
+    "user_log_id": "your-user-log-file-id",
+    "youtube_log_id": "your-youtube-spreadsheet-file-id",
+    "comment_log_id": "your-comment-log-file-id",
+    "game_score_id": "your-game-score-file-id",
+    "user_database_id": "your-user-database-file-id",
+    "organist_roster_id": "your-organist-roster-file-id",
+    "disabled_db_id": "your-disabled-db-file-id"
+  },
+  
+  "service_account": {
+    "type": "service_account",
+    "project_id": "your-project-id",
+    "private_key_id": "your-private-key-id",
+    "private_key": "-----BEGIN PRIVATE KEY-----\nYourActualPrivateKeyHere\n-----END PRIVATE KEY-----\n",
+    "client_email": "your-service-account@your-project.iam.gserviceaccount.com",
+    "client_id": "your-client-id",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/your-service-account%40your-project.iam.gserviceaccount.com",
+    "universe_domain": "googleapis.com"
+  },
+  
+  "gemini_api_key": "your-gemini-api-key-here",
+  "groq_api_key": "your-groq-api-key-here",
+  
+  "log_upload_interval": 3600
+}

@@ -612,72 +612,7 @@ void Application::handleLastSongInput(TgBot::Message::Ptr message) {
     }
     
     clearUserState(message->from->id);
-    
-    std::string songCode = SongParser::format(parsed->category, parsed->number);
-    LOG_BOT_INFO("Handling /last for song code: {}", songCode);
-    
-    // Query database for song
-    auto& db = getDatabase();
-    auto song = db.findByNumber(parsed->number, parsed->category);
-    
-    if (!song) {
-        bot->getApi().sendMessage(
-            message->chat->id,
-            "❌ Song *" + songCode + "* not found in the database.\n"
-            "Use */check* to verify if a song exists.",
-            false, 0, nullptr, "Markdown"
-        );
-        return;
-    }
-    
-    // Get last sung date specifically for the /last command
-    auto lastDate = db.getLastSungDate(songCode);
-    std::stringstream response;
-    
-    if (lastDate) {
-        auto time_t_date = std::chrono::system_clock::to_time_t(*lastDate);
-        std::tm tm_date;
-        #ifdef _WIN32
-        localtime_s(&tm_date, &time_t_date);
-        #else
-        localtime_r(&time_t_date, &tm_date);
-        #endif
-        
-        char dateStr[32];
-        std::strftime(dateStr, sizeof(dateStr), "%d/%m/%Y", &tm_date);
-        
-        response << "🎼 *" << songCode << "*: " << song->index << " was last sung on: " << dateStr << "\n";
-        
-        // Also show all dates if multiple exist
-        auto allDates = db.getAllDates(songCode);
-        if (allDates.size() > 1) {
-            response << "\n_This song has been sung " << allDates.size() << " times._";
-            
-            // Create inline keyboard for showing all dates
-            auto keyboard = std::make_shared<TgBot::InlineKeyboardMarkup>();
-            std::vector<TgBot::InlineKeyboardButton::Ptr> row;
-            TgBot::InlineKeyboardButton::Ptr button = std::make_shared<TgBot::InlineKeyboardButton>();
-            button->text = "Show all dates";
-            button->callbackData = "showalldates:" + songCode;
-            row.push_back(button);
-            keyboard->inlineKeyboard.push_back(row);
-            
-            bot->getApi().sendMessage(
-                message->chat->id,
-                response.str(),
-                false, 0, keyboard, "Markdown"
-            );
-            return;
-        }
-    } else {
-        response << "❌ The Song " << songCode << " was not Sung in the past years since 2022";
-    }
-    
-    bot->getApi().sendMessage(
-        message->chat->id,
-        response.str(),
-        false, 0, nullptr, "Markdown"
-    );
+    handleSongCodeMessage(message, *parsed);
 }
 
 void Application::handleDateInput(TgBot::Message::Ptr message) {

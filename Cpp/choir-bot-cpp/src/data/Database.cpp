@@ -352,71 +352,29 @@ bool Database::loadMainDatabase() {
         return false;
     }
     
-    LOG_BOT_INFO("Downloaded {} bytes, parsing Excel file...");
+    LOG_BOT_INFO("Downloaded {} bytes, parsing Excel file...", binaryData.size());
     
-    // Create temporary directory path
-    std::string tempDir = "/tmp";
-    
-    // Ensure temp directory exists
-    std::string mkdirCmd = "mkdir -p \"" + tempDir + "\"";
-    int mkdirResult = system(mkdirCmd.c_str());
-    (void)mkdirResult; // Suppress unused warning
-    
-    std::string tempFile = tempDir + "/choir_main_database.xlsx";
+    // Save to temporary file for parsing
+    std::string tempFile = "/tmp/choir_main_database.xlsx";
     std::ofstream out(tempFile, std::ios::binary);
     out.write(reinterpret_cast<const char*>(binaryData.data()), binaryData.size());
     out.close();
     
     LOG_BOT_INFO("Saved to temp file, attempting to parse with Python...");
     
-    // Create a temporary Python script file
-    std::string scriptPath = tempDir + "/choir_convert_script.py";
-    std::ofstream scriptFile(scriptPath);
-    scriptFile << 
-        "import pandas as pd\n"
-        "import sys\n"
-        "import os\n"
-        "\n"
-        "temp_dir = '/tmp'\n"
-        "excel_path = os.path.join(temp_dir, 'choir_main_database.xlsx')\n"
-        "sheets = ['2023', '2024', '2025']\n"
-        "success = True\n"
-        "for sheet in sheets:\n"
-        "  try:\n"
-        "    df = pd.read_excel(excel_path, sheet_name=sheet)\n"
-        "    csv_path = os.path.join(temp_dir, f'choir_{sheet}.csv')\n"
-        "    df.to_csv(csv_path, index=False)\n"
-        "  except FileNotFoundError:\n"
-        "    print(f'ERROR: File not found: {excel_path}', file=sys.stderr)\n"
-        "    success = False\n"
-        "    break\n"
-        "  except Exception as e:\n"
-        "    print(f'ERROR: {e}', file=sys.stderr)\n"
-        "    success = False\n"
-        "    break\n"
-        "if success:\n"
-        "  print('SUCCESS')\n"
-        "else:\n"
-        "  sys.exit(1)\n";
-    scriptFile.close();
-    
-    // Ensure the script file was written successfully
-    std::ifstream checkScript(scriptPath);
-    if (!checkScript.is_open()) {
-        LOG_BOT_ERROR("Failed to create temporary Python script at: {}", scriptPath);
-        return false;
-    }
-    std::string scriptContent((std::istreambuf_iterator<char>(checkScript)),
-                              std::istreambuf_iterator<char>());
-    checkScript.close();
-    if (scriptContent.empty()) {
-        LOG_BOT_ERROR("Temporary Python script is empty: {}", scriptPath);
-        return false;
-    }
-    
-    // Execute the Python script
-    std::string pythonCmd = "python3 \"" + scriptPath + "\" 2>&1";
-    LOG_BOT_INFO("Executing Python command: {}", pythonCmd);
+    // Use Python to parse Excel and export as CSV
+    std::string pythonCmd = "python3 -c \""
+        "import pandas as pd; "
+        "import sys; "
+        "try: "
+        "  for sheet in ['2023', '2024', '2025']: "
+        "    df = pd.read_excel('/tmp/choir_main_database.xlsx', sheet_name=sheet); "
+        "    df.to_csv(f'/tmp/choir_{sheet}.csv', index=False); "
+        "  print('SUCCESS'); "
+        "except Exception as e: "
+        "  print(f'ERROR: {e}', file=sys.stderr); "
+        "  sys.exit(1); "
+        "\" 2>&1";
     
     FILE* pipe = popen(pythonCmd.c_str(), "r");
     if (pipe) {
@@ -427,16 +385,13 @@ bool Database::loadMainDatabase() {
         }
         int exitCode = pclose(pipe);
         
-        // Clean up the temporary script file
-        std::remove(scriptPath.c_str());
-        
         if (exitCode == 0 && result.find("SUCCESS") != std::string::npos) {
             LOG_BOT_INFO("Excel conversion successful, loading CSV data...");
             
             // Load each year's CSV
             std::vector<std::string> years = {"2023", "2024", "2025"};
             for (const auto& year : years) {
-                std::string csvFile = tempDir + "/choir_" + year + ".csv";
+                std::string csvFile = "/tmp/choir_" + year + ".csv";
                 std::ifstream file(csvFile);
                 if (!file.is_open()) continue;
                 
@@ -481,15 +436,8 @@ bool Database::loadMainDatabase() {
         } else {
             LOG_BOT_ERROR("Excel conversion failed: {}", result);
             LOG_BOT_WARN("Install pandas: pip3 install pandas openpyxl");
-            
-            // Clean up the temporary script file
-            std::remove(scriptPath.c_str());
-            
             return false;
         }
-    } else {
-        // Clean up the temporary script file if pipe failed to open
-        std::remove(scriptPath.c_str());
     }
     
     // Clean up temp Excel file
