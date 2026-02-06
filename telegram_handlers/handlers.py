@@ -4125,7 +4125,10 @@ async def update_notation_status_command(update: Update, context: CallbackContex
         all_available, from_uploads, from_notation_db = get_all_available_lyric_numbers()
         
         if not all_available:
-            await status_msg.edit_text("📁 No lyric files found in either notation database or upload folder.")
+            msg = "📁 No lyric files found in either notation database or upload folder.\n\n"
+            msg += "Upload files should contain 'L-' followed by a number in the filename.\n"
+            msg += "Example: 'L-32 രാജരാജ ദൈവജാതൻ.pdf'"
+            await status_msg.edit_text(msg)
             return
         
         # Show what was found
