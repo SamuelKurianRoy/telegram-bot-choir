@@ -244,6 +244,51 @@ def download_uploaded_file(file_id: str, filename: str, temp_dir: str) -> str:
     except Exception as e:
         user_logger.error(f"Error downloading uploaded file: {str(e)[:100]}")
         return None
+
+
+def get_all_uploaded_lyric_numbers() -> set:
+    """
+    Get all lyric numbers from uploaded files in one API call (FAST).
+    Extracts lyric numbers from filenames containing patterns like:
+    - L-32, L32, Lyric-32, Lyric 32, lyrics 32
+    
+    Returns:
+        Set of lyric numbers found in uploaded files
+    """
+    try:
+        import re
+        config = get_config()
+        drive_service = get_drive_service()
+        
+        folder_id = config.secrets.get("GOOGLE_DRIVE_FOLDER_ID")
+        if not folder_id:
+            user_logger.error("GOOGLE_DRIVE_FOLDER_ID not found in secrets")
+            return set()
+        
+        # Get all PDF files in ONE API call
+        results = drive_service.files().list(
+            q=f"'{folder_id}' in parents and trashed=false and mimeType='application/pdf'",
+            pageSize=1000,  # Get up to 1000 files
+            fields="files(id, name)"
+        ).execute()
+        
+        files = results.get('files', [])
+        lyric_numbers = set()
+        
+        # Extract lyric numbers from all filenames
+        for file in files:
+            filename = file.get('name', '')
+            # Look for patterns: L-32, L32, Lyric-32, Lyric 32, lyrics 32
+            matches = re.findall(r'(?:L|Lyric|lyrics)[-\s]*(\d+)', filename, re.IGNORECASE)
+            for match in matches:
+                lyric_numbers.add(int(match))
+        
+        user_logger.info(f"✅ Found {len(lyric_numbers)} lyric numbers in upload folder (from {len(files)} files)")
+        return lyric_numbers
+        
+    except Exception as e:
+        user_logger.error(f"Error getting uploaded lyric numbers: {str(e)}")
+        return set()
 def search_uploaded_file_by_text(search_text: str) -> list[tuple[str, str]]:
     """
     Search for files in the upload folder by text/keyword.

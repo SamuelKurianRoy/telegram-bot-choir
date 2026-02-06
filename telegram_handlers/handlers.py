@@ -4116,10 +4116,20 @@ async def update_notation_status_command(update: Update, context: CallbackContex
             await status_msg.edit_text("❌ Error: Could not load lyric database")
             return
         
-        # Import required functions
-        from data.sheet_upload import search_uploaded_file_by_lyric
+        # Get all uploaded lyric numbers in ONE fast API call
+        await status_msg.edit_text("🔄 Scanning upload folder...")
+        from data.sheet_upload import get_all_uploaded_lyric_numbers
+        uploaded_lyric_numbers = get_all_uploaded_lyric_numbers()
         
-        # Update status for each lyric
+        if not uploaded_lyric_numbers:
+            await status_msg.edit_text("📁 No lyric files found in upload folder.\n\n"
+                                      "Upload files should contain 'L-' followed by a number in the filename.\n"
+                                      "Example: 'L-32 രാജരാജ ദൈവജാതൻ.pdf'")
+            return
+        
+        await status_msg.edit_text(f"🔄 Processing {len(uploaded_lyric_numbers)} uploaded lyrics...")
+        
+        # Update status for lyrics found in uploads
         updated_count = 0
         already_available = 0
         updates_list = []
@@ -4133,15 +4143,13 @@ async def update_notation_status_command(update: Update, context: CallbackContex
                 already_available += 1
                 continue
             
-            # For lyrics, we only check the upload folder
-            # (The Status field in dfL is the authoritative source for notation database)
-            has_upload, file_id, filename = search_uploaded_file_by_lyric(lyric_num)
-            
-            # Update to Available if found in uploads
-            if has_upload:
+            # Check if this lyric is in the uploaded files
+            if lyric_num in uploaded_lyric_numbers:
                 dfL.at[idx, 'Status'] = 'Available'
                 updated_count += 1
-                updates_list.append(f"L-{lyric_num} (from uploads)")
+                from data.datasets import IndexFinder
+                lyric_name = IndexFinder(f"L-{lyric_num}")
+                updates_list.append(f"L-{lyric_num}: {lyric_name}")
         
         # Save updated dfL back to Google Drive
         if updated_count > 0:
