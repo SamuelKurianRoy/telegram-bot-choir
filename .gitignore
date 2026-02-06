@@ -61,3 +61,5 @@ STREAMLIT_CLOUD_SETUP.md
 venv_linux/
 
 docs/
+
+*.ipynb

@@ -2193,15 +2193,12 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
         admin_commands = f"""
 🔧 **Admin Commands List**
 
-**Feature Control:**
-• `/disable <feature> [reason]` - Disable a bot feature
-• `/enable <feature>` - Enable a bot feature
-• `/restrict_access <feature> [reason]` - Restrict to authorized users only
-• `/unrestrict_access <feature>` - Remove access restriction
-• `/feature_status` - View all feature statuses
-• `/debug_features` - Debug feature loading (troubleshooting)
-• `/add_missing_features` - Add missing features to Database
-• `/restore_all_features` - Restore all 11 features (fix missing features)
+**System & Sync Management:**
+• `/refresh` - Reload all datasets from Google Drive
+• `/syncstatus` - Check auto-sync status and last sync times
+• `/syncinfo` - Detailed sync analytics (mode, API usage, performance)
+• `/forcesync` - Manually trigger dataset sync
+• `/dnstest` - Test DNS resolution and network connectivity
 
 **User Management:**
 • `/admin_save_db` - Manually save user database to Google Drive
@@ -2210,44 +2207,77 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/add_authorized_user <user_id>` - Add user to authorized list
 • `/remove_authorized_user <user_id>` - Remove user from authorized list
 
-**Bot Management:**
-• `/refresh` - Reload all datasets from Google Drive
-• `/syncstatus` - Check auto-sync status and last sync times
-• `/syncinfo` - Detailed sync analytics (mode, API usage, performance)
-• `/forcesync` - Manually trigger dataset sync
-• `/dnstest` - Test DNS resolution and network connectivity
-• `/reply` `<message>` - Reply to user comments/feedback
-• `/list` - Show this admin commands list
+**Feature Control:**
+• `/disable <feature> [reason]` - Disable a bot feature
+• `/enable <feature>` - Enable a bot feature
+• `/restrict_access <feature> [reason]` - Restrict feature to authorized users only
+• `/unrestrict_access <feature>` - Remove access restriction
+• `/feature_status` - View all feature statuses
+• `/debug_features` - Debug feature loading (troubleshooting)
+• `/add_missing_features` - Add missing features to Database
+• `/restore_all_features` - Restore all features (fix missing features)
+
+**AI Model Management:**
 • `/model` - Check current AI model status (Gemini/Groq)
 • `/switchmodel <provider>` - Switch AI provider (gemini/groq/both)
 • `/testmodel` - Test AI providers with actual requests (uses quota)
 
-**General Commands (also available to admin):**
+**Notation & Sheet Music Management:**
+• `/notation_status <number>` - Check if a specific lyric notation is available
+• `/missing_notations` - List all lyrics that need notation uploads
+• `/listuploads` - List recently uploaded sheet music files
+
+**Admin Communication:**
+• `/reply` - Reply to user comments/feedback (interactive conversation)
+
+**Admin Utilities:**
+• `/list` - Show this admin commands list
+
+**User-Facing Commands (Available to All):**
+
+📱 *Navigation & Information:*
 • `/start` - Welcome message and user tracking
 • `/help` - Show general bot help
+
+🎵 *Music & Songs:*
 • `/notation` - Get sheet music notation
+• `/tune` - Find tune information
+• `/check` - Get song details
+• `/last` - Check when songs were last sung
+• `/search` - Search songs by various criteria
+• `/vocabulary` - Access choir vocabulary
+• `/theme` - Search by themes
+• `/organist` - View organist assignments for songs
+
+📖 *Bible & Spiritual:*
 • `/bible` - Bible verse lookup
 • `/games` - Bible quiz games
+
+🎚️ *Audio & Downloads:*
+• `/download` - Download audio from YouTube/Spotify links
+
+📅 *Schedule & Planning:*
 • `/date` - Check songs sung on specific dates
-• `/vocabulary` - Access choir vocabulary
-• `/search` - Search songs by various criteria
-• `/tune` - Find tune information
-• `/last` - Check when songs were last sung
-• `/check` - Get song details
-• `/theme` - Search by themes
-• `/download` - Download audio from links
-• `/comment` - Send feedback to admin
-• `/setting` - Manage personal settings
-• `/organist` - View organist assignments for songs
-• `/updatesunday` - Update Songs for Sunday sheet with next available date (admin only)
-• `/updatedate` - Update Songs for Sunday sheet with custom date (admin only)
-• `/assignsongs` - Assign Sunday songs to organists
-• `/unused` - Find songs not sung in a specific period
+• `/updatesunday` - Update Sunday Songs sheet with next available date (admin only)
+• `/updatedate` - Update Sunday Songs sheet with custom date (admin only)
+• `/assignsongs` - Assign Sunday songs to organists (admin only)
+• `/unused` - Find songs not sung in a specific period (admin only)
+
+📤 *File & Data Management:*
 • `/upload` - Upload sheet music files to the collection
 
+⚙️ *User Settings:*
+• `/setting` - Manage personal settings (language, preferences, etc)
+
+💬 *Feedback & Communication:*
+• `/comment` - Send feedback/comments to admin
+
 **Usage Examples:**
-• `/admin_user_info 757438955`
+• `/notation_status 6`
+• `/missing_notations`
+• `/disable bible Maintenance work
 • `/reply Thanks for your feedback!`
+• `/switchmodel groq`
 """
         await update.message.reply_text(admin_commands, parse_mode="Markdown")
         user_logger.info(f"Admin {user.id} viewed admin commands list")
@@ -3949,3 +3979,105 @@ async def list_uploads_command(update: Update, context: CallbackContext) -> None
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)[:100]}")
         user_logger.error(f"Error in list_uploads_command: {e}")
+
+
+# --- Notation Availability Commands ---
+
+async def notation_status_command(update: Update, context: CallbackContext) -> None:
+    """
+    Check the availability status of a specific lyric notation.
+    Usage: /notation_status <lyric_number>
+    Example: /notation_status 6
+    """
+    user = update.effective_user
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) used /notation_status")
+    
+    try:
+        # Check if a lyric number is provided
+        if not context.args:
+            await update.message.reply_text(
+                "📝 <b>Notation Status Checker</b>\n\n"
+                "Usage: /notation_status &lt;lyric_number&gt;\n\n"
+                "Example: /notation_status 6\n\n"
+                "This will check if the music notation for that lyric is available.",
+                parse_mode="HTML"
+            )
+            return
+        
+        # Get the lyric number from arguments
+        try:
+            lyric_num = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("❌ Please provide a valid lyric number (e.g., /notation_status 6)")
+            return
+        
+        # Load datasets
+        dfH, dfL, dfC, df, dfTH, dfTD, year_data = get_all_data()
+        
+        if dfL is None:
+            await update.message.reply_text("❌ Error: Could not load lyric database")
+            return
+        
+        # Check notation availability
+        from utils.notation_checker import Notation_Availability_Checker, Format_Notation_Availability
+        notation_name, status = Notation_Availability_Checker(dfL, lyric_num)
+        
+        # Format and send response
+        response = f"<b>L-{lyric_num}</b>\n\n" + Format_Notation_Availability(notation_name, status)
+        await update.message.reply_text(response, parse_mode="HTML")
+        
+        user_logger.info(f"User {user.id} checked notation status for L-{lyric_num}")
+    
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)[:150]}")
+        user_logger.error(f"Error in notation_status_command: {e}")
+
+
+async def missing_notations_command(update: Update, context: CallbackContext) -> None:
+    """
+    Show all known lyrics in the vocabulary that are missing or have pending notations.
+    This helps identify which music sheets need to be uploaded.
+    Usage: /missing_notations
+    """
+    user = update.effective_user
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) used /missing_notations")
+    
+    try:
+        # Show loading message
+        status_msg = await update.message.reply_text("🔍 Analyzing notation statuses...")
+        
+        # Load datasets
+        dfH, dfL, dfC, df, dfTH, dfTD, year_data = get_all_data()
+        
+        if dfL is None or df is None:
+            await status_msg.edit_text("❌ Error: Could not load databases")
+            return
+        
+        # Get vocabulary
+        vocabulary, _, lyric_vocab, _ = ChoirVocabulary(df, dfH, dfL, dfC)
+        
+        # Get missing notations
+        from utils.notation_checker import Get_Missing_Notations, Format_Missing_Notations
+        missing_notations = Get_Missing_Notations(dfL, lyric_vocab)
+        
+        # Format and send response
+        response = Format_Missing_Notations(missing_notations)
+        
+        # If response is too long, split it
+        if len(response) > 4096:
+            # Split into chunks
+            chunks = [response[i:i+4096] for i in range(0, len(response), 4096)]
+            await status_msg.delete()
+            for i, chunk in enumerate(chunks):
+                if i == 0:
+                    await update.message.reply_text(chunk, parse_mode="HTML")
+                else:
+                    await update.message.reply_text(chunk, parse_mode="HTML")
+        else:
+            await status_msg.edit_text(response, parse_mode="HTML")
+        
+        user_logger.info(f"User {user.id} checked missing notations ({len(missing_notations)} missing)")
+    
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)[:150]}")
+        user_logger.error(f"Error in missing_notations_command: {e}")
