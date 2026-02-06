@@ -2741,7 +2741,23 @@ def get_theme_model():
     global _theme_model
     if _theme_model is None:
         print("🔄 Loading theme model (first time only)...")
+        # Suppress transformers warnings about unexpected keys
+        import warnings
+        from transformers import logging as transformers_logging
+        
+        # Save current logging level
+        original_level = transformers_logging.get_verbosity()
+        
+        # Temporarily suppress warnings
+        transformers_logging.set_verbosity_error()
+        warnings.filterwarnings('ignore', category=UserWarning, module='transformers')
+        
+        # Load model
         _theme_model = SentenceTransformer('all-MiniLM-L6-v2')
+        
+        # Restore logging level
+        transformers_logging.set_verbosity(original_level)
+        
         print("✅ Theme model loaded")
     return _theme_model
 

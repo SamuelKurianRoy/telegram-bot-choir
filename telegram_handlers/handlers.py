@@ -2275,7 +2275,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 **Usage Examples:**
 • `/notation_status 6`
 • `/missing_notations`
-• `/disable bible Maintenance work
+• `/disable bible Maintenance work`
 • `/reply Thanks for your feedback!`
 • `/switchmodel groq`
 """
