@@ -2225,7 +2225,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 **Notation & Sheet Music Management:**
 • `/notation_status <number>` - Check if a specific lyric notation is available
 • `/missing_notations` - List all lyrics that need notation uploads
-• `/update_notation_status` - Auto-update Status for lyrics found in upload folder
+• `/update_notation_status` - Scan notation DB + uploads, auto-update all Status fields
 • `/listuploads` - List recently uploaded sheet music files
 
 **Admin Communication:**
@@ -4106,7 +4106,7 @@ async def update_notation_status_command(update: Update, context: CallbackContex
     
     try:
         # Show loading message
-        status_msg = await update.message.reply_text("🔄 Updating notation status...\nThis may take a moment...")
+        status_msg = await update.message.reply_text("🔄 Updating notation status...\nScanning all sources...")
         
         # Load datasets
         data = get_all_data()
@@ -4116,20 +4116,22 @@ async def update_notation_status_command(update: Update, context: CallbackContex
             await status_msg.edit_text("❌ Error: Could not load lyric database")
             return
         
-        # Get all uploaded lyric numbers in ONE fast API call
-        await status_msg.edit_text("🔄 Scanning upload folder...")
-        from data.sheet_upload import get_all_uploaded_lyric_numbers
-        uploaded_lyric_numbers = get_all_uploaded_lyric_numbers()
+        # Get all available lyric numbers from BOTH sources in just 2 fast API calls
+        await status_msg.edit_text("🔄 Scanning notation database and upload folder...")
+        from data.sheet_upload import get_all_available_lyric_numbers
+        all_available, from_uploads, from_notation_db = get_all_available_lyric_numbers()
         
-        if not uploaded_lyric_numbers:
-            await status_msg.edit_text("📁 No lyric files found in upload folder.\n\n"
-                                      "Upload files should contain 'L-' followed by a number in the filename.\n"
-                                      "Example: 'L-32 രാജരാജ ദൈവജാതൻ.pdf'")
+        if not all_available:
+            await status_msg.edit_text("📁 No lyric files found in either notation database or upload folder.")
             return
         
-        await status_msg.edit_text(f"🔄 Processing {len(uploaded_lyric_numbers)} uploaded lyrics...")
+        # Show what was found
+        scan_info = f"📊 Found {len(all_available)} available lyrics:\n"
+        scan_info += f"   • Notation Database: {len(from_notation_db)}\n"
+        scan_info += f"   • Upload Folder: {len(from_uploads)}\n\n"
+        await status_msg.edit_text(scan_info + "🔄 Updating status...")
         
-        # Update status for lyrics found in uploads
+        # Update status for lyrics found in either source
         updated_count = 0
         already_available = 0
         updates_list = []
@@ -4143,13 +4145,22 @@ async def update_notation_status_command(update: Update, context: CallbackContex
                 already_available += 1
                 continue
             
-            # Check if this lyric is in the uploaded files
-            if lyric_num in uploaded_lyric_numbers:
+            # Check if this lyric is available in either source
+            if lyric_num in all_available:
                 dfL.at[idx, 'Status'] = 'Available'
                 updated_count += 1
                 from data.datasets import IndexFinder
                 lyric_name = IndexFinder(f"L-{lyric_num}")
-                updates_list.append(f"L-{lyric_num}: {lyric_name}")
+                
+                # Determine source
+                source = []
+                if lyric_num in from_notation_db:
+                    source.append("DB")
+                if lyric_num in from_uploads:
+                    source.append("Uploads")
+                source_str = " + ".join(source)
+                
+                updates_list.append(f"L-{lyric_num}: {lyric_name} [{source_str}]")
         
         # Save updated dfL back to Google Drive
         if updated_count > 0:
@@ -4160,20 +4171,26 @@ async def update_notation_status_command(update: Update, context: CallbackContex
                 # Build response message
                 response = (
                     f"✅ <b>Notation Status Updated!</b>\n\n"
-                    f"📊 <b>Summary:</b>\n"
+                    f"📊 <b>Scan Results:</b>\n"
+                    f"• Notation Database: {len(from_notation_db)} files\n"
+                    f"• Upload Folder: {len(from_uploads)} files\n"
+                    f"• Total Available: {len(all_available)} unique lyrics\n\n"
+                    f"📝 <b>Status Summary:</b>\n"
                     f"• Already Available: {already_available}\n"
                     f"• Newly Updated: {updated_count}\n"
                     f"• Total Available: {already_available + updated_count}\n"
                     f"• Still Missing: {len(dfL) - already_available - updated_count}\n\n"
                 )
                 
-                if updated_count <= 20:
+                if updated_count <= 15:
                     response += f"<b>Updated Lyrics:</b>\n"
-                    response += "\n".join(f"• {item}" for item in updates_list)
+                    for item in updates_list:
+                        response += f"• {item}\n"
                 else:
-                    response += f"<b>Sample Updates:</b>\n"
-                    response += "\n".join(f"• {item}" for item in updates_list[:20])
-                    response += f"\n... and {updated_count - 20} more"
+                    response += f"<b>Sample Updates (first 15):</b>\n"
+                    for item in updates_list[:15]:
+                        response += f"• {item}\n"
+                    response += f"\n... and {updated_count - 15} more"
                 
                 await status_msg.edit_text(response, parse_mode="HTML")
                 user_logger.info(f"Admin {user.id} updated {updated_count} notation statuses")
@@ -4182,7 +4199,11 @@ async def update_notation_status_command(update: Update, context: CallbackContex
         else:
             response = (
                 f"✅ <b>No Updates Needed!</b>\n\n"
-                f"📊 <b>Summary:</b>\n"
+                f"📊 <b>Scan Results:</b>\n"
+                f"• Notation Database: {len(from_notation_db)} files\n"
+                f"• Upload Folder: {len(from_uploads)} files\n"
+                f"• Total Available: {len(all_available)} unique lyrics\n\n"
+                f"📝 <b>Status Summary:</b>\n"
                 f"• Already Available: {already_available}\n"
                 f"• Still Missing: {len(dfL) - already_available}"
             )

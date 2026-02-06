@@ -21,6 +21,7 @@ class Config:
         self.TFILE_ID = self.secrets.get("TFILE_ID")
         self.FILE_ID = self.secrets.get("FILE_ID")
         self.H_SHEET_MUSIC = self.secrets.get("H_SHEET_MUSIC")
+        self.L_SHEET_MUSIC = self.secrets.get("L_SHEET_MUSIC")  # Lyric notation database folder
         self.BFILE_ID = self.secrets.get("BFILE_ID")
         self.UFILE_ID = self.secrets.get("UFILE_ID")
         self.YFILE_ID = self.secrets.get("YFILE_ID")

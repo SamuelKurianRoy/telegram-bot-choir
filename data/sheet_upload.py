@@ -289,6 +289,73 @@ def get_all_uploaded_lyric_numbers() -> set:
     except Exception as e:
         user_logger.error(f"Error getting uploaded lyric numbers: {str(e)}")
         return set()
+
+
+def get_all_notation_database_lyric_numbers() -> set:
+    """
+    Get all lyric numbers from the main lyric notation database (L_SHEET_MUSIC folder).
+    Looks for files named exactly "L-XX.pdf" (the standard notation format).
+    
+    Returns:
+        Set of lyric numbers found in notation database
+    """
+    try:
+        import re
+        config = get_config()
+        drive_service = get_drive_service()
+        
+        folder_id = config.secrets.get("L_SHEET_MUSIC")
+        if not folder_id:
+            user_logger.warning("L_SHEET_MUSIC folder not configured")
+            return set()
+        
+        # Get all PDF files from notation database in ONE API call
+        results = drive_service.files().list(
+            q=f"'{folder_id}' in parents and trashed=false and mimeType='application/pdf'",
+            pageSize=1000,
+            fields="files(id, name)"
+        ).execute()
+        
+        files = results.get('files', [])
+        lyric_numbers = set()
+        
+        # Extract lyric numbers from filenames (standard format: L-XX.pdf)
+        for file in files:
+            filename = file.get('name', '')
+            # Look for standard notation pattern: L-32.pdf
+            match = re.match(r'^L-(\d+)\.pdf$', filename)
+            if match:
+                lyric_numbers.add(int(match.group(1)))
+        
+        user_logger.info(f"✅ Found {len(lyric_numbers)} lyric numbers in notation database (from {len(files)} files)")
+        return lyric_numbers
+        
+    except Exception as e:
+        user_logger.error(f"Error getting notation database lyric numbers: {str(e)}")
+        return set()
+
+
+def get_all_available_lyric_numbers() -> tuple[set, set, set]:
+    """
+    Get ALL available lyric numbers from BOTH sources (COMPREHENSIVE SCAN).
+    
+    Returns:
+        Tuple of (all_available, from_uploads, from_notation_db)
+        - all_available: Combined set of all lyric numbers
+        - from_uploads: Lyric numbers found in upload folder
+        - from_notation_db: Lyric numbers found in notation database
+    """
+    from_uploads = get_all_uploaded_lyric_numbers()
+    from_notation_db = get_all_notation_database_lyric_numbers()
+    all_available = from_uploads | from_notation_db  # Union of both sets
+    
+    user_logger.info(
+        f"📊 Comprehensive scan complete: "
+        f"{len(all_available)} total available "
+        f"({len(from_uploads)} in uploads, {len(from_notation_db)} in notation DB)"
+    )
+    
+    return all_available, from_uploads, from_notation_db
 def search_uploaded_file_by_text(search_text: str) -> list[tuple[str, str]]:
     """
     Search for files in the upload folder by text/keyword.
