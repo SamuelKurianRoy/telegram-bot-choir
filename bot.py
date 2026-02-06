@@ -25,7 +25,7 @@ try:
         admin_disable_feature, admin_enable_feature, admin_feature_status,
         admin_restrict_access, admin_unrestrict_access, admin_debug_features, admin_add_missing_features, admin_restore_all_features,
         admin_check_ai_model, admin_switch_ai_model, admin_test_ai_model,
-        list_uploads_command, notation_status_command, missing_notations_command,
+        list_uploads_command, notation_status_command, missing_notations_command, update_notation_status_command,
         ai_message_handler
     )
     from telegram_handlers.conversations import (
@@ -323,6 +323,8 @@ app.add_handler(CommandHandler("listuploads", list_uploads_command))
 # Notation availability commands
 app.add_handler(CommandHandler("notation_status", notation_status_command))
 app.add_handler(CommandHandler("missing_notations", missing_notations_command))
+app.add_handler(CommandHandler("update_notation_status", update_notation_status_command))
+app.add_handler(CommandHandler("update_notation_status", update_notation_status_command))
 
 app.add_handler(CallbackQueryHandler(handle_notation_callback, pattern="^notation:"))
 app.add_handler(CallbackQueryHandler(handle_upload_notation_callback, pattern="^upload_notation:"))

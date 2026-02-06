@@ -2225,6 +2225,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 **Notation & Sheet Music Management:**
 • `/notation_status <number>` - Check if a specific lyric notation is available
 • `/missing_notations` - List all lyrics that need notation uploads
+• `/update_notation_status` - Auto-update Status by checking notation & upload databases
 • `/listuploads` - List recently uploaded sheet music files
 
 **Admin Communication:**
@@ -4086,3 +4087,108 @@ async def missing_notations_command(update: Update, context: CallbackContext) ->
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)[:150]}")
         user_logger.error(f"Error in missing_notations_command: {e}")
+
+
+async def update_notation_status_command(update: Update, context: CallbackContext) -> None:
+    """
+    Update the Status field in Lyric List by checking notation database and uploads.
+    Admin only command.
+    Usage: /update_notation_status
+    """
+    user = update.effective_user
+    
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+    
+    user_logger.info(f"Admin {user.full_name} (@{user.username}, ID: {user.id}) used /update_notation_status")
+    
+    try:
+        # Show loading message
+        status_msg = await update.message.reply_text("🔄 Updating notation status...\nThis may take a moment...")
+        
+        # Load datasets
+        data = get_all_data()
+        dfL = data.get('dfL')
+        
+        if dfL is None:
+            await status_msg.edit_text("❌ Error: Could not load lyric database")
+            return
+        
+        # Import required functions
+        from utils.notation import Music_notation_link
+        from data.sheet_upload import search_uploaded_file_by_lyric
+        
+        # Update status for each lyric
+        updated_count = 0
+        already_available = 0
+        updates_list = []
+        
+        for idx, row in dfL.iterrows():
+            lyric_num = row['Lyric no']
+            current_status = row.get('Status', '')
+            
+            # Skip if already Available
+            if str(current_status).strip() == "Available":
+                already_available += 1
+                continue
+            
+            # Check if notation exists in notation database
+            notation_link = Music_notation_link(lyric_num)
+            has_notation = notation_link and notation_link != "Not available"
+            
+            # Check if file exists in upload folder
+            has_upload, file_id, filename = search_uploaded_file_by_lyric(lyric_num)
+            
+            # Update to Available if found in either place
+            if has_notation or has_upload:
+                dfL.at[idx, 'Status'] = 'Available'
+                updated_count += 1
+                source = "notation DB" if has_notation else "uploads"
+                if has_notation and has_upload:
+                    source = "both"
+                updates_list.append(f"L-{lyric_num} ({source})")
+        
+        # Save updated dfL back to Google Drive
+        if updated_count > 0:
+            await status_msg.edit_text(f"💾 Saving {updated_count} updates to Google Drive...")
+            from data.datasets import save_lyric_list_to_drive
+            
+            if save_lyric_list_to_drive(dfL):
+                # Build response message
+                response = (
+                    f"✅ <b>Notation Status Updated!</b>\n\n"
+                    f"📊 <b>Summary:</b>\n"
+                    f"• Already Available: {already_available}\n"
+                    f"• Newly Updated: {updated_count}\n"
+                    f"• Total Available: {already_available + updated_count}\n"
+                    f"• Still Missing: {len(dfL) - already_available - updated_count}\n\n"
+                )
+                
+                if updated_count <= 20:
+                    response += f"<b>Updated Lyrics:</b>\n"
+                    response += "\n".join(f"• {item}" for item in updates_list)
+                else:
+                    response += f"<b>Sample Updates:</b>\n"
+                    response += "\n".join(f"• {item}" for item in updates_list[:20])
+                    response += f"\n... and {updated_count - 20} more"
+                
+                await status_msg.edit_text(response, parse_mode="HTML")
+                user_logger.info(f"Admin {user.id} updated {updated_count} notation statuses")
+            else:
+                await status_msg.edit_text("❌ Error: Failed to save updates to Google Drive")
+        else:
+            response = (
+                f"✅ <b>No Updates Needed!</b>\n\n"
+                f"📊 <b>Summary:</b>\n"
+                f"• Already Available: {already_available}\n"
+                f"• Still Missing: {len(dfL) - already_available}"
+            )
+            await status_msg.edit_text(response, parse_mode="HTML")
+    
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)[:150]}")
+        user_logger.error(f"Error in update_notation_status_command: {e}")
+        import traceback
+        traceback.print_exc()

@@ -332,4 +332,74 @@ def Hymn_Tune_no_Finder(dfTH, tune_query, top_n=10):
 
     return results.reset_index(drop=True)
 
+def save_lyric_list_to_drive(dfL_updated: pd.DataFrame) -> bool:
+    """
+    Save the updated Lyric List back to Google Drive.
+    Updates only the "Lyric List" sheet in the HLCFILE.
+    
+    Args:
+        dfL_updated: Updated Lyric List DataFrame
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+        import tempfile
+        
+        config = get_config()
+        drive_service = get_drive_service()
+        
+        # Download the entire HLCFILE
+        request = drive_service.files().export_media(
+            fileId=config.HLCFILE_ID,
+            mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        file_data = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_data, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        file_data.seek(0)
+        
+        # Load all sheets
+        with pd.ExcelFile(file_data) as xls:
+            all_sheets = {}
+            for sheet_name in xls.sheet_names:
+                all_sheets[sheet_name] = pd.read_excel(xls, sheet_name=sheet_name)
+        
+        # Update the Lyric List sheet
+        all_sheets["Lyric List"] = dfL_updated
+        
+        # Write to temporary file
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.xlsx', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+            with pd.ExcelWriter(tmp_path, engine='openpyxl') as writer:
+                for sheet_name, df in all_sheets.items():
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+        
+        # Upload back to Google Drive
+        media = MediaFileUpload(tmp_path, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        drive_service.files().update(
+            fileId=config.HLCFILE_ID,
+            media_body=media
+        ).execute()
+        
+        # Clean up temp file
+        import os
+        os.unlink(tmp_path)
+        
+        # Update global dfL
+        global dfL
+        dfL = dfL_updated
+        
+        print(f"✅ Successfully saved Lyric List to Google Drive")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error saving Lyric List: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 # TODO: Add data cleaning and preprocessing functions (e.g., yrDataPreprocessing, dfcleaning) 
