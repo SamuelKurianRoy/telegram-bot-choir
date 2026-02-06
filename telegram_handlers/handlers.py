@@ -2225,7 +2225,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 **Notation & Sheet Music Management:**
 • `/notation_status <number>` - Check if a specific lyric notation is available
 • `/missing_notations` - List all lyrics that need notation uploads
-• `/update_notation_status` - Scan notation DB + uploads, auto-update all Status fields
+• `/update_notation_status` - Bidirectional sync: scan all files, update Status (adds & removes)
 • `/listuploads` - List recently uploaded sheet music files
 
 **Admin Communication:**
@@ -4131,24 +4131,30 @@ async def update_notation_status_command(update: Update, context: CallbackContex
         scan_info += f"   • Upload Folder: {len(from_uploads)}\n\n"
         await status_msg.edit_text(scan_info + "🔄 Updating status...")
         
-        # Update status for lyrics found in either source
-        updated_count = 0
-        already_available = 0
+        # Get vocabulary to determine Pending vs Not Available
+        from data.vocabulary import ChoirVocabulary
+        vocabulary, _, lyric_vocab, _ = ChoirVocabulary(df, dfH, dfL, dfC)
+        vocabulary_set = set(lyric_vocab.values)  # Set of lyric numbers in vocabulary
+        
+        # Update status for ALL lyrics (bidirectional sync)
+        updated_to_available = 0
+        updated_to_pending = 0
+        updated_to_not_available = 0
+        already_correct = 0
         updates_list = []
+        removals_list = []
         
         for idx, row in dfL.iterrows():
             lyric_num = row['Lyric no']
             current_status = row.get('Status', '')
+            is_currently_available = str(current_status).strip() == "Available"
+            is_actually_available = lyric_num in all_available
+            is_in_vocabulary = lyric_num in vocabulary_set
             
-            # Skip if already Available
-            if str(current_status).strip() == "Available":
-                already_available += 1
-                continue
-            
-            # Check if this lyric is available in either source
-            if lyric_num in all_available:
+            if is_actually_available and not is_currently_available:
+                # File exists but status is not Available → UPDATE TO AVAILABLE
                 dfL.at[idx, 'Status'] = 'Available'
-                updated_count += 1
+                updated_to_available += 1
                 from data.datasets import IndexFinder
                 lyric_name = IndexFinder(f"L-{lyric_num}")
                 
@@ -4161,51 +4167,108 @@ async def update_notation_status_command(update: Update, context: CallbackContex
                 source_str = " + ".join(source)
                 
                 updates_list.append(f"L-{lyric_num}: {lyric_name} [{source_str}]")
+                
+            elif not is_actually_available and is_currently_available:
+                # Status is Available but file doesn't exist → REMOVE STATUS
+                from data.datasets import IndexFinder
+                lyric_name = IndexFinder(f"L-{lyric_num}")
+                
+                if is_in_vocabulary:
+                    # In vocabulary → mark as Pending
+                    dfL.at[idx, 'Status'] = 'Pending'
+                    updated_to_pending += 1
+                    removals_list.append(f"L-{lyric_num}: {lyric_name} → Pending (in vocabulary)")
+                else:
+                    # Not in vocabulary → mark as Not Available
+                    dfL.at[idx, 'Status'] = 'Not Available'
+                    updated_to_not_available += 1
+                    removals_list.append(f"L-{lyric_num}: {lyric_name} → Not Available")
+                
+            else:
+                # Status already correct
+                already_correct += 1
+        
+        total_updated = updated_to_available + updated_to_pending + updated_to_not_available
         
         # Save updated dfL back to Google Drive
-        if updated_count > 0:
-            await status_msg.edit_text(f"💾 Saving {updated_count} updates to Google Drive...")
+        if total_updated > 0:
+            await status_msg.edit_text(f"💾 Saving {total_updated} updates to Google Drive...")
             from data.datasets import save_lyric_list_to_drive
             
             if save_lyric_list_to_drive(dfL):
+                # Count current status distribution
+                available_count = len(dfL[dfL['Status'] == 'Available'])
+                pending_count = len(dfL[dfL['Status'] == 'Pending'])
+                not_available_count = len(dfL[dfL['Status'] == 'Not Available'])
+                
                 # Build response message
                 response = (
-                    f"✅ <b>Notation Status Updated!</b>\n\n"
+                    f"✅ <b>Notation Status Synchronized!</b>\n\n"
                     f"📊 <b>Scan Results:</b>\n"
                     f"• Notation Database: {len(from_notation_db)} files\n"
                     f"• Upload Folder: {len(from_uploads)} files\n"
                     f"• Total Available: {len(all_available)} unique lyrics\n\n"
-                    f"📝 <b>Status Summary:</b>\n"
-                    f"• Already Available: {already_available}\n"
-                    f"• Newly Updated: {updated_count}\n"
-                    f"• Total Available: {already_available + updated_count}\n"
-                    f"• Still Missing: {len(dfL) - already_available - updated_count}\n\n"
+                    f"📝 <b>Changes Made:</b>\n"
+                    f"• Already Correct: {already_correct}\n"
+                    f"• Marked Available: {updated_to_available}\n"
+                    f"• Marked Pending: {updated_to_pending}\n"
+                    f"• Marked Not Available: {updated_to_not_available}\n"
+                    f"• Total Changes: {total_updated}\n\n"
+                    f"✅ <b>Current Status Distribution:</b>\n"
+                    f"• Available: {available_count}\n"
+                    f"• Pending: {pending_count}\n"
+                    f"• Not Available: {not_available_count}\n\n"
                 )
                 
-                if updated_count <= 15:
-                    response += f"<b>Updated Lyrics:</b>\n"
-                    for item in updates_list:
-                        response += f"• {item}\n"
-                else:
-                    response += f"<b>Sample Updates (first 15):</b>\n"
-                    for item in updates_list[:15]:
-                        response += f"• {item}\n"
-                    response += f"\n... and {updated_count - 15} more"
+                # Show additions
+                if updated_to_available > 0:
+                    if updated_to_available <= 10:
+                        response += f"<b>➕ Marked as Available:</b>\n"
+                        for item in updates_list:
+                            response += f"• {item}\n"
+                    else:
+                        response += f"<b>➕ Marked as Available (first 10):</b>\n"
+                        for item in updates_list[:10]:
+                            response += f"• {item}\n"
+                        response += f"... and {updated_to_available - 10} more\n"
+                    response += "\n"
+                
+                # Show removals
+                if updated_to_pending + updated_to_not_available > 0:
+                    removal_count = updated_to_pending + updated_to_not_available
+                    if removal_count <= 10:
+                        response += f"<b>➖ Status Changed (files removed):</b>\n"
+                        for item in removals_list:
+                            response += f"• {item}\n"
+                    else:
+                        response += f"<b>➖ Status Changed (first 10):</b>\n"
+                        for item in removals_list[:10]:
+                            response += f"• {item}\n"
+                        response += f"... and {removal_count - 10} more\n"
                 
                 await status_msg.edit_text(response, parse_mode="HTML")
-                user_logger.info(f"Admin {user.id} updated {updated_count} notation statuses")
+                user_logger.info(f"Admin {user.id} synchronized {total_updated} notation statuses "
+                               f"(+{updated_to_available} available, {updated_to_pending} pending, "
+                               f"{updated_to_not_available} not available)")
             else:
                 await status_msg.edit_text("❌ Error: Failed to save updates to Google Drive")
         else:
+            # Count current status distribution
+            available_count = len(dfL[dfL['Status'] == 'Available'])
+            pending_count = len(dfL[dfL['Status'] == 'Pending'])
+            not_available_count = len(dfL[dfL['Status'] == 'Not Available'])
+            
             response = (
-                f"✅ <b>No Updates Needed!</b>\n\n"
+                f"✅ <b>All Status Fields are Correct!</b>\n\n"
                 f"📊 <b>Scan Results:</b>\n"
                 f"• Notation Database: {len(from_notation_db)} files\n"
                 f"• Upload Folder: {len(from_uploads)} files\n"
                 f"• Total Available: {len(all_available)} unique lyrics\n\n"
-                f"📝 <b>Status Summary:</b>\n"
-                f"• Already Available: {already_available}\n"
-                f"• Still Missing: {len(dfL) - already_available}"
+                f"📝 <b>Current Status Distribution:</b>\n"
+                f"• Available: {available_count}\n"
+                f"• Pending: {pending_count}\n"
+                f"• Not Available: {not_available_count}\n\n"
+                f"No changes needed - everything is in sync! ✨"
             )
             await status_msg.edit_text(response, parse_mode="HTML")
     
