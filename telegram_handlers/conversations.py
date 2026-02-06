@@ -2744,6 +2744,7 @@ def get_theme_model():
         # Suppress transformers warnings about unexpected keys
         import warnings
         from transformers import logging as transformers_logging
+        import os
         
         # Save current logging level
         original_level = transformers_logging.get_verbosity()
@@ -2751,6 +2752,10 @@ def get_theme_model():
         # Temporarily suppress warnings
         transformers_logging.set_verbosity_error()
         warnings.filterwarnings('ignore', category=UserWarning, module='transformers')
+        
+        # Suppress HuggingFace Hub warning about authentication
+        os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
+        warnings.filterwarnings('ignore', message='.*HF_TOKEN.*')
         
         # Load model
         _theme_model = SentenceTransformer('all-MiniLM-L6-v2')

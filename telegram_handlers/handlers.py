@@ -2225,7 +2225,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 **Notation & Sheet Music Management:**
 • `/notation_status <number>` - Check if a specific lyric notation is available
 • `/missing_notations` - List all lyrics that need notation uploads
-• `/update_notation_status` - Auto-update Status by checking notation & upload databases
+• `/update_notation_status` - Auto-update Status for lyrics found in upload folder
 • `/listuploads` - List recently uploaded sheet music files
 
 **Admin Communication:**
@@ -4117,7 +4117,6 @@ async def update_notation_status_command(update: Update, context: CallbackContex
             return
         
         # Import required functions
-        from utils.notation import Music_notation_link
         from data.sheet_upload import search_uploaded_file_by_lyric
         
         # Update status for each lyric
@@ -4134,21 +4133,15 @@ async def update_notation_status_command(update: Update, context: CallbackContex
                 already_available += 1
                 continue
             
-            # Check if notation exists in notation database
-            notation_link = Music_notation_link(lyric_num)
-            has_notation = notation_link and notation_link != "Not available"
-            
-            # Check if file exists in upload folder
+            # For lyrics, we only check the upload folder
+            # (The Status field in dfL is the authoritative source for notation database)
             has_upload, file_id, filename = search_uploaded_file_by_lyric(lyric_num)
             
-            # Update to Available if found in either place
-            if has_notation or has_upload:
+            # Update to Available if found in uploads
+            if has_upload:
                 dfL.at[idx, 'Status'] = 'Available'
                 updated_count += 1
-                source = "notation DB" if has_notation else "uploads"
-                if has_notation and has_upload:
-                    source = "both"
-                updates_list.append(f"L-{lyric_num} ({source})")
+                updates_list.append(f"L-{lyric_num} (from uploads)")
         
         # Save updated dfL back to Google Drive
         if updated_count > 0:
