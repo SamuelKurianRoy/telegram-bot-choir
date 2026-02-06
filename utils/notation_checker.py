@@ -37,7 +37,7 @@ def Get_Missing_Notations(dfL, vocabulary):
     
     Args:
         dfL: DataFrame containing lyric list with 'Lyric no' and 'Status' columns
-        vocabulary: DataFrame containing vocabulary with 'Lyric no' column
+        vocabulary: Series or DataFrame containing lyric numbers
     
     Returns:
         list: List of tuples [(lyric_num, notation_name), ...] for missing notations
@@ -45,7 +45,14 @@ def Get_Missing_Notations(dfL, vocabulary):
     missing_notations = []
     
     try:
-        for lyric in vocabulary["Lyric no"]:
+        # Handle both Series and DataFrame inputs
+        if isinstance(vocabulary, pd.DataFrame):
+            lyric_list = vocabulary["Lyric no"]
+        else:
+            # It's a Series
+            lyric_list = vocabulary
+        
+        for lyric in lyric_list:
             # Skip empty values
             if pd.isna(lyric) or str(lyric).strip() == '':
                 continue
@@ -53,12 +60,21 @@ def Get_Missing_Notations(dfL, vocabulary):
             lyric_num = int(lyric)
             status_row = dfL.loc[dfL["Lyric no"] == lyric_num, "Status"]
             
-            if not status_row.empty and status_row.iat[0] != "Available":
+            # Check if status exists and is NOT "Available"
+            if not status_row.empty:
+                status = status_row.iloc[0]
+                if pd.isna(status) or str(status).strip() != "Available":
+                    notation_name = IndexFinder(f"L-{int(lyric_num)}")
+                    missing_notations.append((lyric_num, notation_name))
+            else:
+                # Lyric number not found in dfL - add to missing
                 notation_name = IndexFinder(f"L-{int(lyric_num)}")
                 missing_notations.append((lyric_num, notation_name))
     
     except Exception as e:
         print(f"Error in Get_Missing_Notations: {e}")
+        import traceback
+        traceback.print_exc()
     
     return missing_notations
 
