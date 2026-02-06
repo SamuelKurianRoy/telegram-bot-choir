@@ -4012,7 +4012,8 @@ async def notation_status_command(update: Update, context: CallbackContext) -> N
             return
         
         # Load datasets
-        dfH, dfL, dfC, df, dfTH, dfTD, year_data = get_all_data()
+        data = get_all_data()
+        dfL = data.get('dfL')
         
         if dfL is None:
             await update.message.reply_text("❌ Error: Could not load lyric database")
@@ -4047,7 +4048,11 @@ async def missing_notations_command(update: Update, context: CallbackContext) ->
         status_msg = await update.message.reply_text("🔍 Analyzing notation statuses...")
         
         # Load datasets
-        dfH, dfL, dfC, df, dfTH, dfTD, year_data = get_all_data()
+        data = get_all_data()
+        dfL = data.get('dfL')
+        df = data.get('df')
+        dfH = data.get('dfH')
+        dfC = data.get('dfC')
         
         if dfL is None or df is None:
             await status_msg.edit_text("❌ Error: Could not load databases")
