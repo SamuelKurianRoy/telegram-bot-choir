@@ -186,7 +186,7 @@ class MidiToVideoWithAudio:
                     (self.width, keyboard_y - shadow_height + i),
                     shadow_color, 1)
         
-        # Draw white keys with 3D effect
+        # Draw white keys with 3D effect (full width, will be overlapped by black keys)
         for note in range(self.min_note, self.max_note + 1):
             if not self.is_black_key(note):
                 x = self.get_key_x_position(note)
@@ -202,7 +202,7 @@ class MidiToVideoWithAudio:
                     top_color = (255, 255, 255)
                     bottom_color = (230, 230, 230)
                 
-                # Draw gradient
+                # Draw full white key first (black keys will overlap on top)
                 key_rect_y1 = keyboard_y
                 key_rect_y2 = self.height
                 for y in range(key_rect_y1, key_rect_y2):
@@ -214,27 +214,30 @@ class MidiToVideoWithAudio:
                            (x + int(self.key_width), y),
                            color, 1)
                 
-                # Draw key borders
-                cv2.rectangle(frame, 
-                            (x, keyboard_y), 
-                            (x + int(self.key_width), self.height),
-                            (80, 80, 80), 2)
+                # Draw key borders (right and bottom only, black keys will cover some)
+                cv2.line(frame, (x + int(self.key_width), keyboard_y), 
+                        (x + int(self.key_width), self.height), (80, 80, 80), 1)
+                cv2.line(frame, (x, self.height - 1), 
+                        (x + int(self.key_width), self.height - 1), (80, 80, 80), 2)
                 
-                # Add highlight on left edge for 3D effect
-                if not note in pressed_notes:
+                # Add highlight on left edge for 3D effect (only on far left white keys or where no black key overlaps)
+                if not note in pressed_notes and (note == self.min_note or self.is_black_key(note - 1)):
                     cv2.line(frame, 
-                           (x + 2, keyboard_y + 2), 
-                           (x + 2, self.height - 2),
+                           (x + 1, keyboard_y + 2), 
+                           (x + 1, self.height - 2),
                            (255, 255, 255), 1)
         
-        # Draw black keys on top with enhanced 3D effect
-        black_key_width = int(self.key_width * 0.6)
-        black_key_height = int(self.keyboard_height * 0.58)  # 58% of white key height (more realistic)
+        # Draw black keys on top with enhanced 3D effect (overlapping white keys)
+        black_key_width = int(self.key_width * 0.7)  # Slightly wider for realistic overlap
+        black_key_height = int(self.keyboard_height * 0.6)  # 60% of white key height
         
         for note in range(self.min_note, self.max_note + 1):
             if self.is_black_key(note):
+                # Position black key so it overlaps the boundary between two white keys
+                # Black keys sit on top of and between white keys
                 x = self.get_key_x_position(note)
-                x_center = x + int(self.key_width / 2) - black_key_width // 2
+                # Center the black key on its position (it will naturally overlap white keys on both sides)
+                x_left = x + int(self.key_width / 2) - black_key_width // 2
                 
                 if note in pressed_notes:
                     # Pressed black key
@@ -246,7 +249,7 @@ class MidiToVideoWithAudio:
                     top_color = (60, 60, 60)
                     bottom_color = (20, 20, 20)
                 
-                # Draw gradient for black key
+                # Draw gradient for black key (will cover parts of white keys underneath)
                 key_rect_y1 = keyboard_y
                 key_rect_y2 = keyboard_y + black_key_height
                 for y in range(key_rect_y1, key_rect_y2):
@@ -254,31 +257,36 @@ class MidiToVideoWithAudio:
                     color = tuple(int(top_color[i] * (1 - ratio) + bottom_color[i] * ratio) 
                                 for i in range(3))
                     cv2.line(frame, 
-                           (x_center, y), 
-                           (x_center + black_key_width, y),
+                           (x_left, y), 
+                           (x_left + black_key_width, y),
                            color, 1)
                 
-                # Draw black key border
+                # Draw black key border (overlaying on top)
                 cv2.rectangle(frame,
-                            (x_center, keyboard_y),
-                            (x_center + black_key_width, keyboard_y + black_key_height),
+                            (x_left, keyboard_y),
+                            (x_left + black_key_width, keyboard_y + black_key_height),
                             (10, 10, 10), 2)
                 
                 # Add highlight on top-left for 3D effect
                 if not note in pressed_notes:
                     cv2.line(frame, 
-                           (x_center + 2, keyboard_y + 2), 
-                           (x_center + 2, keyboard_y + black_key_height // 3),
+                           (x_left + 2, keyboard_y + 2), 
+                           (x_left + 2, keyboard_y + black_key_height // 3),
                            (100, 100, 100), 1)
                 
-                # Add shadow on the right side
-                shadow_x = x_center + black_key_width
-                for i in range(4):
+                # Add shadow on the right side and bottom for depth
+                shadow_x = x_left + black_key_width
+                for i in range(3):
                     cv2.line(frame,
                            (shadow_x + i, keyboard_y),
                            (shadow_x + i, keyboard_y + black_key_height),
-                           (max(0, 20 - i * 5), max(0, 20 - i * 5), max(0, 20 - i * 5)),
+                           (max(0, 15 - i * 5), max(0, 15 - i * 5), max(0, 15 - i * 5)),
                            1)
+                # Bottom shadow for black key
+                cv2.line(frame,
+                        (x_left, keyboard_y + black_key_height + 1),
+                        (x_left + black_key_width, keyboard_y + black_key_height + 1),
+                        (40, 40, 40), 2)
     
     def draw_falling_note(self, frame, note_event, current_time):
         """Draw a falling note with 3D effect"""
