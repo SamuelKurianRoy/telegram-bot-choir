@@ -155,7 +155,8 @@ reply_conv_handler = ConversationHandler(
     states={
         REPLY: [MessageHandler(filters.TEXT & ~filters.COMMAND, send_reply_to_user)]
     },
-    fallbacks=[CommandHandler("cancel", cancel)]
+    fallbacks=[CommandHandler("cancel", cancel)],
+    per_message=True
 )
 
 # Enhanced admin reply conversation handler
@@ -206,6 +207,7 @@ bible_conv_handler = ConversationHandler(
         ],
     },
     fallbacks=[CommandHandler("cancel", cancel)],
+    per_message=True
 )
 
 # Register the Bible game conversation handler
@@ -348,8 +350,11 @@ app.add_handler(CommandHandler("updatesunday", update_sunday_songs))
 app.add_handler(CommandHandler("updatedate", update_date_songs))
 app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
 
-# MIDI file handler - auto-process MIDI files
-app.add_handler(MessageHandler(filters.Document.MIDI | filters.Document.FileExtension("mid"), handle_midi_file))
+# MIDI file handler - auto-process MIDI files (.mid and .midi extensions)
+app.add_handler(MessageHandler(
+    filters.Document.FileExtension("mid") | filters.Document.FileExtension("midi"), 
+    handle_midi_file
+))
 
 # AI Message Handler - Must be LAST to catch all unhandled text messages
 # This allows AI to interpret natural language queries
