@@ -4457,7 +4457,8 @@ async def midi_command(update: Update, context: CallbackContext) -> None:
             # No file attached, show instructions
             await update.message.reply_text(
                 "🎹 <b>MIDI to Synthesia Video Converter</b>\n\n"
-                "Send me a MIDI file (.mid or .midi) and I'll create a  and audio!\n\n"
+                "Send me a MIDI file (.mid or .midi) and I'll create a beautiful "
+                "Synthesia-style piano visualization with falling notes and audio!\n\n"
                 "📋 <b>How to use:</b>\n"
                 "1. Simply send a MIDI file to the bot\n"
                 "2. Wait while I process it (typically 2-5 minutes)\n"
@@ -4467,8 +4468,7 @@ async def midi_command(update: Update, context: CallbackContext) -> None:
                 "• Max output video size: 50 MB\n"
                 "• Recommended song length: 3-5 minutes\n"
                 "• Video output: 960x540 @ 24fps (optimized for cloud)\n\n"
-                "💡 <b>Best results:</b> Use MIDI files with clear piano parts and moderate length.
-                "• Longer songs take more time to process\n\n"
+                "💡 <b>Best results:</b> Use MIDI files with clear piano parts and moderate length.\n\n"
                 "🎵 Try it now by uploading a MIDI file!",
                 parse_mode="HTML"
             )
