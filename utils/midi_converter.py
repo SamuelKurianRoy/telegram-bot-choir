@@ -229,7 +229,7 @@ class MidiToVideoWithAudio:
         
         # Draw black keys on top with enhanced 3D effect
         black_key_width = int(self.key_width * 0.6)
-        black_key_height = int(self.keyboard_height * 0.65)
+        black_key_height = int(self.keyboard_height * 0.58)  # 58% of white key height (more realistic)
         
         for note in range(self.min_note, self.max_note + 1):
             if self.is_black_key(note):
@@ -579,6 +579,21 @@ class MidiToVideoWithAudio:
             timestamp_text = f"Time: {current_time:.2f}s / {self.total_duration:.2f}s"
             cv2.putText(frame, timestamp_text, (20, 40), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
+            
+            # Add watermark in bottom right corner
+            watermark_text = "Created by Samuel Kurian Roy"
+            watermark_size = cv2.getTextSize(watermark_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
+            watermark_x = self.width - watermark_size[0] - 20
+            watermark_y = self.height - 20
+            # Add semi-transparent background for watermark
+            overlay = frame.copy()
+            cv2.rectangle(overlay, 
+                         (watermark_x - 10, watermark_y - watermark_size[1] - 10),
+                         (watermark_x + watermark_size[0] + 10, watermark_y + 10),
+                         (30, 30, 30), -1)
+            cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+            cv2.putText(frame, watermark_text, (watermark_x, watermark_y), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 2)
             
             # Write frame
             out.write(frame)
