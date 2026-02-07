@@ -66,3 +66,8 @@ mutagen
 
 # PDF manipulation
 PyPDF2>=3.0.0
+
+# MIDI to Video converter dependencies (cloud-optimized)
+mido>=1.3.0
+opencv-python-headless>=4.8.0  # Headless version for cloud deployment (no GUI dependencies)
+numpy>=1.24.0

@@ -26,7 +26,7 @@ try:
         admin_restrict_access, admin_unrestrict_access, admin_debug_features, admin_add_missing_features, admin_restore_all_features,
         admin_check_ai_model, admin_switch_ai_model, admin_test_ai_model,
         list_uploads_command, notation_status_command, missing_notations_command, update_notation_status_command,
-        ai_message_handler
+        ai_message_handler, midi_command, handle_midi_file
     )
     from telegram_handlers.conversations import (
         SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT,
@@ -277,6 +277,7 @@ upload_conv_handler = ConversationHandler(
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
+app.add_handler(CommandHandler("midi", midi_command))
 app.add_handler(bible_conv_handler)
 app.add_handler(bible_game_conv_handler)
 app.add_handler(settings_conv_handler)
@@ -346,6 +347,9 @@ app.add_handler(upload_conv_handler)
 app.add_handler(CommandHandler("updatesunday", update_sunday_songs))
 app.add_handler(CommandHandler("updatedate", update_date_songs))
 app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[HhLlCc\s-]*\d+$"), handle_song_code))
+
+# MIDI file handler - auto-process MIDI files
+app.add_handler(MessageHandler(filters.Document.MIDI | filters.Document.FileExtension("mid"), handle_midi_file))
 
 # AI Message Handler - Must be LAST to catch all unhandled text messages
 # This allows AI to interpret natural language queries

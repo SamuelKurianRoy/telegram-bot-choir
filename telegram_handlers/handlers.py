@@ -171,6 +171,10 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "• **/date**\n"
         "  - *Description:* Interactive date lookup. Start by typing `/date`, and the bot will ask you to enter a date (DD/MM/YYYY, DD/MM, or DD). You can enter multiple dates one after another to see the songs sung on those dates, until you type `/cancel` to stop.\n"
         "  - *Example:* Type `/date`, then enter a date like `05/04/2024`, and keep entering dates as needed.\n\n"
+        "• **/midi**\n"
+        "  - *Description:* Convert MIDI files to Synthesia-style piano videos with falling notes animation. Send a MIDI file (.mid or .midi) and receive a beautiful visualization video with audio.\n"
+        "  - *Features:* Automatic pitch detection, 3D keyboard animation, color-coded notes, generates video with synchronized audio\n"
+        "  - *Example:* Type `/midi` for instructions, then upload a MIDI file to convert it.\n\n"
         "• **/bible**\n"
         "  - *Description:* Interactive Bible passage lookup. Get Bible text directly in the chat with support for multiple languages. Malayalam is used by default.\n"
         "  - *Options:*\n"
@@ -2250,12 +2254,13 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/theme` - Search by themes
 • `/organist` - View organist assignments for songs
 
+🎹 *MIDI & Audio:*
+• `/midi` - Convert MIDI files to Synthesia-style piano videos
+• `/download` - Download audio from YouTube/Spotify links
+
 📖 *Bible & Spiritual:*
 • `/bible` - Bible verse lookup
 • `/games` - Bible quiz games
-
-🎚️ *Audio & Downloads:*
-• `/download` - Download audio from YouTube/Spotify links
 
 📅 *Schedule & Planning:*
 • `/date` - Check songs sung on specific dates
@@ -4283,3 +4288,205 @@ async def update_notation_status_command(update: Update, context: CallbackContex
         user_logger.error(f"Error in update_notation_status_command: {e}")
         import traceback
         traceback.print_exc()
+
+
+# === MIDI to Video Converter Command ===
+
+async def midi_command(update: Update, context: CallbackContext) -> None:
+    """
+    Handle /midi command to convert MIDI files to Synthesia-style videos
+    Accepts a MIDI file from the user and returns a video with falling notes animation
+    """
+    user = update.effective_user
+    user_logger.info(f"{user.full_name} (@{user.username}, ID: {user.id}) used /midi command")
+    
+    # Check authorization
+    if not await is_authorized(update):
+        return
+    
+    try:
+        # Check if user sent a file
+        if update.message.document:
+            document = update.message.document
+            
+            # Check if user sent a file
+            if not (document.file_name.lower().endswith('.mid') or document.file_name.lower().endswith('.midi')):
+                await update.message.reply_text(
+                    "❌ Please send a valid MIDI file (.mid or .midi extension)\n\n"
+                    "Example: Upload a .mid file and I'll create a Synthesia-style video!"
+                )
+                return
+            
+            # Check file size (limit to 10MB for cloud deployment)
+            if document.file_size > 10 * 1024 * 1024:
+                await update.message.reply_text(
+                    "❌ File too large! Please send a MIDI file smaller than 10MB.\n\n"
+                    "💡 Tip: Shorter songs (3-5 minutes) work best in the cloud environment."
+                )
+                return
+            
+            # Send processing message
+            status_msg = await update.message.reply_text(
+                "🎹 Processing your MIDI file...\n"
+                "This may take a few minutes depending on the length of the song.\n\n"
+                "⏳ Step 1/3: Downloading MIDI file..."
+            )
+            
+            # Download the MIDI file
+            import tempfile
+            import os
+            
+            temp_dir = tempfile.mkdtemp()
+            midi_file_path = os.path.join(temp_dir, document.file_name)
+            output_video_path = os.path.join(temp_dir, f"{os.path.splitext(document.file_name)[0]}.mp4")
+            
+            try:
+                file = await context.bot.get_file(document.file_id)
+                await file.download_to_drive(midi_file_path)
+                
+                await status_msg.edit_text(
+                    "🎹 Processing your MIDI file...\n\n"
+                    "✅ Step 1/3: MIDI file downloaded\n"
+                    "⏳ Step 2/3: Converting to video (this may take 3-8 minutes)...\n\n"
+                    "💡 Please be patient, cloud processing takes time!"
+                )
+                
+                # Convert MIDI to video with timeout protection for cloud deployment
+                from utils.midi_converter import convert_midi_to_video
+                import asyncio
+                
+                # Use cloud-optimized settings (lower resolution and fps for faster processing)
+                # This helps stay within Streamlit Cloud's resource limits
+                try:
+                    # Run conversion in executor to avoid blocking
+                    loop = asyncio.get_event_loop()
+                    success = await loop.run_in_executor(
+                        None,
+                        lambda: convert_midi_to_video(
+                            midi_path=midi_file_path,
+                            output_path=output_video_path,
+                            width=960,   # 960x540 (16:9 aspect ratio, cloud-optimized)
+                            height=540,
+                            fps=24,      # 24fps for faster processing and smaller file size
+                            include_audio=True
+                        )
+                    )
+                except asyncio.TimeoutError:
+                    await status_msg.edit_text(
+                        "❌ Conversion timed out. Your MIDI file might be too complex or too long.\n\n"
+                        "Please try:\n"
+                        "• A shorter MIDI file (under 4 minutes)\n"
+                        "• A simpler MIDI arrangement"
+                    )
+                    return
+                except Exception as conv_error:
+                    await status_msg.edit_text(
+                        f"❌ Conversion error: {str(conv_error)[:150]}\n\n"
+                        "This might be due to cloud resource limits. Try a shorter/simpler MIDI file."
+                    )
+                    user_logger.error(f"MIDI conversion error for user {user.id}: {conv_error}")
+                    return
+                
+                if not success:
+                    await status_msg.edit_text(
+                        "❌ Failed to convert MIDI to video. The file might be corrupted or empty.\n\n"
+                        "Please try another MIDI file."
+                    )
+                    return
+                
+                await status_msg.edit_text(
+                    "🎹 Processing your MIDI file...\n\n"
+                    "✅ Step 1/3: MIDI file downloaded\n"
+                    "✅ Step 2/3: Video generated successfully\n"
+                    "⏳ Step 3/3: Uploading video to Telegram..."
+                )
+                
+                # Check if video file exists and has reasonable size
+                if not os.path.exists(output_video_path):
+                    await status_msg.edit_text("❌ Video file was not generated. Please try again.")
+                    return
+                
+                video_size = os.path.getsize(output_video_path)
+                if video_size > 50 * 1024 * 1024:  # 50MB Telegram limit
+                    await status_msg.edit_text(
+                        "❌ Generated video is too large for Telegram (>50MB).\n\n"
+                        "Please try a shorter MIDI file."
+                    )
+                    return
+                
+                # Send the video
+                with open(output_video_path, 'rb') as video_file:
+                    await update.message.reply_video(
+                        video=video_file,
+                        caption=(
+                            f"🎹 <b>Synthesia Video Generated!</b>\n\n"
+                            f"📄 File: {document.file_name}\n"
+                            f"📊 Video Size: {video_size / (1024*1024):.2f} MB\n\n"
+                            f"Enjoy your piano visualization! 🎵"
+                        ),
+                        parse_mode="HTML",
+                        supports_streaming=True
+                    )
+                
+                await status_msg.edit_text(
+                    "✅ <b>Complete!</b>\n\n"
+                    "Your Synthesia-style video has been generated and sent successfully! 🎉",
+                    parse_mode="HTML"
+                )
+                
+                user_logger.info(f"Successfully converted MIDI to video for user {user.id}: {document.file_name}")
+                
+            except Exception as e:
+                await status_msg.edit_text(
+                    f"❌ Error during conversion: {str(e)[:200]}\n\n"
+                    "Please try again or contact the administrator if the problem persists."
+                )
+                user_logger.error(f"Error converting MIDI for user {user.id}: {e}")
+                import traceback
+                traceback.print_exc()
+            finally:
+                # Clean up temporary files
+                import shutil
+                try:
+                    if os.path.exists(temp_dir):
+                        shutil.rmtree(temp_dir)
+                except Exception as cleanup_error:
+                    user_logger.warning(f"Failed to clean up temp directory {temp_dir}: {cleanup_error}")
+        
+        else:
+            # No file attached, show instructions
+            await update.message.reply_text(
+                "🎹 <b>MIDI to Synthesia Video Converter</b>\n\n"
+                "Send me a MIDI file (.mid or .midi) and I'll create a  and audio!\n\n"
+                "📋 <b>How to use:</b>\n"
+                "1. Simply send a MIDI file to the bot\n"
+                "2. Wait while I process it (typically 2-5 minutes)\n"
+                "3. Receive your video with piano animation!\n\n"
+                "⚠️ <b>Cloud Deployment Limits:</b>\n"
+                "• Max MIDI file size: 10 MB\n"
+                "• Max output video size: 50 MB\n"
+                "• Recommended song length: 3-5 minutes\n"
+                "• Video output: 960x540 @ 24fps (optimized for cloud)\n\n"
+                "💡 <b>Best results:</b> Use MIDI files with clear piano parts and moderate length.
+                "• Longer songs take more time to process\n\n"
+                "🎵 Try it now by uploading a MIDI file!",
+                parse_mode="HTML"
+            )
+    
+    except Exception as e:
+        await update.message.reply_text(f"❌ Unexpected error: {str(e)[:150]}")
+        user_logger.error(f"Error in midi_command: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+async def handle_midi_file(update: Update, context: CallbackContext) -> None:
+    """
+    Handle MIDI files sent directly without the /midi command
+    """
+    # If user sends a MIDI file, process it automatically
+    if update.message.document:
+        document = update.message.document
+        if document.file_name.lower().endswith('.mid') or document.file_name.lower().endswith('.midi'):
+            # Call the midi_command handler
+            await midi_command(update, context)
