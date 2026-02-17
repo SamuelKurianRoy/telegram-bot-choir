@@ -20,6 +20,13 @@ import random
 import re
 from telegram_handlers.utils import get_wordproject_url_from_input, extract_bible_chapter_text, clean_bible_text
 
+# Import Google OAuth module
+try:
+    import google_oauth
+    GOOGLE_OAUTH_AVAILABLE = True
+except ImportError:
+    GOOGLE_OAUTH_AVAILABLE = False
+
 # Add at the top of the file
 STOP_SIGNAL_FILE = "/tmp/telegram_bot_stop_signal"
 
@@ -347,6 +354,11 @@ def check_password():
 
     # Session timeout (30 minutes)
     SESSION_TIMEOUT = 30 * 60  # 30 minutes in seconds
+    
+    # Handle Google OAuth callback if available
+    if GOOGLE_OAUTH_AVAILABLE:
+        if google_oauth.handle_oauth_callback():
+            return True
 
     def credentials_entered():
         """Checks whether username and password entered by the user are correct."""
@@ -427,6 +439,12 @@ def check_password():
             if st.button("🔓 Forgot Password?", use_container_width=True):
                 st.session_state["show_forgot_password"] = True
                 st.rerun()
+        
+        # Google Sign In option
+        if GOOGLE_OAUTH_AVAILABLE:
+            st.markdown("---")
+            st.markdown("**Or sign in with Google:**")
+            google_oauth.render_google_signin_button()
 
         # Forgot Password Form
         if st.session_state.get("show_forgot_password"):
