@@ -168,10 +168,27 @@ def check_google_sheets_credentials():
         if key not in st.secrets:
             missing_keys.append(key)
 
-    # Check if private key lines are available (l1, l2, l3, etc.)
-    private_key_lines = [st.secrets.get(f"l{i}") for i in range(1, 29)]
-    if not any(private_key_lines):
-        missing_keys.append("l1-l28 (private key lines)")
+    # Check if private key is available (either as single key or split lines)
+    has_private_key = False
+    
+    # First, try the new single private_key method
+    try:
+        if "private_key" in st.secrets and st.secrets.get("private_key"):
+            has_private_key = True
+    except (KeyError, AttributeError):
+        pass
+    
+    # If not found, try the old line-by-line method
+    if not has_private_key:
+        try:
+            private_key_lines = [st.secrets.get(f"l{i}") for i in range(1, 29)]
+            if any(private_key_lines):
+                has_private_key = True
+        except (KeyError, AttributeError):
+            pass
+    
+    if not has_private_key:
+        missing_keys.append("private_key (or l1-l28 lines)")
 
     return len(missing_keys) == 0, missing_keys
 
@@ -184,9 +201,18 @@ def sync_operation_to_google_sheet(operation):
             print(f"Google Sheets sync skipped - missing keys: {missing_keys}")
             return False
 
-        # Reconstruct private key from split lines (same as existing codebase)
-        lines = [st.secrets.get(f"l{i}") for i in range(1, 29)]
-        private_key = "\n".join([l for l in lines if l])
+        # Load private key (try direct method first, fallback to line-by-line)
+        try:
+            private_key = st.secrets.get("private_key")
+        except (KeyError, AttributeError):
+            private_key = None
+        
+        if not private_key:
+            try:
+                lines = [st.secrets.get(f"l{i}") for i in range(1, 29)]
+                private_key = "\n".join([l for l in lines if l])
+            except (KeyError, AttributeError):
+                private_key = ""
 
         # Setup Google Sheets service
         credentials_info = {
@@ -641,9 +667,18 @@ def setup_logging():
 # Setup Google Drive service
 def setup_google_drive():
     try:
-        # Check for missing environment variables
-        lines = [st.secrets[f"l{i}"] for i in range(1, 29)]
-        private_key = "\n".join(lines)
+        # Load private key (try direct method first, fallback to line-by-line)
+        try:
+            private_key = st.secrets.get("private_key")
+        except (KeyError, AttributeError):
+            private_key = None
+        
+        if not private_key:
+            try:
+                lines = [st.secrets[f"l{i}"] for i in range(1, 29)]
+                private_key = "\n".join(lines)
+            except (KeyError, AttributeError):
+                private_key = ""
         
         service_account_data = {
             "type": st.secrets["type"],
