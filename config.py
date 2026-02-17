@@ -42,13 +42,20 @@ class Config:
 
     def _load_service_account_data(self):
         # Try to load private key directly first
-        private_key = self.secrets.get("private_key")
+        try:
+            private_key = self.secrets.get("private_key")
+        except (KeyError, AttributeError):
+            private_key = None
         
         # If not found, fall back to line-by-line reconstruction (backward compatibility)
         if not private_key:
-            print("Private Key not found using backward logic")
-            lines = [self.secrets.get(f"l{i}") for i in range(1, 29)]
-            private_key = "\n".join([l for l in lines if l])
+            try:
+                lines = [self.secrets.get(f"l{i}") for i in range(1, 29)]
+                private_key = "\n".join([l for l in lines if l])
+            except (KeyError, AttributeError):
+                # If line-by-line also fails, private_key will remain None/empty
+                print("⚠️ Warning: Could not load private_key from secrets (neither 'private_key' nor 'l1-l28' found)")
+                private_key = ""
         
         return {
             "type": self.secrets.get("type"),
