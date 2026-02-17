@@ -63,3 +63,10 @@ venv_linux/
 docs/
 
 *.ipynb
+
+
+C94_20260206_151605.mid
+TESTING_MIDI.md
+piano.py
+test_midi.bat
+test_midi.sh

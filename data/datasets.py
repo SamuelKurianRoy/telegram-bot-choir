@@ -121,7 +121,7 @@ def yrDataPreprocessing():
                 continue
             
             year_df.columns = year_df.iloc[0]
-            year_df.drop(index=1, inplace=True)
+            year_df.drop(year_df.index[0], inplace=True)  # Drop first row by position, not by label
             year_df.reset_index(drop=True, inplace=True)
             year_df['Date'] = pd.to_datetime(year_df['Date']).dt.date
             year_data[year] = year_df  # Update the dict with preprocessed data
