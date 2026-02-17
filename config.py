@@ -46,6 +46,7 @@ class Config:
         
         # If not found, fall back to line-by-line reconstruction (backward compatibility)
         if not private_key:
+            print("Private Key not found using backward logic")
             lines = [self.secrets.get(f"l{i}") for i in range(1, 29)]
             private_key = "\n".join([l for l in lines if l])
         
