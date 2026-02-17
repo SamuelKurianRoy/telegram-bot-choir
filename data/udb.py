@@ -200,6 +200,23 @@ def is_user_authorized(user_id):
         return False
     return bool(user.get('is_authorized', False))
 
+def is_admin(user_id):
+    """
+    Check if a user is an admin.
+    Returns True if user is admin, False otherwise.
+    """
+    config = get_config()
+    # Check if user_id matches ADMIN_ID from config
+    if user_id == config.ADMIN_ID:
+        return True
+    
+    # Also check database is_admin field (for multiple admins support)
+    user = get_user_by_id(user_id)
+    if user is not None:
+        return bool(user.get('is_admin', False))
+    
+    return False
+
 def set_user_authorization(user_id, authorized=True):
     """
     Set authorization status for a user.
