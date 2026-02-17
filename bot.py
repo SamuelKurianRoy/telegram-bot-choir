@@ -39,7 +39,7 @@ try:
         start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback, handle_upload_notation_callback, handle_song_code,
         bible_game_start, bible_game_language_handler, bible_game_difficulty_handler, bible_game_question_handler, BIBLE_GAME_LANGUAGE, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION,
         initialize_theme_components,
-        organist_roster_start, rooster_menu_handler, filter_organist_selected, assign_song_selected, assign_organist_selected, cancel_organist, ROOSTER_MENU, FILTER_ORGANIST_SELECT, ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT,
+        organist_roster_start, rooster_menu_handler, filter_organist_selected, assign_song_selected, assign_organist_selected, special_menu_handler, special_song_selected, special_organist_selected, cancel_organist, ROOSTER_MENU, FILTER_ORGANIST_SELECT, ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT, SPECIAL_MENU, SPECIAL_SONG_SELECT, SPECIAL_ORGANIST_SELECT,
         update_sunday_songs,
         update_date_songs,
         assign_songs_start, assign_continue_or_done, cancel_assign_songs,
@@ -245,6 +245,9 @@ organist_roster_conv_handler = ConversationHandler(
         FILTER_ORGANIST_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, filter_organist_selected)],
         ASSIGN_SONG_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, assign_song_selected)],
         ASSIGN_ORGANIST_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, assign_organist_selected)],
+        SPECIAL_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, special_menu_handler)],
+        SPECIAL_SONG_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, special_song_selected)],
+        SPECIAL_ORGANIST_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, special_organist_selected)],
     },
     fallbacks=[CommandHandler("cancel", cancel_organist)],
 )

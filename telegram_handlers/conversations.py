@@ -3394,7 +3394,7 @@ def get_vocabulary_categories():
 # ========================================
 
 # States for organist roster conversation
-ROOSTER_MENU, FILTER_ORGANIST_SELECT, ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT = range(4)
+ROOSTER_MENU, FILTER_ORGANIST_SELECT, ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT, SPECIAL_MENU, SPECIAL_SONG_SELECT, SPECIAL_ORGANIST_SELECT = range(7)
 
 async def organist_roster_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start the organist roster command - show main menu with 4 options"""
@@ -3748,20 +3748,347 @@ async def assign_songs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def vestry_doxology_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle vestry/doxology settings - currently under development"""
+    """Show special songs menu - View current, Set Vestry, Set Doxology"""
+    from data.organist_roster import get_special_songs
+    
+    user = update.effective_user
+    user_logger.info(f"User {user.id} accessed vestry/doxology settings")
+    
+    # Create menu keyboard
+    keyboard = [
+        ["👁️ View Current Settings"],
+        ["🎵 Set Vestry Song"],
+        ["🎼 Set Doxology Song"],
+        ["⬅️ Back to Menu", "❌ Cancel"]
+    ]
+    
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    
+    message = (
+        "⚙️ *Special Songs Settings*\n\n"
+        "Manage Vestry and Doxology song assignments.\n\n"
+        "Select an option:"
+    )
+    
     await update.message.reply_text(
-        "⚙️ *Vestry/Doxology Settings*\n\n"
-        "🚧 This feature is currently under development.\n\n"
-        "Coming soon:\n"
-        "• Set vestry response organist\n"
-        "• Set doxology organist\n"
-        "• Manage special assignments",
+        message,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    return SPECIAL_MENU
+
+
+async def special_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle special songs menu selection"""
+    from data.organist_roster import get_special_songs
+    
+    selection = update.message.text.strip()
+    
+    if selection == "❌ Cancel":
+        await update.message.reply_text(
+            "Operation cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    elif selection == "⬅️ Back to Menu":
+        return await organist_roster_start(update, context)
+    
+    elif selection == "👁️ View Current Settings":
+        return await view_special_songs(update, context)
+    
+    elif selection == "🎵 Set Vestry Song":
+        context.user_data['special_song_type'] = 'Vestry'
+        return await show_available_special_songs(update, context, 'Vestry')
+    
+    elif selection == "🎼 Set Doxology Song":
+        context.user_data['special_song_type'] = 'Doxology'
+        return await show_available_special_songs(update, context, 'Doxology')
+    
+    else:
+        await update.message.reply_text(
+            "❌ Invalid selection.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
+
+async def view_special_songs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Display current special songs (Vestry and Doxology)"""
+    from data.organist_roster import get_special_songs
+    
+    success, songs, message = get_special_songs()
+    
+    if not success:
+        await update.message.reply_text(
+            f"❌ Could not load special songs.\n\n{message}",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    if not songs:
+        await update.message.reply_text(
+            "ℹ️ *Current Special Songs*\n\n"
+            "No special songs configured yet.\n\n"
+            "Use 'Set Vestry Song' or 'Set Doxology Song' to configure.",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Format the display
+    lines = ["⚙️ *Current Special Songs*\n"]
+    
+    for song in songs:
+        song_type = song['type']
+        song_code = song['song_code']
+        song_name = song['song_name']
+        organist = song['organist']
+        
+        # Build display string
+        if song_code and song_name:
+            display = f"{song_code} - {song_name}"
+        elif song_code:
+            display = song_code
+        elif song_name:
+            display = song_name
+        else:
+            display = "Not Set"
+        
+        lines.append(f"\n**{song_type}:**")
+        lines.append(f"  Song: {display}")
+        lines.append(f"  Organist: {organist}")
+    
+    message_text = "\n".join(lines)
+    
+    await update.message.reply_text(
+        message_text,
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=ReplyKeyboardRemove()
     )
     
-    user_logger.info(f"User {update.effective_user.id} accessed vestry/doxology settings (under development)")
+    user_logger.info(f"User {update.effective_user.id} viewed special songs")
     return ConversationHandler.END
+
+
+async def show_available_special_songs(update: Update, context: ContextTypes.DEFAULT_TYPE, song_type: str) -> int:
+    """Show available songs for Vestry or Doxology from Reference Sheet"""
+    from data.organist_roster import get_available_vestry_songs, get_available_doxology_songs
+    
+    # Get available songs based on type
+    if song_type == 'Vestry':
+        success, songs, message = get_available_vestry_songs()
+    else:  # Doxology
+        success, songs, message = get_available_doxology_songs()
+    
+    if not success:
+        await update.message.reply_text(
+            f"❌ Could not load available {song_type.lower()} songs.\n\n{message}",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    if not songs:
+        await update.message.reply_text(
+            f"❌ No {song_type.lower()} songs found in Reference Sheet.\n\n"
+            f"Please add songs to the '{song_type}' column in Reference Sheet.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Store songs in context
+    context.user_data['available_special_songs'] = songs
+    
+    # Create keyboard (2 per row)
+    keyboard = []
+    for i in range(0, len(songs), 2):
+        row = [songs[i]]
+        if i + 1 < len(songs):
+            row.append(songs[i + 1])
+        keyboard.append(row)
+    
+    keyboard.append(["⬅️ Back", "❌ Cancel"])
+    
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    
+    message = (
+        f"🎵 *Set {song_type} Song*\n\n"
+        f"Select a song from the available {song_type.lower()} songs:\n"
+        f"({len(songs)} options)"
+    )
+    
+    await update.message.reply_text(
+        message,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    return SPECIAL_SONG_SELECT
+
+
+async def special_song_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle special song selection - show organist list"""
+    from data.organist_roster import get_unique_organists
+    from data.datasets import IndexFinder
+    
+    selection = update.message.text.strip()
+    
+    if selection == "❌ Cancel":
+        await update.message.reply_text(
+            "Operation cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    if selection == "⬅️ Back":
+        return await vestry_doxology_settings(update, context)
+    
+    # Validate selection
+    available_songs = context.user_data.get('available_special_songs', [])
+    if selection not in available_songs:
+        await update.message.reply_text(
+            "❌ Invalid selection. Please choose from the list.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Parse the selection - could be just code or code + name
+    song_code = ''
+    song_name = ''
+    
+    # Check if it's a song code (H-XX, L-XX, C-XX pattern)
+    import re
+    if re.match(r'^[HLC]-\d+', selection.upper()):
+        # Extract just the code part (e.g., "H-21" from "H-21 - Song Name")
+        if ' - ' in selection:
+            parts = selection.split(' - ', 1)
+            song_code = parts[0].strip().upper()
+            song_name = parts[1].strip()
+        else:
+            song_code = selection.strip().upper()
+            # Use IndexFinder to get the song name
+            found_name = IndexFinder(song_code)
+            if found_name and found_name != "Invalid Number":
+                song_name = found_name
+    else:
+        # It's just a song name without code
+        song_name = selection.strip()
+        song_code = ''  # Will be stored as 'nil'
+    
+    # Store in context
+    context.user_data['selected_special_song_code'] = song_code
+    context.user_data['selected_special_song_name'] = song_name
+    
+    # Get organist list
+    organists = get_unique_organists()
+    
+    if not organists:
+        await update.message.reply_text(
+            "❌ Could not load organist list.\n\n"
+            "Please check the Reference Sheet has organists listed.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Create keyboard with organists (2 per row)
+    keyboard = []
+    for i in range(0, len(organists), 2):
+        row = [organists[i]]
+        if i + 1 < len(organists):
+            row.append(organists[i + 1])
+        keyboard.append(row)
+    
+    keyboard.append(["🚫 Unassigned"])
+    keyboard.append(["⬅️ Back", "❌ Cancel"])
+    
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    
+    # Display what they selected
+    song_type = context.user_data.get('special_song_type', 'Special')
+    if song_code and song_name:
+        display = f"{song_code} - {song_name}"
+    elif song_code:
+        display = song_code
+    else:
+        display = song_name
+    
+    message = (
+        f"🎵 *Setting {song_type} Song*\n\n"
+        f"Selected: {display}\n\n"
+        f"👤 Select an organist to assign:"
+    )
+    
+    await update.message.reply_text(
+        message,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    return SPECIAL_ORGANIST_SELECT
+
+
+async def special_organist_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle organist selection for special song - save to Special Songs sheet"""
+    from data.organist_roster import update_special_song
+    
+    selection = update.message.text.strip()
+    
+    if selection == "❌ Cancel":
+        await update.message.reply_text(
+            "Operation cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    if selection == "⬅️ Back":
+        # Go back to song selection
+        song_type = context.user_data.get('special_song_type', 'Vestry')
+        return await show_available_special_songs(update, context, song_type)
+    
+    # Get stored data
+    song_type = context.user_data.get('special_song_type', '')
+    song_code = context.user_data.get('selected_special_song_code', '')
+    song_name = context.user_data.get('selected_special_song_name', '')
+    
+    # Handle unassigned
+    organist = '' if selection == "🚫 Unassigned" else selection
+    
+    # Show progress
+    status_msg = await update.message.reply_text(
+        f"⏳ Updating {song_type} song...",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    
+    # Update the special song
+    success, message = update_special_song(song_type, song_code, song_name, organist)
+    
+    if success:
+        # Build display string
+        if song_code and song_name:
+            display = f"{song_code} - {song_name}"
+        elif song_code:
+            display = song_code
+        else:
+            display = song_name
+        
+        response = (
+            f"✅ *{song_type} Song Updated!*\n\n"
+            f"🎵 Song: {display}\n"
+            f"👤 Organist: {organist if organist else '🚫 Unassigned'}"
+        )
+        
+        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN)
+        user_logger.info(f"User {update.effective_user.id} updated {song_type}: {display} → {organist or 'Unassigned'}")
+    else:
+        await status_msg.edit_text(
+            f"❌ *Update Failed*\n\n{message}",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        user_logger.error(f"User {update.effective_user.id} failed to update {song_type}: {message}")
+    
+    return ConversationHandler.END
+
 
 async def cancel_organist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancel the organist roster conversation"""

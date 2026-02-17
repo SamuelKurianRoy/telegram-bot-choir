@@ -934,3 +934,244 @@ def get_songs_for_assignment():
     except Exception as e:
         user_logger.error(f"Error getting songs for assignment: {str(e)[:200]}")
         return False, [], f"Error: {str(e)[:100]}"
+
+
+# ============== Special Songs (Vestry/Doxology) Management ==============
+
+def get_special_songs():
+    """
+    Get current special songs (Vestry and Doxology) from 'Special Songs' sheet.
+    
+    Returns:
+        tuple: (success: bool, songs: list of dict, message: str)
+        Each song dict: {'type': str, 'song_code': str, 'song_name': str, 'organist': str}
+    """
+    try:
+        config = get_config()
+        roster_sheet_id = config.secrets.get("ORGANIST_ROSTER_SHEET_ID")
+        
+        if not roster_sheet_id:
+            return False, [], "ORGANIST_ROSTER_SHEET_ID not found in secrets"
+        
+        drive_service = get_drive_service()
+        
+        # Download the Excel file
+        request = drive_service.files().export_media(
+            fileId=roster_sheet_id,
+            mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        file_data = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_data, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        file_data.seek(0)
+        
+        # Read the 'Special Songs' sheet
+        try:
+            df = pd.read_excel(file_data, sheet_name='Special Songs')
+        except Exception as sheet_error:
+            user_logger.warning(f"'Special Songs' sheet not found: {str(sheet_error)[:50]}")
+            return False, [], "'Special Songs' sheet not found in workbook"
+        
+        # Validate columns
+        required_columns = ['Type', 'Song Code', 'Song Name', 'Organist']
+        for col in required_columns:
+            if col not in df.columns:
+                user_logger.error(f"Missing required column: {col} in Special Songs sheet")
+                return False, [], f"Missing column '{col}' in Special Songs sheet"
+        
+        # Parse the data
+        songs = []
+        for _, row in df.iterrows():
+            song_type = row['Type']
+            song_code = row['Song Code']
+            song_name = row['Song Name']
+            organist = row['Organist']
+            
+            # Skip completely empty rows
+            if pd.isna(song_type) and pd.isna(song_code) and pd.isna(song_name):
+                continue
+            
+            songs.append({
+                'type': str(song_type).strip() if pd.notna(song_type) else '',
+                'song_code': str(song_code).strip() if pd.notna(song_code) and str(song_code).lower() != 'nil' else '',
+                'song_name': str(song_name).strip() if pd.notna(song_name) else '',
+                'organist': str(organist).strip() if pd.notna(organist) else 'Not Assigned'
+            })
+        
+        user_logger.info(f"Retrieved {len(songs)} special songs")
+        return True, songs, f"Found {len(songs)} special songs"
+    
+    except Exception as e:
+        user_logger.error(f"Error getting special songs: {str(e)[:200]}")
+        return False, [], f"Error: {str(e)[:100]}"
+
+
+def get_available_vestry_songs():
+    """
+    Get available vestry songs from Reference Sheet.
+    
+    Returns:
+        tuple: (success: bool, songs: list of str, message: str)
+    """
+    global _reference_sheet_cache
+    
+    try:
+        # Load reference sheet if not cached
+        if _reference_sheet_cache is None:
+            df = load_reference_sheet()
+        else:
+            df = _reference_sheet_cache
+        
+        if df is None:
+            return False, [], "Could not load Reference Sheet"
+        
+        # Check if 'Vestry' column exists
+        if 'Vestry' not in df.columns:
+            user_logger.error(f"'Vestry' column not found. Available: {df.columns.tolist()}")
+            return False, [], "'Vestry' column not found in Reference Sheet"
+        
+        # Get vestry songs
+        vestry_songs = df['Vestry'].dropna().tolist()
+        vestry_songs = [str(song).strip() for song in vestry_songs if pd.notna(song) and str(song).strip()]
+        
+        user_logger.info(f"Found {len(vestry_songs)} vestry songs")
+        return True, vestry_songs, f"Found {len(vestry_songs)} vestry songs"
+    
+    except Exception as e:
+        user_logger.error(f"Error getting vestry songs: {str(e)[:100]}")
+        return False, [], f"Error: {str(e)[:100]}"
+
+
+def get_available_doxology_songs():
+    """
+    Get available doxology songs from Reference Sheet.
+    
+    Returns:
+        tuple: (success: bool, songs: list of str, message: str)
+    """
+    global _reference_sheet_cache
+    
+    try:
+        # Load reference sheet if not cached
+        if _reference_sheet_cache is None:
+            df = load_reference_sheet()
+        else:
+            df = _reference_sheet_cache
+        
+        if df is None:
+            return False, [], "Could not load Reference Sheet"
+        
+        # Check if 'Doxology' column exists
+        if 'Doxology' not in df.columns:
+            user_logger.error(f"'Doxology' column not found. Available: {df.columns.tolist()}")
+            return False, [], "'Doxology' column not found in Reference Sheet"
+        
+        # Get doxology songs
+        doxology_songs = df['Doxology'].dropna().tolist()
+        doxology_songs = [str(song).strip() for song in doxology_songs if pd.notna(song) and str(song).strip()]
+        
+        user_logger.info(f"Found {len(doxology_songs)} doxology songs")
+        return True, doxology_songs, f"Found {len(doxology_songs)} doxology songs"
+    
+    except Exception as e:
+        user_logger.error(f"Error getting doxology songs: {str(e)[:100]}")
+        return False, [], f"Error: {str(e)[:100]}"
+
+
+def update_special_song(song_type: str, song_code: str, song_name: str, organist: str):
+    """
+    Update or add a special song (Vestry/Doxology) in the 'Special Songs' sheet.
+    
+    Args:
+        song_type: 'Vestry' or 'Doxology'
+        song_code: Song code (e.g., 'H-21') or '' if not applicable
+        song_name: Song name
+        organist: Organist name or '' for unassigned
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        config = get_config()
+        roster_sheet_id = config.secrets.get("ORGANIST_ROSTER_SHEET_ID")
+        
+        if not roster_sheet_id:
+            return False, "ORGANIST_ROSTER_SHEET_ID not found in secrets"
+        
+        drive_service = get_drive_service()
+        
+        # Download current file
+        request = drive_service.files().export_media(
+            fileId=roster_sheet_id,
+            mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        file_data = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_data, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        file_data.seek(0)
+        
+        # Load workbook with openpyxl
+        wb = load_workbook(file_data)
+        
+        # Check if 'Special Songs' sheet exists
+        if 'Special Songs' not in wb.sheetnames:
+            # Create the sheet
+            ws = wb.create_sheet('Special Songs')
+            # Add headers
+            ws.cell(row=1, column=1, value='Type')
+            ws.cell(row=1, column=2, value='Song Code')
+            ws.cell(row=1, column=3, value='Song Name')
+            ws.cell(row=1, column=4, value='Organist')
+            user_logger.info("Created new 'Special Songs' sheet")
+        else:
+            ws = wb['Special Songs']
+        
+        # Find if this type already exists
+        type_row = None
+        for row_idx in range(2, ws.max_row + 1):
+            cell_type = ws.cell(row=row_idx, column=1).value
+            if cell_type and str(cell_type).strip().lower() == song_type.lower():
+                type_row = row_idx
+                break
+        
+        # If found, update; otherwise, add new row
+        if type_row:
+            row = type_row
+            user_logger.info(f"Updating existing {song_type} at row {row}")
+        else:
+            row = ws.max_row + 1
+            user_logger.info(f"Adding new {song_type} at row {row}")
+        
+        # Write data
+        ws.cell(row=row, column=1, value=song_type)
+        ws.cell(row=row, column=2, value=song_code if song_code else 'nil')
+        ws.cell(row=row, column=3, value=song_name)
+        ws.cell(row=row, column=4, value=organist if organist else '')
+        
+        # Save to BytesIO
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # Upload back to Google Drive
+        media = MediaIoBaseUpload(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            resumable=True
+        )
+        
+        drive_service.files().update(
+            fileId=roster_sheet_id,
+            media_body=media
+        ).execute()
+        
+        user_logger.info(f"✅ Updated {song_type}: {song_code or song_name} → {organist or 'Unassigned'}")
+        return True, f"✅ {song_type} updated successfully"
+    
+    except Exception as e:
+        user_logger.error(f"Error updating special song: {str(e)[:200]}")
+        return False, f"Error: {str(e)[:100]}"
