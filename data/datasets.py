@@ -112,10 +112,17 @@ def yrDataPreprocessing():
     # Process each year's dataframe dynamically
     for year, year_df in year_data.items():
         if year_df is not None:
-            # First, set column names from the first row
-            year_df.columns = year_df.iloc[0]
-            year_df.drop(year_df.index[0], inplace=True)  # Drop header row
-            year_df.reset_index(drop=True, inplace=True)
+            # Debug: Print original columns
+            print(f"Year {year} - Original columns: {year_df.columns.tolist()}")
+            print(f"Year {year} - First row values: {year_df.iloc[0].tolist() if len(year_df) > 0 else 'empty'}")
+            
+            # Check if 'Date' is already in columns (header was auto-detected)
+            if 'Date' not in year_df.columns:
+                # Header not detected, use first row as column names
+                year_df.columns = year_df.iloc[0]
+                year_df.drop(year_df.index[0], inplace=True)  # Drop header row
+                year_df.reset_index(drop=True, inplace=True)
+                print(f"Year {year} - Columns after header extraction: {year_df.columns.tolist()}")
             
             # Now drop rows with NaN values in the data
             year_df.dropna(inplace=True)
@@ -126,7 +133,12 @@ def yrDataPreprocessing():
                 year_data[year] = None
                 continue
             
-            year_df['Date'] = pd.to_datetime(year_df['Date']).dt.date
+            # Check if Date column exists before processing
+            if 'Date' in year_df.columns:
+                year_df['Date'] = pd.to_datetime(year_df['Date']).dt.date
+            else:
+                print(f"Warning: Year {year} - 'Date' column not found. Available columns: {year_df.columns.tolist()}")
+            
             year_data[year] = year_df  # Update the dict with preprocessed data
     
     if dfH is not None:
