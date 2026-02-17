@@ -828,12 +828,12 @@ def get_unused_songs(category: str, duration: str):
 
 ### Organist Commands
 
-#### /organist
+#### /rooster
 - **Type:** ConversationHandler
 - **States:** ORGANIST_SELECTION
 - **Function:** View/manage organist roster
 - **Flow:**
-  1. User sends `/organist`
+  1. User sends `/rooster`
   2. Bot displays unique organists
   3. User selects organist
   4. Bot shows songs assigned to that organist
@@ -1037,7 +1037,7 @@ def get_unused_songs(category: str, duration: str):
 **Examples:**
 - "What songs did we sing on Christmas?" → `/date 25/12/2024`
 - "Find H-44" → `/search` + song lookup
-- "Who is the organist?" → `/organist`
+- "Who is the organist?" → `/rooster`
 - "Show me some hymns about love" → `/theme` + "love"
 
 **AI Providers:**
@@ -1351,7 +1351,7 @@ You are a helpful assistant for a choir management bot.
 Available commands:
 - /date: Find songs by date
 - /search: Search songs
-- /organist: View organist roster
+- /rooster: View organist roster
 - /bible: Look up Bible verses
 - /download: Download audio
 - /last: When song was last sung

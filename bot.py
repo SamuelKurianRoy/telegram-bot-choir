@@ -39,10 +39,10 @@ try:
         start_comment, process_comment, COMMENT, cancel_comment, reply_to_user, REPLY, send_reply_to_user, handle_notation_callback, handle_upload_notation_callback, handle_song_code,
         bible_game_start, bible_game_language_handler, bible_game_difficulty_handler, bible_game_question_handler, BIBLE_GAME_LANGUAGE, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION,
         initialize_theme_components,
-        organist_roster_start, organist_selection, cancel_organist, ORGANIST_SELECTION,
+        organist_roster_start, rooster_menu_handler, filter_organist_selected, assign_song_selected, assign_organist_selected, cancel_organist, ROOSTER_MENU, FILTER_ORGANIST_SELECT, ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT,
         update_sunday_songs,
         update_date_songs,
-        assign_songs_start, assign_song_selected, assign_organist_selected, assign_continue_or_done, cancel_assign_songs, ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT,
+        assign_songs_start, assign_continue_or_done, cancel_assign_songs,
         unused_songs_start, unused_duration_selected, unused_category_selected, cancel_unused_songs, UNUSED_DURATION_SELECT, UNUSED_CATEGORY_SELECT,
         upload_start, upload_file_received, upload_filename_received, upload_description_received, cancel_upload, UPLOAD_FILE, UPLOAD_FILENAME, UPLOAD_DESCRIPTION
     )
@@ -239,22 +239,17 @@ settings_conv_handler = ConversationHandler(
 
 # Register the organist roster conversation handler
 organist_roster_conv_handler = ConversationHandler(
-    entry_points=[CommandHandler("organist", organist_roster_start)],
+    entry_points=[CommandHandler("rooster", organist_roster_start)],
     states={
-        ORGANIST_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, organist_selection)],
+        ROOSTER_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, rooster_menu_handler)],
+        FILTER_ORGANIST_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, filter_organist_selected)],
+        ASSIGN_SONG_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, assign_song_selected)],
+        ASSIGN_ORGANIST_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, assign_organist_selected)],
     },
     fallbacks=[CommandHandler("cancel", cancel_organist)],
 )
 
-# Register the assign songs conversation handler
-assign_songs_conv_handler = ConversationHandler(
-    entry_points=[CommandHandler("assignsongs", assign_songs_start)],
-    states={
-        ASSIGN_SONG_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, assign_song_selected)],
-        ASSIGN_ORGANIST_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, assign_organist_selected)],
-    },
-    fallbacks=[CommandHandler("cancel", cancel_assign_songs)],
-)
+# Note: /assignsongs command has been integrated into /rooster menu
 
 # Register the unused songs conversation handler
 unused_songs_conv_handler = ConversationHandler(
@@ -343,7 +338,7 @@ app.add_handler(reply_conv_handler)
 app.add_handler(download_conv_handler)
 app.add_handler(notation_conv_handler)
 app.add_handler(organist_roster_conv_handler)
-app.add_handler(assign_songs_conv_handler)
+# assign_songs_conv_handler is now integrated into organist_roster_conv_handler (rooster menu)
 app.add_handler(unused_songs_conv_handler)
 app.add_handler(upload_conv_handler)
 app.add_handler(CommandHandler("updatesunday", update_sunday_songs))

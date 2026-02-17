@@ -3394,58 +3394,38 @@ def get_vocabulary_categories():
 # ========================================
 
 # States for organist roster conversation
-ORGANIST_SELECTION = range(1)
-
-# Assign songs states
-ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT = range(2)
+ROOSTER_MENU, FILTER_ORGANIST_SELECT, ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT = range(4)
 
 async def organist_roster_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Start the organist roster command - show list of organists to choose from"""
-    from data.organist_roster import get_unique_organists, get_unassigned_songs, get_roster_summary
+    """Start the organist roster command - show main menu with 4 options"""
+    from data.organist_roster import get_roster_summary
     
     user = update.effective_user
-    user_logger.info(f"User {user.id} ({user.first_name}) started /organist command")
+    user_logger.info(f"User {user.id} ({user.first_name}) started /rooster command")
     
-    # Get organist list
-    organists = get_unique_organists()
+    # Get summary statistics
     summary = get_roster_summary()
     
-    if not organists and summary['unassigned_songs'] == 0:
-        await update.message.reply_text(
-            "❌ Could not load organist roster data.\n\n"
-            "Please check:\n"
-            "• ORGANIST_ROSTER_SHEET_ID is set in secrets\n"
-            "• Sheet contains 'Order of Songs' tab\n"
-            "• Required columns exist: 'Song/ Responses', 'Name of The Organist'"
-        )
-        return ConversationHandler.END
-    
-    # Create keyboard with organists + "Unassigned Songs" option
-    keyboard = []
-    
-    # Add organists (2 per row)
-    for i in range(0, len(organists), 2):
-        row = [organists[i]]
-        if i + 1 < len(organists):
-            row.append(organists[i + 1])
-        keyboard.append(row)
-    
-    # Add "Unassigned Songs", "Full Roster" and "Cancel" buttons
-    keyboard.append(["📋 Full Roster Table"])
-    keyboard.append(["🎹 Unassigned Songs"])
-    keyboard.append(["❌ Cancel"])
+    # Create main menu keyboard
+    keyboard = [
+        ["📋 View Full Roster"],
+        ["🔍 Filter by Organist"],
+        ["🎵 Assign Songs"],
+        ["⚙️ Vestry/Doxology Settings"],
+        ["❌ Cancel"]
+    ]
     
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     
-    # Create summary message
+    # Create welcome message
     message = (
-        "🎶 *Organist Roster*\n\n"
+        "🎶 *Organist Roster Management*\n\n"
         f"📊 *Summary:*\n"
         f"• Total Songs: {summary['total_songs']}\n"
         f"• Assigned: {summary['assigned_songs']}\n"
         f"• Unassigned: {summary['unassigned_songs']}\n"
         f"• Total Organists: {summary['total_organists']}\n\n"
-        f"👤 Select an organist to see their assigned songs:"
+        f"Please select an option:"
     )
     
     await update.message.reply_text(
@@ -3454,14 +3434,12 @@ async def organist_roster_start(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode=ParseMode.MARKDOWN
     )
     
-    return ORGANIST_SELECTION
+    return ROOSTER_MENU
 
-async def organist_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle organist selection and display their songs"""
-    from data.organist_roster import get_songs_by_organist, get_unassigned_songs, get_full_roster_table
-    
+async def rooster_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle main menu selection for rooster command"""
     user = update.effective_user
-    selection = update.message.text
+    selection = update.message.text.strip()
     
     if selection == "❌ Cancel":
         await update.message.reply_text(
@@ -3470,53 +3448,152 @@ async def organist_selection(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return ConversationHandler.END
     
-    # Handle full roster table view
-    if selection == "📋 Full Roster Table":
-        roster_table = get_full_roster_table()
-        
-        if not roster_table:
-            await update.message.reply_text(
-                "❌ Could not load roster data.",
-                reply_markup=ReplyKeyboardRemove()
-            )
-            return ConversationHandler.END
-        
-        # Format table
-        table_lines = []
-        for i, (song, organist) in enumerate(roster_table, 1):
-            # Use fixed width formatting for better alignment
-            table_lines.append(f"{i}. {song} → {organist}")
-        
-        table_text = "\n".join(table_lines)
-        
-        message = (
-            f"📋 *Full Roster Table* ({len(roster_table)} entries)\n\n"
-            f"{table_text}"
+    elif selection == "📋 View Full Roster":
+        return await view_full_roster(update, context)
+    
+    elif selection == "🔍 Filter by Organist":
+        return await filter_by_organist_start(update, context)
+    
+    elif selection == "🎵 Assign Songs":
+        return await assign_songs_menu(update, context)
+    
+    elif selection == "⚙️ Vestry/Doxology Settings":
+        return await vestry_doxology_settings(update, context)
+    
+    else:
+        await update.message.reply_text(
+            "❌ Invalid selection. Please choose from the menu.",
+            reply_markup=ReplyKeyboardRemove()
         )
-        
-        # Split message if too long
-        if len(message) > 4000:
-            await update.message.reply_text(
-                f"📋 *Full Roster Table* ({len(roster_table)} entries)\n\n",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=ReplyKeyboardRemove()
-            )
-            # Send in chunks
-            chunk_size = 40
-            for i in range(0, len(roster_table), chunk_size):
-                chunk = roster_table[i:i+chunk_size]
-                chunk_lines = [f"{i+j+1}. {song} → {organist}" for j, (song, organist) in enumerate(chunk)]
-                chunk_text = "\n".join(chunk_lines)
-                await update.message.reply_text(chunk_text)
-        else:
-            await update.message.reply_text(
-                message,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=ReplyKeyboardRemove()
-            )
-        
-        user_logger.info(f"User {user.id} viewed full roster table ({len(roster_table)} entries)")
         return ConversationHandler.END
+
+
+async def view_full_roster(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Display the full roster table including unassigned songs"""
+    from data.organist_roster import get_full_roster_table, get_unassigned_songs
+    
+    user = update.effective_user
+    
+    # Get the full roster
+    roster_table = get_full_roster_table()
+    
+    if not roster_table:
+        await update.message.reply_text(
+            "❌ Could not load roster data.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Format table
+    table_lines = []
+    for i, (song, organist) in enumerate(roster_table, 1):
+        table_lines.append(f"{i}. {song} → {organist}")
+    
+    table_text = "\n".join(table_lines)
+    
+    # Get unassigned songs
+    unassigned_songs = get_unassigned_songs()
+    
+    message = (
+        f"📋 *Full Roster Table* ({len(roster_table)} entries)\n\n"
+        f"{table_text}"
+    )
+    
+    # Split message if too long
+    if len(message) > 4000:
+        await update.message.reply_text(
+            f"📋 *Full Roster Table* ({len(roster_table)} entries)\n\n",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardRemove()
+        )
+        # Send in chunks
+        chunk_size = 40
+        for i in range(0, len(roster_table), chunk_size):
+            chunk = roster_table[i:i+chunk_size]
+            chunk_lines = [f"{i+j+1}. {song} → {organist}" for j, (song, organist) in enumerate(chunk)]
+            chunk_text = "\n".join(chunk_lines)
+            await update.message.reply_text(chunk_text)
+    else:
+        await update.message.reply_text(
+            message,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=ReplyKeyboardRemove()
+        )
+    
+    # Show unassigned songs if any
+    if unassigned_songs:
+        unassigned_text = "\n".join([f"{i+1}. {song}" for i, song in enumerate(unassigned_songs)])
+        await update.message.reply_text(
+            f"🎹 *Unassigned Songs* ({len(unassigned_songs)} total)\n\n{unassigned_text}",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    
+    user_logger.info(f"User {user.id} viewed full roster table ({len(roster_table)} entries)")
+    return ConversationHandler.END
+
+
+async def filter_by_organist_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show list of organists to filter by"""
+    from data.organist_roster import get_unique_organists
+    
+    user = update.effective_user
+    
+    # Get organist list
+    organists = get_unique_organists()
+    
+    if not organists:
+        await update.message.reply_text(
+            "❌ Could not load organist list.\n\n"
+            "Please check the Reference Sheet has organists listed.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Create keyboard with organists (2 per row)
+    keyboard = []
+    for i in range(0, len(organists), 2):
+        row = [organists[i]]
+        if i + 1 < len(organists):
+            row.append(organists[i + 1])
+        keyboard.append(row)
+    
+    # Add special options
+    keyboard.append(["🎹 Unassigned Songs"])
+    keyboard.append(["⬅️ Back to Menu", "❌ Cancel"])
+    
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    
+    message = (
+        "👤 *Filter by Organist*\n\n"
+        f"Select an organist to view their assigned songs:"
+    )
+    
+    await update.message.reply_text(
+        message,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    return FILTER_ORGANIST_SELECT
+
+
+async def filter_organist_selected(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle organist selection and show their songs"""
+    from data.organist_roster import get_songs_by_organist, get_unassigned_songs
+    
+    user = update.effective_user
+    selection = update.message.text.strip()
+    
+    if selection == "❌ Cancel":
+        await update.message.reply_text(
+            "Operation cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    if selection == "⬅️ Back to Menu":
+        # Go back to main menu
+        return await organist_roster_start(update, context)
     
     # Handle unassigned songs
     if selection == "🎹 Unassigned Songs":
@@ -3600,6 +3677,90 @@ async def organist_selection(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
     
     user_logger.info(f"User {user.id} viewed songs for {organist_name} ({len(songs)} songs)")
+    return ConversationHandler.END
+
+
+async def assign_songs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start the assign songs process - show songs from 'Songs for Sunday'"""
+    from data.organist_roster import get_songs_for_assignment
+    from telegram_handlers.handlers import is_authorized
+    
+    user = update.effective_user
+    user_logger.info(f"User {user.id} ({user.first_name}) requested assign songs")
+    
+    # Check authorization
+    if not await is_authorized(update):
+        await update.message.reply_text(
+            "🚫 You need admin authorization to assign songs.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Get songs from 'Songs for Sunday' sheet
+    success, songs, message = get_songs_for_assignment()
+    
+    if not success:
+        await update.message.reply_text(
+            f"❌ Could not load songs for assignment.\n\n{message}\n\n"
+            "Please ensure:\n"
+            "• Songs for Sunday sheet has been updated with /updatesunday\n"
+            "• Sheet contains 'Songs' column with valid song codes",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    if not songs:
+        await update.message.reply_text(
+            "❌ No songs found in 'Songs for Sunday' sheet.\n\n"
+            "Please run /updatesunday first to populate the songs.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Store songs in context
+    context.user_data['songs_for_assignment'] = songs
+    
+    # Create keyboard with songs (2 per row)
+    keyboard = []
+    for i in range(0, len(songs), 2):
+        row = [songs[i]]
+        if i + 1 < len(songs):
+            row.append(songs[i + 1])
+        keyboard.append(row)
+    
+    keyboard.append(["⬅️ Back to Menu", "❌ Cancel"])
+    
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    
+    message = (
+        "🎵 *Assign Songs to Organists*\n\n"
+        f"📋 Found {len(songs)} songs for this Sunday:\n\n"
+        "👉 Select a song to assign to an organist:"
+    )
+    
+    await update.message.reply_text(
+        message,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    return ASSIGN_SONG_SELECT
+
+
+async def vestry_doxology_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle vestry/doxology settings - currently under development"""
+    await update.message.reply_text(
+        "⚙️ *Vestry/Doxology Settings*\n\n"
+        "🚧 This feature is currently under development.\n\n"
+        "Coming soon:\n"
+        "• Set vestry response organist\n"
+        "• Set doxology organist\n"
+        "• Manage special assignments",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=ReplyKeyboardRemove()
+    )
+    
+    user_logger.info(f"User {update.effective_user.id} accessed vestry/doxology settings (under development)")
     return ConversationHandler.END
 
 async def cancel_organist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -3784,6 +3945,10 @@ async def assign_song_selected(update: Update, context: ContextTypes.DEFAULT_TYP
     
     selected_song = update.message.text.strip()
     
+    # Handle back to menu
+    if selected_song == "⬅️ Back to Menu":
+        return await organist_roster_start(update, context)
+    
     # Handle "Assign More Songs" choice
     if selected_song == "🎵 Assign More Songs":
         # Just continue to song selection - songs already loaded in context
@@ -3794,7 +3959,7 @@ async def assign_song_selected(update: Update, context: ContextTypes.DEFAULT_TYP
             if i + 1 < len(songs):
                 row.append(songs[i + 1])
             keyboard.append(row)
-        keyboard.append(["❌ Cancel"])
+        keyboard.append(["⬅️ Back to Menu", "❌ Cancel"])
         
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         
@@ -3838,7 +4003,7 @@ async def assign_song_selected(update: Update, context: ContextTypes.DEFAULT_TYP
     if not organists:
         await update.message.reply_text(
             "❌ Could not load organist list.\n\n"
-            "Please check the 'Order of Songs' sheet has organists listed.",
+            "Please check the Reference Sheet has organists listed.",
             reply_markup=ReplyKeyboardRemove()
         )
         return ConversationHandler.END

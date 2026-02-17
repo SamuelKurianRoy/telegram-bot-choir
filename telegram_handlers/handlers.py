@@ -190,9 +190,9 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "  - *Description:* Play an interactive Bible verse guessing game! Test your knowledge by identifying Bible references from verses. Choose from Easy, Medium, or Hard difficulty levels.\n"
         "  - *Features:* Two languages (English & Malayalam), score tracking, separate leaderboards by difficulty, real-time verse fetching\n"
         "  - *Example:* Type `/games` and follow the prompts to select language and difficulty.\n\n"
-        "• **/organist**\n"
+        "• **/rooster**\n"
         "  - *Description:* View organist assignments for songs. See which songs are assigned to each organist or view unassigned songs.\n"
-        "  - *Example:* Type `/organist`, select an organist from the list, or choose 'Unassigned Songs' to see songs without an organist.\n\n"
+        "  - *Example:* Type `/rooster`, select an organist from the list, or choose 'Unassigned Songs' to see songs without an organist.\n\n"
         "• **/updatesunday**\n"
         "  - *Description:* Update the 'Songs for Sunday' sheet with songs from the next available date in the database.\n"
         "  - *Example:* Type `/updatesunday` to automatically populate the sheet with songs from the next scheduled date.\n\n"
@@ -2252,7 +2252,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/search` - Search songs by various criteria
 • `/vocabulary` - Access choir vocabulary
 • `/theme` - Search by themes
-• `/organist` - View organist assignments for songs
+• `/rooster` - View organist assignments for songs
 
 🎹 *MIDI & Audio:*
 • `/midi` - Convert MIDI files to Synthesia-style piano videos
@@ -3886,8 +3886,8 @@ async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
             else:
                 await update.message.reply_text("Please specify what you'd like to search for.")
         
-        elif command == "organist":
-            # Import and call organist handler
+        elif command == "rooster":
+            # Import and call organist roster handler
             from telegram_handlers.conversations import organist_roster_start
             await organist_roster_start(update, context)
         

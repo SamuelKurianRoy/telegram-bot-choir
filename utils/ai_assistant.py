@@ -94,7 +94,7 @@ def parse_user_intent(user_message: str, conversation_history: list = None) -> d
         
     Returns:
         dict with keys:
-            - command: The bot command to execute (e.g., 'date', 'search', 'organist')
+            - command: The bot command to execute (e.g., 'date', 'search', 'rooster')
             - parameters: Dict of parameters needed for the command
             - response_text: Optional conversational response
             - confidence: Confidence score (0-1)
@@ -161,7 +161,7 @@ IMPORTANT: Today's date is {today.strftime("%d/%m/%Y")} (DD/MM/YYYY format). Las
 Available commands:
 1. /date <DD/MM/YYYY> - Find songs sung on a specific date (e.g., "What songs were sung on Christmas?" → /date 25/12/2024)
 2. /search - Search for songs by title, lyrics, or hymn number (e.g., "Find H-44" or "Search for Emmanuel")
-3. /organist - View organist assignments (e.g., "Who is the organist?" or "Show organist roster")
+3. /rooster - View organist roster and assignments (e.g., "Who is the organist?" or "Show organist roster")
 4. /last <song_code> - Check when a song was last sung (e.g., "When was H-44 last sung?")
 5. /check <song_code> - Get details about a song (e.g., "Tell me about L-323")
 6. /tune <song_code> - Find tune information (e.g., "What tune is H-44?")
