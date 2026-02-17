@@ -41,9 +41,14 @@ class Config:
         self.WEBHOOK_URL = os.environ.get("WEBHOOK_URL", None)  # Optional: https://yourapp.streamlit.app/webhook
 
     def _load_service_account_data(self):
-        # Reconstruct private key from split lines if needed
-        lines = [self.secrets.get(f"l{i}") for i in range(1, 29)]
-        private_key = "\n".join([l for l in lines if l])
+        # Try to load private key directly first
+        private_key = self.secrets.get("private_key")
+        
+        # If not found, fall back to line-by-line reconstruction (backward compatibility)
+        if not private_key:
+            lines = [self.secrets.get(f"l{i}") for i in range(1, 29)]
+            private_key = "\n".join([l for l in lines if l])
+        
         return {
             "type": self.secrets.get("type"),
             "project_id": self.secrets.get("project_id"),
