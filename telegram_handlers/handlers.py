@@ -2212,7 +2212,6 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 🔧 **Admin Commands List**
 
 **System & Sync Management:**
-• `/refresh` - Reload all datasets from Google Drive
 • `/syncstatus` - Check auto-sync status and last sync times
 • `/syncinfo` - Detailed sync analytics (mode, API usage, performance)
 • `/forcesync` - Manually trigger dataset sync
@@ -2280,6 +2279,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 
 📅 *Schedule & Planning:*
 • `/date` - Check songs sung on specific dates
+• `/refresh` - Reload all datasets from Google Drive
 • `/updatesunday` - Update Sunday Songs sheet with next available date (admin only)
 • `/updatedate` - Update Sunday Songs sheet with custom date (admin only)
 • `/assignsongs` - Assign Sunday songs to organists (admin only)
