@@ -4063,6 +4063,12 @@ async def special_organist_selected(update: Update, context: ContextTypes.DEFAUL
     # Update the special song
     success, message = update_special_song(song_type, song_code, song_name, organist)
     
+    # Delete the progress message
+    try:
+        await status_msg.delete()
+    except Exception as e:
+        user_logger.warning(f"Could not delete status message: {e}")
+    
     if success:
         # Build display string
         if song_code and song_name:
@@ -4078,10 +4084,10 @@ async def special_organist_selected(update: Update, context: ContextTypes.DEFAUL
             f"👤 Organist: {organist if organist else '🚫 Unassigned'}"
         )
         
-        await status_msg.edit_text(response, parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
         user_logger.info(f"User {update.effective_user.id} updated {song_type}: {display} → {organist or 'Unassigned'}")
     else:
-        await status_msg.edit_text(
+        await update.message.reply_text(
             f"❌ *Update Failed*\n\n{message}",
             parse_mode=ParseMode.MARKDOWN
         )
