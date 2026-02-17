@@ -112,20 +112,33 @@ def yrDataPreprocessing():
     # Process each year's dataframe dynamically
     for year, year_df in year_data.items():
         if year_df is not None:
-            # Debug: Print original columns
-            print(f"Year {year} - Original columns: {year_df.columns.tolist()}")
-            print(f"Year {year} - First row values: {year_df.iloc[0].tolist() if len(year_df) > 0 else 'empty'}")
-            
             # Check if 'Date' is already in columns (header was auto-detected)
             if 'Date' not in year_df.columns:
-                # Header not detected, use first row as column names
-                year_df.columns = year_df.iloc[0]
-                year_df.drop(year_df.index[0], inplace=True)  # Drop header row
-                year_df.reset_index(drop=True, inplace=True)
-                print(f"Year {year} - Columns after header extraction: {year_df.columns.tolist()}")
+                # Header not detected - find the first non-empty row to use as header
+                header_row_idx = None
+                for idx in range(len(year_df)):
+                    row_values = year_df.iloc[idx].tolist()
+                    # Check if row has at least one non-NaN value
+                    if any(pd.notna(val) for val in row_values):
+                        # Check if this looks like a header row (contains 'Date' or similar)
+                        if any(str(val).lower() in ['date', 'song', 'theme'] for val in row_values if pd.notna(val)):
+                            header_row_idx = idx
+                            break
+                
+                if header_row_idx is not None:
+                    # Use this row as column names
+                    year_df.columns = year_df.iloc[header_row_idx]
+                    # Drop all rows up to and including the header
+                    year_df = year_df.iloc[header_row_idx + 1:].copy()
+                    year_df.reset_index(drop=True, inplace=True)
+                    print(f"Year {year} - Found header at row {header_row_idx}, columns: {year_df.columns.tolist()}")
+                else:
+                    print(f"Warning: Year {year} - Could not find valid header row")
+                    year_data[year] = None
+                    continue
             
-            # Now drop rows with NaN values in the data
-            year_df.dropna(inplace=True)
+            # Now drop rows with all NaN values in the data
+            year_df.dropna(how='all', inplace=True)
             
             # Check if dataframe is empty after dropping NaN values
             if year_df.empty:
