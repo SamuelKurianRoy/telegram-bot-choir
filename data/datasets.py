@@ -112,6 +112,12 @@ def yrDataPreprocessing():
     # Process each year's dataframe dynamically
     for year, year_df in year_data.items():
         if year_df is not None:
+            # First, set column names from the first row
+            year_df.columns = year_df.iloc[0]
+            year_df.drop(year_df.index[0], inplace=True)  # Drop header row
+            year_df.reset_index(drop=True, inplace=True)
+            
+            # Now drop rows with NaN values in the data
             year_df.dropna(inplace=True)
             
             # Check if dataframe is empty after dropping NaN values
@@ -120,9 +126,6 @@ def yrDataPreprocessing():
                 year_data[year] = None
                 continue
             
-            year_df.columns = year_df.iloc[0]
-            year_df.drop(year_df.index[0], inplace=True)  # Drop first row by position, not by label
-            year_df.reset_index(drop=True, inplace=True)
             year_df['Date'] = pd.to_datetime(year_df['Date']).dt.date
             year_data[year] = year_df  # Update the dict with preprocessed data
     
