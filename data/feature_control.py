@@ -104,6 +104,12 @@ class FeatureController:
                 'description': 'Upload and contribute sheet music files',
                 'commands': '/upload, file uploads',
                 'enabled': True
+            },
+            'refresh': {
+                'name': 'Refresh Data',
+                'description': 'Reload all bot datasets and configurations',
+                'commands': '/refresh',
+                'enabled': True
             }
         }
     
@@ -227,6 +233,10 @@ class FeatureController:
                 'restriction_reason': '',           # Reason for restriction
                 'restricted_by_admin_id': '',       # Who applied the restriction
                 'restricted_date': '',              # When restriction was applied
+                'admin_only': False,                # Admin-only access
+                'admin_only_reason': '',            # Reason for admin-only
+                'admin_only_by_admin_id': '',       # Who set admin-only
+                'admin_only_date': '',              # When set to admin-only
                 'last_modified': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             })
 
@@ -331,6 +341,14 @@ class FeatureController:
                 'disabled_reason': row['disabled_reason'] if pd.notna(row['disabled_reason']) else '',
                 'disabled_by_admin_id': row['disabled_by_admin_id'] if pd.notna(row['disabled_by_admin_id']) else '',
                 'disabled_date': row['disabled_date'] if pd.notna(row['disabled_date']) else '',
+                'restricted_to_authorized': bool(row.get('restricted_to_authorized', False)) if pd.notna(row.get('restricted_to_authorized', False)) else False,
+                'restriction_reason': row.get('restriction_reason', '') if pd.notna(row.get('restriction_reason', '')) else '',
+                'restricted_by_admin_id': row.get('restricted_by_admin_id', '') if pd.notna(row.get('restricted_by_admin_id', '')) else '',
+                'restricted_date': row.get('restricted_date', '') if pd.notna(row.get('restricted_date', '')) else '',
+                'admin_only': bool(row.get('admin_only', False)) if pd.notna(row.get('admin_only', False)) else False,
+                'admin_only_reason': row.get('admin_only_reason', '') if pd.notna(row.get('admin_only_reason', '')) else '',
+                'admin_only_by_admin_id': row.get('admin_only_by_admin_id', '') if pd.notna(row.get('admin_only_by_admin_id', '')) else '',
+                'admin_only_date': row.get('admin_only_date', '') if pd.notna(row.get('admin_only_date', '')) else '',
                 'last_modified': row['last_modified'] if pd.notna(row['last_modified']) else ''
             }
 
@@ -358,6 +376,10 @@ class FeatureController:
                     'restriction_reason': row['restriction_reason'] if pd.notna(row.get('restriction_reason', '')) else '',
                     'restricted_by_admin_id': row['restricted_by_admin_id'] if pd.notna(row.get('restricted_by_admin_id', '')) else '',
                     'restricted_date': row['restricted_date'] if pd.notna(row.get('restricted_date', '')) else '',
+                    'admin_only': bool(row.get('admin_only', False)) if pd.notna(row.get('admin_only', False)) else False,
+                    'admin_only_reason': row.get('admin_only_reason', '') if pd.notna(row.get('admin_only_reason', '')) else '',
+                    'admin_only_by_admin_id': row.get('admin_only_by_admin_id', '') if pd.notna(row.get('admin_only_by_admin_id', '')) else '',
+                    'admin_only_date': row.get('admin_only_date', '') if pd.notna(row.get('admin_only_date', '')) else '',
                     'last_modified': row['last_modified'] if pd.notna(row['last_modified']) else ''
                 }
 
@@ -480,6 +502,95 @@ class FeatureController:
             logger.error(f"Error checking feature restriction: {e}")
             return False  # Default to not restricted on error
 
+    def is_admin_only(self, feature_name: str) -> bool:
+        """Check if a feature is admin-only"""
+        try:
+            df = self._load_from_drive()
+
+            # Find the feature in the DataFrame
+            feature_row = df[df['feature_name'] == feature_name]
+
+            if feature_row.empty:
+                return False  # Unknown features are not admin-only
+
+            # Check if admin_only column exists and is True
+            if 'admin_only' in df.columns:
+                return bool(feature_row.iloc[0]['admin_only'])
+            else:
+                return False  # Not admin-only if column doesn't exist
+
+        except Exception as e:
+            logger.error(f"Error checking admin-only status: {e}")
+            return False  # Default to not admin-only on error
+
+    def set_admin_only(self, feature_name: str, admin_id: int, reason: str = None) -> tuple[bool, str]:
+        """Set a feature to admin-only"""
+        try:
+            df = self._load_from_drive()
+
+            # Find the feature in the DataFrame
+            feature_idx = df[df['feature_name'] == feature_name].index
+
+            if feature_idx.empty:
+                return False, f"Unknown feature: {feature_name}"
+
+            # Ensure admin_only columns exist
+            if 'admin_only' not in df.columns:
+                df['admin_only'] = False
+                df['admin_only_reason'] = ''
+                df['admin_only_by_admin_id'] = ''
+                df['admin_only_date'] = ''
+
+            # Update the feature
+            idx = feature_idx[0]
+            df.loc[idx, 'admin_only'] = True
+            df.loc[idx, 'admin_only_reason'] = reason or "Restricted to administrators only"
+            df.loc[idx, 'admin_only_by_admin_id'] = str(admin_id)
+            df.loc[idx, 'admin_only_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            df.loc[idx, 'last_modified'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Save to Google Drive
+            if self._save_to_drive(df):
+                feature_display_name = df.loc[idx, 'feature_display_name']
+                return True, f"🔐 **{feature_display_name}** is now admin-only"
+            else:
+                return False, "Failed to save configuration to Google Drive"
+
+        except Exception as e:
+            logger.error(f"Error setting admin-only: {e}")
+            return False, f"Error setting admin-only: {str(e)}"
+
+    def unset_admin_only(self, feature_name: str, admin_id: int) -> tuple[bool, str]:
+        """Remove admin-only restriction from a feature"""
+        try:
+            df = self._load_from_drive()
+
+            # Find the feature in the DataFrame
+            feature_idx = df[df['feature_name'] == feature_name].index
+
+            if feature_idx.empty:
+                return False, f"Unknown feature: {feature_name}"
+
+            # Update the feature
+            idx = feature_idx[0]
+            if 'admin_only' in df.columns:
+                df.loc[idx, 'admin_only'] = False
+                df.loc[idx, 'admin_only_reason'] = ''
+                df.loc[idx, 'admin_only_by_admin_id'] = ''
+                df.loc[idx, 'admin_only_date'] = ''
+            df.loc[idx, 'last_modified'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Save to Google Drive
+            if self._save_to_drive(df):
+                feature_display_name = df.loc[idx, 'feature_display_name']
+                return True, f"🔓 **{feature_display_name}** is no longer admin-only"
+            else:
+                return False, "Failed to save configuration to Google Drive"
+
+        except Exception as e:
+            logger.error(f"Error unsetting admin-only: {e}")
+            return False, f"Error unsetting admin-only: {str(e)}"
+
 # Global instance (lazy initialization to avoid startup errors)
 _feature_controller = None
 
@@ -524,9 +635,17 @@ def is_feature_restricted(feature_name: str) -> bool:
         logger.error(f"Error checking feature restriction: {e}")
         return False  # Default to not restricted on error
 
+def is_admin_only(feature_name: str) -> bool:
+    """Quick function to check if feature is admin-only"""
+    try:
+        return get_feature_controller().is_admin_only(feature_name)
+    except Exception as e:
+        logger.error(f"Error checking admin-only status: {e}")
+        return False  # Default to not admin-only on error
+
 def can_user_access_feature(feature_name: str, user_id: int) -> tuple[bool, Optional[str]]:
     """
-    Check if a user can access a feature (considering both enabled status and restrictions)
+    Check if a user can access a feature (considering enabled status, restrictions, and admin-only)
     Returns (can_access, error_message)
     """
     try:
@@ -535,6 +654,28 @@ def can_user_access_feature(feature_name: str, user_id: int) -> tuple[bool, Opti
         # Check if feature is enabled
         if not controller.is_feature_enabled(feature_name):
             return False, controller.get_disabled_message(feature_name)
+
+        # Check if feature is admin-only
+        if controller.is_admin_only(feature_name):
+            # Check if user is admin
+            from data.udb import is_admin
+
+            if not is_admin(user_id):
+                feature_info = controller.get_feature_status(feature_name)
+                feature_display_name = feature_info.get('name', feature_name.title())
+                admin_only_reason = feature_info.get('admin_only_reason', 'Restricted to administrators only')
+
+                admin_only_message = (
+                    f"🔐 **{feature_display_name} - Admin Only**\n\n"
+                    f"This feature is currently restricted to administrators only.\n\n"
+                    f"**Reason:** {admin_only_reason}\n\n"
+                    f"**What you can do:**\n"
+                    f"• Contact the administrator if you need access\n"
+                    f"• Use other available bot features\n\n"
+                    f"Type /help to see available commands."
+                )
+
+                return False, admin_only_message
 
         # Check if feature is restricted to authorized users
         if controller.is_feature_restricted(feature_name):

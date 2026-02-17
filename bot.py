@@ -23,7 +23,8 @@ try:
         admin_view_authorized_users, admin_add_authorized_user, admin_remove_authorized_user,
         admin_reply_start, admin_reply_select_user, admin_reply_send_message, REPLY_SELECT_USER, REPLY_ENTER_MESSAGE, admin_reply_legacy,
         admin_disable_feature, admin_enable_feature, admin_feature_status,
-        admin_restrict_access, admin_unrestrict_access, admin_debug_features, admin_add_missing_features, admin_restore_all_features,
+        admin_restrict_access, admin_unrestrict_access, admin_set_admin_only, admin_unset_admin_only,
+        admin_debug_features, admin_add_missing_features, admin_restore_all_features,
         admin_check_ai_model, admin_switch_ai_model, admin_test_ai_model,
         list_uploads_command, notation_status_command, missing_notations_command, update_notation_status_command,
         ai_message_handler, midi_command, handle_midi_file
@@ -307,6 +308,10 @@ app.add_handler(CommandHandler("feature_status", admin_feature_status))
 # Access restriction admin commands
 app.add_handler(CommandHandler("restrict_access", admin_restrict_access))
 app.add_handler(CommandHandler("unrestrict_access", admin_unrestrict_access))
+
+# Admin-only control commands
+app.add_handler(CommandHandler("set_admin_only", admin_set_admin_only))
+app.add_handler(CommandHandler("unset_admin_only", admin_unset_admin_only))
 
 # Debug admin commands
 app.add_handler(CommandHandler("debug_features", admin_debug_features))

@@ -254,19 +254,33 @@ async def refresh_command(update: Update, context: CallbackContext) -> None:
     user = update.effective_user
     config = get_config()
 
-    # Check if user is admin
-    admin_id = config.ADMIN_ID
-    if user.id != admin_id:
-        await update.message.reply_text(
-            "🚫 **Access Denied**\n\n"
-            "The `/refresh` command is restricted to administrators only.\n\n"
-            "This command reloads all bot data and should only be used by admins.",
-            parse_mode="Markdown"
-        )
-        user_logger.warning(f"Unauthorized /refresh attempt by {user.full_name} (@{user.username}, ID: {user.id})")
-        return
+    # Check if refresh feature is enabled and user has access
+    try:
+        from data.feature_control import can_user_access_feature
 
-    user_logger.info(f"Admin {user.full_name} (@{user.username}, ID: {user.id}) used /refresh")
+        can_access, error_message = can_user_access_feature('refresh', user.id)
+        if not can_access:
+            await update.message.reply_text(
+                error_message,
+                parse_mode="Markdown"
+            )
+            user_logger.info(f"Refresh access blocked for {user.full_name} ({user.id}) - {error_message[:50]}...")
+            return
+    except Exception as feature_check_error:
+        bot_logger.error(f"Error checking refresh feature access: {feature_check_error}")
+        # Fall back to admin-only check if feature check fails
+        admin_id = config.ADMIN_ID
+        if user.id != admin_id:
+            await update.message.reply_text(
+                "🚫 **Access Denied**\n\n"
+                "The `/refresh` command is restricted to administrators only.\n\n"
+                "This command reloads all bot data and should only be used by admins.",
+                parse_mode="Markdown"
+            )
+            user_logger.warning(f"Unauthorized /refresh attempt by {user.full_name} (@{user.username}, ID: {user.id})")
+            return
+
+    user_logger.info(f"User {user.full_name} (@{user.username}, ID: {user.id}) used /refresh")
 
     # Store message IDs to delete later
     progress_messages = []
@@ -2216,6 +2230,8 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/enable <feature>` - Enable a bot feature
 • `/restrict_access <feature> [reason]` - Restrict feature to authorized users only
 • `/unrestrict_access <feature>` - Remove access restriction
+• `/set_admin_only <feature> [reason]` - Set feature to admin-only access
+• `/unset_admin_only <feature>` - Remove admin-only restriction
 • `/feature_status` - View all feature statuses
 • `/debug_features` - Debug feature loading (troubleshooting)
 • `/add_missing_features` - Add missing features to Database
@@ -2697,10 +2713,11 @@ async def admin_feature_status(update: Update, context: CallbackContext) -> None
             # Status icons
             enabled_icon = "✅" if feature_info['enabled'] else "❌"
             restricted_icon = "🔒" if feature_info.get('restricted_to_authorized', False) else ""
+            admin_only_icon = "🔐" if feature_info.get('admin_only', False) else ""
 
             feature_display = feature_info['name']
 
-            status_text += f"{enabled_icon}{restricted_icon} **{feature_display}**\n"
+            status_text += f"{enabled_icon}{restricted_icon}{admin_only_icon} **{feature_display}**\n"
             status_text += f"   Commands: {', '.join(feature_info['commands'])}\n"
 
             # Show disabled status
@@ -2716,6 +2733,21 @@ async def admin_feature_status(update: Update, context: CallbackContext) -> None
                         pass
                 status_text += f"   ❌ Disabled: {modified_date}\n"
                 status_text += f"   Reason: {reason}\n"
+
+            # Show admin-only status
+            if feature_info.get('admin_only', False):
+                admin_only_reason = feature_info.get('admin_only_reason', 'No reason provided')
+                admin_only_date = feature_info.get('admin_only_date', 'Unknown')
+                if admin_only_date and admin_only_date != 'Unknown':
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(admin_only_date)
+                        admin_only_date = dt.strftime('%Y-%m-%d %H:%M')
+                    except:
+                        pass
+                status_text += f"   🔐 Admin-Only: {admin_only_date}\n"
+                status_text += f"   Access: Administrators only\n"
+                status_text += f"   Reason: {admin_only_reason}\n"
 
             # Show restriction status
             if feature_info.get('restricted_to_authorized', False):
@@ -2739,9 +2771,11 @@ async def admin_feature_status(update: Update, context: CallbackContext) -> None
         status_text += "• `/enable <feature>` - Enable a feature\n"
         status_text += "• `/restrict_access <feature> [reason]` - Restrict to authorized users\n"
         status_text += "• `/unrestrict_access <feature>` - Remove access restriction\n"
+        status_text += "• `/set_admin_only <feature> [reason]` - Set feature to admin-only\n"
+        status_text += "• `/unset_admin_only <feature>` - Remove admin-only restriction\n"
         status_text += "• `/feature_status` - View this status\n\n"
         status_text += "**Legend:**\n"
-        status_text += "✅ = Enabled, ❌ = Disabled, 🔒 = Restricted to authorized users"
+        status_text += "✅ = Enabled, ❌ = Disabled, 🔒 = Restricted to authorized users, 🔐 = Admin-only"
 
         await update.message.reply_text(status_text, parse_mode="Markdown")
         user_logger.info(f"Admin {user.id} viewed feature status")
@@ -2847,6 +2881,104 @@ async def admin_unrestrict_access(update: Update, context: CallbackContext) -> N
     except Exception as e:
         await update.message.reply_text(f"❌ Error unrestricting access: {str(e)}")
         user_logger.error(f"Error in admin_unrestrict_access: {e}")
+
+# === ADMIN-ONLY CONTROL COMMANDS ===
+
+async def admin_set_admin_only(update: Update, context: CallbackContext) -> None:
+    """Admin command to set a feature to admin-only"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        # Import feature controller
+        from data.feature_control import get_feature_controller
+
+        feature_controller = get_feature_controller()
+
+        # Get feature name from command arguments
+        if not context.args:
+            available_features = feature_controller.get_available_features()
+            features_list = "\n".join([f"• `{f}`" for f in available_features])
+
+            await update.message.reply_text(
+                f"❌ **Feature name required**\n\n"
+                f"**Usage:** `/set_admin_only <feature> [reason]`\n\n"
+                f"**Available features:**\n{features_list}\n\n"
+                f"**Example:** `/set_admin_only refresh Admin maintenance command`",
+                parse_mode="Markdown"
+            )
+            return
+
+        feature_name = context.args[0].lower()
+        reason = " ".join(context.args[1:]) if len(context.args) > 1 else "Restricted to administrators only"
+
+        success, message = feature_controller.set_admin_only(feature_name, user.id, reason)
+
+        if success:
+            await update.message.reply_text(
+                f"{message}\n\n**Reason:** {reason}\n\n"
+                f"Only administrators can now access this feature.\n"
+                f"Non-admin users will see an admin-only message.",
+                parse_mode="Markdown"
+            )
+            user_logger.info(f"Admin {user.id} set '{feature_name}' to admin-only: {reason}")
+        else:
+            await update.message.reply_text(f"❌ {message}")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error setting admin-only: {str(e)}")
+        user_logger.error(f"Error in admin_set_admin_only: {e}")
+
+async def admin_unset_admin_only(update: Update, context: CallbackContext) -> None:
+    """Admin command to remove admin-only restriction from a feature"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        # Import feature controller
+        from data.feature_control import get_feature_controller
+
+        feature_controller = get_feature_controller()
+
+        # Get feature name from command arguments
+        if not context.args:
+            available_features = feature_controller.get_available_features()
+            features_list = "\n".join([f"• `{f}`" for f in available_features])
+
+            await update.message.reply_text(
+                f"❌ **Feature name required**\n\n"
+                f"**Usage:** `/unset_admin_only <feature>`\n\n"
+                f"**Available features:**\n{features_list}\n\n"
+                f"**Example:** `/unset_admin_only refresh`",
+                parse_mode="Markdown"
+            )
+            return
+
+        feature_name = context.args[0].lower()
+
+        success, message = feature_controller.unset_admin_only(feature_name, user.id)
+
+        if success:
+            await update.message.reply_text(
+                f"{message}\n\n"
+                f"All users can now access this feature normally.",
+                parse_mode="Markdown"
+            )
+            user_logger.info(f"Admin {user.id} removed admin-only from '{feature_name}'")
+        else:
+            await update.message.reply_text(f"❌ {message}")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error unsetting admin-only: {str(e)}")
+        user_logger.error(f"Error in admin_unset_admin_only: {e}")
 
 async def admin_debug_features(update: Update, context: CallbackContext) -> None:
     """Admin command to debug feature loading"""

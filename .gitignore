@@ -45,6 +45,15 @@ discover_gemini_models.py
 test_*.py
 *_test.py
 
+# Migration and diagnostic scripts
+migrate_*.py
+*_diagnostics.py
+setup_*.py
+
+# Backup files
+*.bak
+oldbot.py.bak
+
 # Download temporary files and logs
 temp/
 download_log.txt
@@ -52,6 +61,8 @@ download_log.txt
 *.mp4
 *.wav
 *.m4a
+*.mid
+*.midi
 audio_downloader_bot.py
 audio_downloader_streamlit_app.py
 audio_downloader_debug.py
@@ -64,7 +75,8 @@ docs/
 
 *.ipynb
 
-C94_20260206_151605.mid
+# Generated MIDI and test files (moved to patterns above)
+# C94_20260206_151605.mid - now covered by *.mid
 TESTING_MIDI.md
 piano.py
 test_midi.bat
