@@ -15,6 +15,7 @@ bot_logger, user_logger = setup_loggers()
 
 # Global cache for organist roster data
 _organist_roster_cache = None
+_reference_sheet_cache = None
 
 def load_organist_roster_data():
     """
@@ -85,6 +86,55 @@ def get_organist_roster_data():
     user_logger.info(f"Cache hit - using cached organist roster ({len(_organist_roster_cache)} entries)")
     return _organist_roster_cache
 
+def load_reference_sheet():
+    """
+    Load reference sheet data from Google Sheet and cache it.
+    Reads from the 'Reference Sheet' to get list of organists.
+    
+    Returns:
+        DataFrame with 'Organists' column or None if failed
+    """
+    global _reference_sheet_cache
+    
+    try:
+        config = get_config()
+        roster_sheet_id = config.secrets.get("ORGANIST_ROSTER_SHEET_ID")
+        
+        if not roster_sheet_id:
+            user_logger.error("ORGANIST_ROSTER_SHEET_ID not found in secrets")
+            return None
+        
+        drive_service = get_drive_service()
+        
+        # Download the Excel file
+        request = drive_service.files().export_media(
+            fileId=roster_sheet_id,
+            mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        file_data = io.BytesIO()
+        downloader = MediaIoBaseDownload(file_data, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        file_data.seek(0)
+        
+        # Read the Excel file - specifically the 'Reference Sheet'
+        df = pd.read_excel(file_data, sheet_name='Reference Sheet')
+        
+        # Ensure 'Organists' column exists
+        if 'Organists' not in df.columns:
+            user_logger.error(f"Missing 'Organists' column in Reference Sheet. Available: {df.columns.tolist()}")
+            return None
+        
+        # Cache the data
+        _reference_sheet_cache = df
+        user_logger.info("✅ Reference sheet loaded and cached successfully")
+        return df
+    
+    except Exception as e:
+        user_logger.error(f"Reference sheet load error: {str(e)[:100]}")
+        return None
+
 def reload_organist_roster():
     """
     Force reload of organist roster data from Google Sheet.
@@ -93,34 +143,44 @@ def reload_organist_roster():
     Returns:
         bool: True if reload successful, False otherwise
     """
-    result = load_organist_roster_data()
-    return result is not None
+    global _reference_sheet_cache
+    roster_result = load_organist_roster_data()
+    ref_result = load_reference_sheet()
+    return roster_result is not None and ref_result is not None
 
 def get_unique_organists():
     """
-    Get list of unique organists from the roster.
+    Get list of unique organists from the Reference Sheet.
     
     Returns:
         list: List of unique organist names (excluding empty/NaN values)
     """
-    df = get_organist_roster_data()
+    global _reference_sheet_cache
+    
+    # Load reference sheet if not cached
+    if _reference_sheet_cache is None:
+        user_logger.info("Cache miss - loading Reference Sheet from Google Drive")
+        df = load_reference_sheet()
+    else:
+        user_logger.info("Cache hit - using cached Reference Sheet")
+        df = _reference_sheet_cache
     
     if df is None:
         return []
     
     try:
-        # Get unique organists, excluding NaN values
-        organists = df['Name of The Organist'].dropna().unique().tolist()
-        # Remove empty strings
-        organists = [org for org in organists if str(org).strip()]
-        # Sort alphabetically
-        organists.sort()
+        # Get organists from 'Organists' column, excluding NaN values
+        organists = df['Organists'].dropna().tolist()
+        # Remove empty strings and strip whitespace
+        organists = [str(org).strip() for org in organists if pd.notna(org) and str(org).strip()]
+        # Remove duplicates (if any) and sort alphabetically
+        organists = sorted(set(organists))
         
-        user_logger.info(f"Found {len(organists)} unique organists")
+        user_logger.info(f"Found {len(organists)} unique organists from Reference Sheet")
         return organists
     
     except Exception as e:
-        user_logger.error(f"Error getting organists: {str(e)[:50]}")
+        user_logger.error(f"Error getting organists from Reference Sheet: {str(e)[:100]}")
         return []
 
 def get_songs_by_organist(organist_name: str):
