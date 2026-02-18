@@ -20,13 +20,18 @@ SCOPES = ['openid', 'https://www.googleapis.com/auth/userinfo.email', 'https://w
 def get_google_oauth_config():
     """Load Google OAuth credentials from Streamlit secrets"""
     try:
-        return {
+        config = {
             'client_id': st.secrets.get("GOOGLE_OAUTH_CLIENT_ID"),
             'client_secret': st.secrets.get("GOOGLE_OAUTH_CLIENT_SECRET"),
             'redirect_uri': st.secrets.get("GOOGLE_OAUTH_REDIRECT_URI", "http://localhost:8501"),
             'auth_uri': "https://accounts.google.com/o/oauth2/auth",
             'token_uri': "https://oauth2.googleapis.com/token",
         }
+        
+        # Debug: Print configuration (remove in production)
+        # st.write("DEBUG - Redirect URI configured:", config['redirect_uri'])
+        
+        return config
     except Exception as e:
         st.error(f"Google OAuth configuration error: {e}")
         return None
@@ -55,8 +60,9 @@ def create_oauth_flow():
         redirect_uri=config['redirect_uri']
     )
     
-    # Disable HTTPS requirement for local development
-    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+    # Disable HTTPS requirement ONLY for local development
+    if 'localhost' in config['redirect_uri'] or '127.0.0.1' in config['redirect_uri']:
+        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
     
     return flow
 
@@ -182,6 +188,13 @@ def render_google_signin_button():
     if not config or not config.get('client_id'):
         st.info("💡 Google Sign In is not configured. Add GOOGLE_OAUTH_CLIENT_ID to secrets to enable it.")
         return False
+    
+    # Add diagnostic info
+    with st.expander("🔍 OAuth Configuration (for debugging)"):
+        st.write("**Redirect URI configured:**", config.get('redirect_uri'))
+        st.write("**Client ID configured:**", "Yes" if config.get('client_id') else "No")
+        st.warning("⚠️ Make sure this EXACT redirect URI is added in Google Cloud Console → Credentials → OAuth Client ID → Authorized redirect URIs")
+        st.info("💡 For Streamlit Cloud, it should be: `https://your-app-name.streamlit.app` (no trailing slash)")
     
     # Create custom HTML/CSS for Google Sign In button
     st.markdown("""
