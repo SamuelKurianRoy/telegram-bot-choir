@@ -68,21 +68,54 @@ def create_oauth_flow():
 
 def get_google_signin_url():
     """Generate Google Sign In authorization URL"""
-    flow = create_oauth_flow()
-    
-    if not flow:
+    try:
+        flow = create_oauth_flow()
+        
+        if not flow:
+            st.error("❌ Failed to create OAuth flow")
+            return None
+        
+        config = get_google_oauth_config()
+        
+        # Debug: Show configuration details
+        st.write("🔍 **DEBUG - OAuth Configuration:**")
+        st.write(f"- Client ID: {config['client_id'][:20]}...{config['client_id'][-20:]}")
+        st.write(f"- Redirect URI: `{config['redirect_uri']}`")
+        st.write(f"- Scopes: {SCOPES}")
+        
+        authorization_url, state = flow.authorization_url(
+            access_type='online',
+            include_granted_scopes='true',
+            prompt='select_account'
+        )
+        
+        # Store state in session for verification
+        st.session_state['oauth_state'] = state
+        
+        # Debug: Show the authorization URL
+        st.write("🔗 **Authorization URL generated:**")
+        st.code(authorization_url, language=None)
+        
+        # Show what to check in Google Cloud Console
+        st.warning("⚠️ **Verify in Google Cloud Console:**")
+        st.markdown(f"""
+        1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+        2. Click your OAuth 2.0 Client ID
+        3. Make sure **Authorized redirect URIs** contains EXACTLY:
+           ```
+           {config['redirect_uri']}
+           ```
+        4. Go to **OAuth consent screen** → Scroll down to **Test users**
+        5. Make sure your email is added as a test user
+        6. Save and wait 2-3 minutes for changes to propagate
+        """)
+        
+        return authorization_url
+    except Exception as e:
+        st.error(f"❌ Error generating sign-in URL: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
         return None
-    
-    authorization_url, state = flow.authorization_url(
-        access_type='online',
-        include_granted_scopes='true',
-        prompt='select_account'
-    )
-    
-    # Store state in session for verification
-    st.session_state['oauth_state'] = state
-    
-    return authorization_url
 
 def verify_google_oauth_callback(auth_code):
     """
@@ -95,22 +128,39 @@ def verify_google_oauth_callback(auth_code):
         dict: User information or None if verification fails
     """
     try:
+        st.write("🔍 **DEBUG - Starting callback verification...**")
+        st.write(f"- Auth code received: {auth_code[:20]}...")
+        
         flow = create_oauth_flow()
         
         if not flow:
+            st.error("❌ Failed to create OAuth flow in callback")
             return None
         
+        st.write("✅ OAuth flow created successfully")
+        
         # Exchange authorization code for credentials
+        st.write("🔄 Exchanging authorization code for credentials...")
         flow.fetch_token(code=auth_code)
         credentials = flow.credentials
         
+        st.write("✅ Token exchange successful")
+        
         # Get user info from Google
+        st.write("📧 Fetching user info from Google...")
         user_info = get_google_user_info(credentials)
+        
+        if user_info:
+            st.write("✅ User info retrieved:")
+            st.write(f"- Email: {user_info.get('email')}")
+            st.write(f"- Name: {user_info.get('name')}")
         
         return user_info
     
     except Exception as e:
-        st.error(f"OAuth verification error: {e}")
+        st.error(f"❌ OAuth verification error: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
         return None
 
 def get_google_user_info(credentials):
@@ -189,12 +239,7 @@ def render_google_signin_button():
         st.info("💡 Google Sign In is not configured. Add GOOGLE_OAUTH_CLIENT_ID to secrets to enable it.")
         return False
     
-    # Add diagnostic info
-    with st.expander("🔍 OAuth Configuration (for debugging)"):
-        st.write("**Redirect URI configured:**", config.get('redirect_uri'))
-        st.write("**Client ID configured:**", "Yes" if config.get('client_id') else "No")
-        st.warning("⚠️ Make sure this EXACT redirect URI is added in Google Cloud Console → Credentials → OAuth Client ID → Authorized redirect URIs")
-        st.info("💡 For Streamlit Cloud, it should be: `https://your-app-name.streamlit.app` (no trailing slash)")
+    st.info("🔍 **DEBUG MODE ENABLED** - Detailed OAuth information will be shown below the button.")
     
     # Create custom HTML/CSS for Google Sign In button
     st.markdown("""
@@ -254,14 +299,36 @@ def handle_oauth_callback():
     # Check if we have an authorization code in the URL
     query_params = st.query_params
     
+    # Debug: Show all query parameters
+    if len(query_params) > 0:
+        st.write("🔍 **DEBUG - Query parameters received:**")
+        for key, value in query_params.items():
+            if key == 'code':
+                st.write(f"- {key}: {value[:20]}... (truncated)")
+            else:
+                st.write(f"- {key}: {value}")
+    
+    if 'error' in query_params:
+        st.error(f"❌ Google OAuth Error: {query_params['error']}")
+        if 'error_description' in query_params:
+            st.error(f"Description: {query_params['error_description']}")
+        st.query_params.clear()
+        return False
+    
     if 'code' in query_params:
         auth_code = query_params['code']
         state = query_params.get('state')
         
+        st.write("🔍 **DEBUG - OAuth callback received**")
+        
         # Verify state matches
         if state != st.session_state.get('oauth_state'):
             st.error("❌ Invalid OAuth state. Please try again.")
+            st.write(f"- Expected state: {st.session_state.get('oauth_state')}")
+            st.write(f"- Received state: {state}")
             return False
+        
+        st.write("✅ State verification passed")
         
         # Exchange code for user info
         user_info = verify_google_oauth_callback(auth_code)
@@ -281,11 +348,16 @@ def handle_oauth_callback():
                 st.query_params.clear()
                 
                 st.success(f"✅ Welcome, {user_info['name']}!")
+                st.balloons()
                 st.rerun()
                 return True
             else:
                 st.error(f"❌ Email {user_info['email']} is not authorized to access this app.")
                 st.info("💡 Contact the administrator to request access.")
+                st.write(f"🔍 **DEBUG - Authorization check:**")
+                st.write(f"- User email: {user_info['email']}")
+                st.write(f"- Authorized emails: {st.secrets.get('AUTHORIZED_GOOGLE_EMAILS', 'Not configured')}")
+                st.write(f"- Authorized domains: {st.secrets.get('AUTHORIZED_GOOGLE_DOMAINS', 'Not configured')}")
                 # Clear query params
                 st.query_params.clear()
                 return False
