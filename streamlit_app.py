@@ -485,15 +485,6 @@ def check_password():
                 st.error("❌ Invalid username or password. Please try again.")
                 st.session_state["login_error"] = False
 
-            st.info("🔒 Please enter your credentials to access bot control functions.")
-            st.markdown("---")
-            st.markdown("**Security Features:**")
-            st.markdown("- 👤 Multi-user authentication")
-            st.markdown("- 🔐 Individual user passwords")
-            st.markdown("- ⏰ 30-minute session timeout")
-            st.markdown("- 🔓 Manual logout option")
-            st.markdown("- 📧 Password reset via email")
-
         return False
     elif not st.session_state["password_correct"]:
         # Credentials not correct, show login or password reset form
