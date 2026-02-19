@@ -86,9 +86,6 @@ def get_google_signin_url():
         return authorization_url
     except Exception as e:
         st.error(f"❌ Error generating sign-in URL: {str(e)}")
-        import traceback
-        with st.expander("🔍 Error Details"):
-            st.code(traceback.format_exc())
         return None
 
 def verify_google_oauth_callback(auth_code):
@@ -118,12 +115,7 @@ def verify_google_oauth_callback(auth_code):
         return user_info
     
     except Exception as e:
-        error_str = str(e)
-        st.error(f"❌ OAuth verification error: {error_str}")
-        
-        import traceback
-        with st.expander("🔍 Technical Error Details"):
-            st.code(traceback.format_exc())
+        st.error(f"❌ OAuth verification error: {str(e)}")
         return None
 
 def get_google_user_info(credentials):
@@ -169,12 +161,6 @@ def is_authorized_google_user(email):
         bool: True if authorized, False otherwise
     """
     try:
-        # Check if authorization is disabled (for debugging)
-        skip_auth = st.secrets.get("SKIP_GOOGLE_EMAIL_CHECK", "false").lower() == "true"
-        if skip_auth:
-            st.warning("⚠️ Email authorization check is DISABLED (debug mode)")
-            return True
-        
         # Get list of authorized Google emails from secrets
         authorized_emails = st.secrets.get("AUTHORIZED_GOOGLE_EMAILS", "").split(',')
         authorized_emails = [e.strip().lower() for e in authorized_emails if e.strip()]
@@ -185,7 +171,6 @@ def is_authorized_google_user(email):
         
         # If no authorization is configured, allow all (open access)
         if not authorized_emails and not authorized_domains:
-            st.info("💡 No email restrictions configured - allowing all Google users")
             return True
         
         email_lower = email.lower()
@@ -202,7 +187,6 @@ def is_authorized_google_user(email):
         return False
     
     except Exception as e:
-        print(f"Error checking authorization: {e}")
         return False
 
 def render_google_signin_button():
