@@ -97,17 +97,37 @@ def get_google_signin_url():
         st.code(authorization_url, language=None)
         
         # Show what to check in Google Cloud Console
-        st.warning("⚠️ **Verify in Google Cloud Console:**")
+        st.error("⚠️ **IF YOU GET A 403 ERROR - READ THIS FIRST:**")
+        st.markdown("""
+        ### 🚨 403 Forbidden Error? Your OAuth app is in Testing mode!
+        
+        **Option 1: Add yourself as a Test User (Quick Fix)**
+        1. Go to [Google Cloud Console - OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
+        2. Scroll down to **"Test users"** section
+        3. Click **"+ ADD USERS"**
+        4. Enter YOUR email address (the one you're signing in with)
+        5. Click **SAVE**
+        6. Wait 2-3 minutes for changes to take effect
+        
+        **Option 2: Publish Your App (Recommended for production)**
+        1. Go to [Google Cloud Console - OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
+        2. Under **"Publishing status"**, click **"PUBLISH APP"**
+        3. Confirm the publishing
+        4. Your app will work for all users immediately
+        
+        ---
+        """)
+        
+        st.info("🔍 **Also verify these settings:**")
         st.markdown(f"""
-        1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+        **Redirect URI Configuration:**
+        1. Go to [Credentials Page](https://console.cloud.google.com/apis/credentials)
         2. Click your OAuth 2.0 Client ID
-        3. Make sure **Authorized redirect URIs** contains EXACTLY:
+        3. Under **Authorized redirect URIs**, make sure you have EXACTLY:
            ```
            {config['redirect_uri']}
            ```
-        4. Go to **OAuth consent screen** → Scroll down to **Test users**
-        5. Make sure your email is added as a test user
-        6. Save and wait 2-3 minutes for changes to propagate
+        4. Save if you made changes
         """)
         
         return authorization_url
@@ -158,9 +178,37 @@ def verify_google_oauth_callback(auth_code):
         return user_info
     
     except Exception as e:
-        st.error(f"❌ OAuth verification error: {str(e)}")
+        error_str = str(e)
+        
+        # Check if it's a 403 Forbidden error
+        if '403' in error_str or 'Forbidden' in error_str or 'access_denied' in error_str:
+            st.error("🚨 **403 FORBIDDEN ERROR - Your OAuth app is in Testing mode!**")
+            st.markdown("""
+            ### Quick Fix Steps:
+            
+            **Option 1: Add yourself as a Test User (2 minutes)**
+            1. Open [Google Cloud Console - OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
+            2. Scroll to **"Test users"** section
+            3. Click **"+ ADD USERS"**
+            4. Enter the email address you're trying to sign in with
+            5. Click **SAVE**
+            6. Wait 2-3 minutes, then try signing in again
+            
+            **Option 2: Publish Your App (Recommended)**
+            1. Open [Google Cloud Console - OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
+            2. Click **"PUBLISH APP"** button
+            3. Confirm publishing
+            4. Try signing in again immediately
+            
+            ---
+            **Note:** You MUST do one of these steps to fix the 403 error!
+            """)
+        else:
+            st.error(f"❌ OAuth verification error: {error_str}")
+        
         import traceback
-        st.code(traceback.format_exc())
+        with st.expander("🔍 Technical Error Details"):
+            st.code(traceback.format_exc())
         return None
 
 def get_google_user_info(credentials):
@@ -309,9 +357,40 @@ def handle_oauth_callback():
                 st.write(f"- {key}: {value}")
     
     if 'error' in query_params:
-        st.error(f"❌ Google OAuth Error: {query_params['error']}")
-        if 'error_description' in query_params:
-            st.error(f"Description: {query_params['error_description']}")
+        error_code = query_params['error']
+        error_desc = query_params.get('error_description', '')
+        
+        # Special handling for access_denied (403 error)
+        if error_code == 'access_denied' or '403' in error_desc:
+            st.error("🚨 **403 ACCESS DENIED - Your OAuth app is in Testing mode!**")
+            st.markdown("""
+            ### You got this error because:
+            Your Google OAuth app is in **Testing mode** and your email is not added as a test user.
+            
+            ### How to fix this (choose one):
+            
+            **Option 1: Add yourself as a Test User** ⏱️ 2 minutes
+            1. Go to [Google Cloud Console - OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
+            2. Scroll down to **"Test users"** section
+            3. Click **"+ ADD USERS"**
+            4. Enter the email address you used to sign in
+            5. Click **SAVE**
+            6. Wait 2-3 minutes, then try signing in again
+            
+            **Option 2: Publish Your App** ⏱️ 1 minute  
+            1. Go to [Google Cloud Console - OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
+            2. Under **"Publishing status"**, click **"PUBLISH APP"**
+            3. Confirm the publishing
+            4. Try signing in again immediately
+            
+            ---
+            **After applying the fix, click "Sign in with Google" again below.**
+            """)
+        else:
+            st.error(f"❌ Google OAuth Error: {error_code}")
+            if error_desc:
+                st.error(f"Description: {error_desc}")
+        
         st.query_params.clear()
         return False
     
