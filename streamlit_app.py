@@ -403,53 +403,12 @@ def check_password():
             st.warning("⏰ Session expired. Please login again.")
 
     if "password_correct" not in st.session_state:
-        # First run, show login form
+        # First run, show login or password reset form
         st.markdown("### 🎶 Choir Bot Control Panel")
-        st.markdown("🔒 **User Authentication Required**")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.text_input(
-                "👤 Username",
-                key="username",
-                help="Enter your username",
-                placeholder="Enter username..."
-            )
-        with col2:
-            st.text_input(
-                "🔐 Password",
-                type="password",
-                key="password",
-                help="Enter your password",
-                placeholder="Enter password..."
-            )
-
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            if st.button("🔑 Login", type="primary", use_container_width=True):
-                credentials_entered()
-                if st.session_state.get("password_correct"):
-                    st.success(f"✅ Welcome, {st.session_state['current_user']}!")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error("❌ Login failed. Please check your credentials.")
         
-        with col2:
-            if st.button("🔓 Forgot Password?", use_container_width=True):
-                st.session_state["show_forgot_password"] = True
-                st.rerun()
-        
-        # Google Sign In option
-        if GOOGLE_OAUTH_AVAILABLE:
-            st.markdown("---")
-            st.markdown("**Or sign in with Google:**")
-            google_oauth.render_google_signin_button()
-
-        # Forgot Password Form
+        # Show Password Reset Form if requested
         if st.session_state.get("show_forgot_password"):
-            st.markdown("---")
-            st.markdown("### 🔓 Password Reset")
+            st.markdown("🔓 **Password Reset**")
             st.markdown("Enter your username to receive a temporary password via email.")
             
             reset_username = st.text_input(
@@ -476,66 +435,74 @@ def check_password():
                         st.warning("⚠️ Please enter your username.")
             
             with col2:
-                if st.button("❌ Cancel", use_container_width=True):
+                if st.button("🔙 Back to Login", use_container_width=True):
                     st.session_state["show_forgot_password"] = False
                     st.rerun()
+        
+        else:
+            # Show Login Form
+            st.markdown("🔒 **User Authentication Required**")
 
-        if st.session_state.get("login_error"):
-            st.error("❌ Invalid username or password. Please try again.")
-            st.session_state["login_error"] = False
+            col1, col2 = st.columns(2)
+            with col1:
+                st.text_input(
+                    "👤 Username",
+                    key="username",
+                    help="Enter your username",
+                    placeholder="Enter username..."
+                )
+            with col2:
+                st.text_input(
+                    "🔐 Password",
+                    type="password",
+                    key="password",
+                    help="Enter your password",
+                    placeholder="Enter password..."
+                )
 
-        st.info("🔒 Please enter your credentials to access bot control functions.")
-        st.markdown("---")
-        st.markdown("**Security Features:**")
-        st.markdown("- 👤 Multi-user authentication")
-        st.markdown("- 🔐 Individual user passwords")
-        st.markdown("- ⏰ 30-minute session timeout")
-        st.markdown("- 🔓 Manual logout option")
-        st.markdown("- 📧 Password reset via email")
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                if st.button("🔑 Login", type="primary", use_container_width=True):
+                    credentials_entered()
+                    if st.session_state.get("password_correct"):
+                        st.success(f"✅ Welcome, {st.session_state['current_user']}!")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("❌ Login failed. Please check your credentials.")
+            
+            with col2:
+                if st.button("🔓 Forgot Password?", use_container_width=True):
+                    st.session_state["show_forgot_password"] = True
+                    st.rerun()
+            
+            # Google Sign In option
+            if GOOGLE_OAUTH_AVAILABLE:
+                st.markdown("---")
+                st.markdown("**Or sign in with Google:**")
+                google_oauth.render_google_signin_button()
+
+            if st.session_state.get("login_error"):
+                st.error("❌ Invalid username or password. Please try again.")
+                st.session_state["login_error"] = False
+
+            st.info("🔒 Please enter your credentials to access bot control functions.")
+            st.markdown("---")
+            st.markdown("**Security Features:**")
+            st.markdown("- 👤 Multi-user authentication")
+            st.markdown("- 🔐 Individual user passwords")
+            st.markdown("- ⏰ 30-minute session timeout")
+            st.markdown("- 🔓 Manual logout option")
+            st.markdown("- 📧 Password reset via email")
 
         return False
     elif not st.session_state["password_correct"]:
-        # Credentials not correct, show login form + error
+        # Credentials not correct, show login or password reset form
         st.markdown("### 🎶 Choir Bot Control Panel")
-        st.markdown("🔒 **User Authentication Required**")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.text_input(
-                "👤 Username",
-                key="username",
-                help="Enter your username",
-                placeholder="Enter username..."
-            )
-        with col2:
-            st.text_input(
-                "🔐 Password",
-                type="password",
-                key="password",
-                help="Enter your password",
-                placeholder="Enter password..."
-            )
-
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            if st.button("🔑 Login", key="login2", type="primary", use_container_width=True):
-                credentials_entered()
-                if st.session_state.get("password_correct"):
-                    st.success(f"✅ Welcome, {st.session_state['current_user']}!")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error("❌ Login failed. Please check your credentials.")
         
-        with col2:
-            if st.button("🔓 Forgot Password?", key="forgot2", use_container_width=True):
-                st.session_state["show_forgot_password"] = True
-                st.rerun()
-
-        # Forgot Password Form
+        # Show Password Reset Form if requested
         if st.session_state.get("show_forgot_password"):
-            st.markdown("---")
-            st.markdown("### 🔓 Password Reset")
+            st.markdown("🔓 **Password Reset**")
             st.markdown("Enter your username to receive a temporary password via email.")
             
             reset_username = st.text_input(
@@ -562,11 +529,48 @@ def check_password():
                         st.warning("⚠️ Please enter your username.")
             
             with col2:
-                if st.button("❌ Cancel", key="cancel_reset2", use_container_width=True):
+                if st.button("🔙 Back to Login", key="cancel_reset2", use_container_width=True):
                     st.session_state["show_forgot_password"] = False
                     st.rerun()
+        
+        else:
+            # Show Login Form
+            st.markdown("🔒 **User Authentication Required**")
 
-        st.error("❌ Invalid username or password. Please try again.")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.text_input(
+                    "👤 Username",
+                    key="username",
+                    help="Enter your username",
+                    placeholder="Enter username..."
+                )
+            with col2:
+                st.text_input(
+                    "🔐 Password",
+                    type="password",
+                    key="password",
+                    help="Enter your password",
+                    placeholder="Enter password..."
+                )
+
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                if st.button("🔑 Login", key="login2", type="primary", use_container_width=True):
+                    credentials_entered()
+                    if st.session_state.get("password_correct"):
+                        st.success(f"✅ Welcome, {st.session_state['current_user']}!")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("❌ Login failed. Please check your credentials.")
+            
+            with col2:
+                if st.button("🔓 Forgot Password?", key="forgot2", use_container_width=True):
+                    st.session_state["show_forgot_password"] = True
+                    st.rerun()
+
+            st.error("❌ Invalid username or password. Please try again.")
         return False
     else:
         # Credentials correct
