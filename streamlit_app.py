@@ -404,7 +404,6 @@ def check_password():
 
     if "password_correct" not in st.session_state:
         # First run, show login or password reset form
-        st.markdown("<div class='login-header'><span class='login-header-icon'>🎶</span>Choir Bot Control Panel</div>", unsafe_allow_html=True)
         
         # Show Password Reset Form if requested
         if st.session_state.get("show_forgot_password"):
@@ -498,7 +497,6 @@ def check_password():
         return False
     elif not st.session_state["password_correct"]:
         # Credentials not correct, show login or password reset form
-        st.markdown("<div class='login-header'><span class='login-header-icon'>🎶</span>Choir Bot Control Panel</div>", unsafe_allow_html=True)
         
         # Show Password Reset Form if requested
         if st.session_state.get("show_forgot_password"):
