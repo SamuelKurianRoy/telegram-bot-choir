@@ -201,21 +201,15 @@ def render_google_signin_button():
     auth_url = get_google_signin_url()
     
     if auth_url:
-        # Method 1: Direct link (most reliable in Streamlit)
+        # Direct link (most reliable in Streamlit)
         st.markdown(f"### 🔐 [Click here to Sign in with Google]({auth_url})")
         
-        # Method 2: Button using st.link_button (Streamlit native - most reliable)
+        # Button using st.link_button (Streamlit native - if available)
         try:
-            # This is available in newer Streamlit versions
             if hasattr(st, 'link_button'):
                 st.link_button("🔐 Sign in with Google", auth_url, use_container_width=True)
         except:
             pass
-        
-        # Method 3: Copy-paste option (fallback)
-        with st.expander("📋 Or copy this link and paste in your browser"):
-            st.code(auth_url, language=None)
-            st.caption("Copy the URL above, paste it in a new tab, and sign in. You'll be redirected back to this app.")
         
         return True
     
