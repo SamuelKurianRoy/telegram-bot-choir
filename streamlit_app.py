@@ -407,7 +407,7 @@ def check_password():
         
         # Show Password Reset Form if requested
         if st.session_state.get("show_forgot_password"):
-            st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
+            # st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
             st.markdown("<div class='reset-title'>🔓 Password Reset</div>", unsafe_allow_html=True)
             st.markdown("<p style='color: white; text-align: center; margin-bottom: 2rem;'>Enter your username to receive a temporary password via email.</p>", unsafe_allow_html=True)
             
@@ -440,11 +440,11 @@ def check_password():
                 if st.button("🔙 Back to Login", use_container_width=True):
                     st.session_state["show_forgot_password"] = False
                     st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
+            # st.markdown("</div>", unsafe_allow_html=True)
         
         else:
             # Show Login Form
-            st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
+            # st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
 
             col1, col2 = st.columns(2)
             with col1:
@@ -491,7 +491,7 @@ def check_password():
                 st.error("❌ Invalid username or password. Please try again.")
                 st.session_state["login_error"] = False
             
-            st.markdown("</div>", unsafe_allow_html=True)
+            # st.markdown("</div>", unsafe_allow_html=True)
 
         return False
     elif not st.session_state["password_correct"]:
@@ -499,7 +499,7 @@ def check_password():
         
         # Show Password Reset Form if requested
         if st.session_state.get("show_forgot_password"):
-            st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
+            # st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
             st.markdown("<div class='reset-title'>🔓 Password Reset</div>", unsafe_allow_html=True)
             st.markdown("<p style='color: white; text-align: center; margin-bottom: 2rem;'>Enter your username to receive a temporary password via email.</p>", unsafe_allow_html=True)
             
@@ -532,11 +532,11 @@ def check_password():
                 if st.button("🔙 Back to Login", key="cancel_reset2", use_container_width=True):
                     st.session_state["show_forgot_password"] = False
                     st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
+            # st.markdown("</div>", unsafe_allow_html=True)
         
         else:
             # Show Login Form
-            st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
+            # st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
 
             col1, col2 = st.columns(2)
             with col1:
@@ -574,7 +574,7 @@ def check_password():
                     st.rerun()
 
             st.error("❌ Invalid username or password. Please try again.")
-            st.markdown("</div>", unsafe_allow_html=True)
+            # st.markdown("</div>", unsafe_allow_html=True)
         return False
     else:
         # Credentials correct
@@ -688,7 +688,7 @@ st.markdown(f"""
         letter-spacing: -0.5px;
         margin-bottom: 0.5rem;
     }}
-    .glass-container {{
+    /* .glass-container {{
         background: rgba(255, 255, 255, 0.15);
         border-radius: 20px;
         border: 1px solid rgba(255, 255, 255, 0.3);
@@ -696,7 +696,7 @@ st.markdown(f"""
         padding: 3rem 2.5rem;
         max-width: 650px;
         margin: 2rem auto;
-    }}
+    }} */
     /* Make inputs and buttons transparent inside glass container */
     .stTextInput input {{
         background-color: rgba(255, 255, 255, 0.4) !important;
