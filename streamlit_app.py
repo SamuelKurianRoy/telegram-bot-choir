@@ -661,6 +661,25 @@ st.markdown(f"""
         max-width: 650px;
         margin: 2rem auto;
     }}
+    /* Make inputs and buttons transparent inside glass container */
+    .stTextInput input {{
+        background-color: rgba(255, 255, 255, 0.4) !important;
+        border: 1px solid rgba(255, 255, 255, 0.5) !important;
+        color: #000000 !important;
+    }}
+    .stTextInput input::placeholder {{
+        color: rgba(0, 0, 0, 0.5) !important;
+    }}
+    .stButton button {{
+        width: 100%;
+        background-color: rgba(255, 255, 255, 0.3) !important;
+        border: 1px solid rgba(255, 255, 255, 0.4) !important;
+    }}
+    .stButton button[kind="primary"] {{
+        background-color: rgba(102, 126, 234, 0.6) !important;
+        color: white !important;
+        border: 1px solid rgba(102, 126, 234, 0.8) !important;
+    }}
     .field-label {{
         font-size: 0.95rem;
         font-weight: 600;
@@ -697,8 +716,18 @@ st.markdown(f"""
         border-radius: 0.5rem;
         border-left: 5px solid #1E88E5;
     }}
-    .stButton button {{
-        width: 100%;
+    .stLinkButton a {{
+        background-color: rgba(255, 255, 255, 0.4) !important;
+        border: 1px solid rgba(255, 255, 255, 0.5) !important;
+    }}
+    /* Style alert boxes inside glass container */
+    .stAlert {{
+        background-color: rgba(255, 255, 255, 0.3) !important;
+        border: 1px solid rgba(255, 255, 255, 0.4) !important;
+    }}
+    /* Style horizontal dividers */
+    hr {{
+        border-color: rgba(255, 255, 255, 0.3) !important;
     }}
     .log-container {{
         max-height: 500px;

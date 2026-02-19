@@ -206,20 +206,20 @@ def render_google_signin_button():
             # Add custom styling to make it look like Google button
             st.markdown("""
             <style>
-            /* Style the Streamlit link button to look like Google Sign-In */
+            /* Style the Streamlit link button to look like Google Sign-In with glass effect */
             div[data-testid="stButton"] > button {
-                background-color: #ffffff !important;
-                border: 1px solid #dadce0 !important;
+                background-color: rgba(255, 255, 255, 0.4) !important;
+                border: 1px solid rgba(255, 255, 255, 0.5) !important;
                 border-radius: 4px !important;
                 padding: 12px 24px !important;
-                color: #3c4043 !important;
+                color: #000000 !important;
                 font-size: 14px !important;
                 font-weight: 500 !important;
                 box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3) !important;
                 width: 100% !important;
             }
             div[data-testid="stButton"] > button:hover {
-                background-color: #f8f9fa !important;
+                background-color: rgba(255, 255, 255, 0.5) !important;
                 box-shadow: 0 1px 3px 0 rgba(60,64,67,0.3) !important;
             }
             </style>
@@ -247,18 +247,18 @@ def render_google_signin_button():
                     display: inline-flex;
                     align-items: center;
                     justify-content: center;
-                    background-color: #ffffff;
-                    border: 1px solid #dadce0;
+                    background-color: rgba(255, 255, 255, 0.4);
+                    border: 1px solid rgba(255, 255, 255, 0.5);
                     border-radius: 4px;
                     padding: 12px 24px;
                     text-decoration: none;
-                    color: #3c4043;
+                    color: #000000;
                     font-size: 14px;
                     font-weight: 500;
                     box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3);
                     transition: all 0.2s ease;
-                " onmouseover="this.style.backgroundColor='#f8f9fa'; this.style.boxShadow='0 1px 3px 0 rgba(60,64,67,0.3)';" 
-                   onmouseout="this.style.backgroundColor='#ffffff'; this.style.boxShadow='0 1px 2px 0 rgba(60,64,67,0.3)';">
+                " onmouseover="this.style.backgroundColor='rgba(255, 255, 255, 0.5)'; this.style.boxShadow='0 1px 3px 0 rgba(60,64,67,0.3)';" 
+                   onmouseout="this.style.backgroundColor='rgba(255, 255, 255, 0.4)'; this.style.boxShadow='0 1px 2px 0 rgba(60,64,67,0.3)';">
                     <svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="margin-right: 12px;">
                         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                         <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
