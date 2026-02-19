@@ -28,9 +28,6 @@ def get_google_oauth_config():
             'token_uri': "https://oauth2.googleapis.com/token",
         }
         
-        # Debug: Print configuration (remove in production)
-        # st.write("DEBUG - Redirect URI configured:", config['redirect_uri'])
-        
         return config
     except Exception as e:
         st.error(f"Google OAuth configuration error: {e}")
@@ -99,26 +96,37 @@ def get_google_signin_url():
         # Show what to check in Google Cloud Console
         st.error("⚠️ **IF YOU GET A 403 ERROR - READ THIS FIRST:**")
         st.markdown("""
-        ### 🚨 403 Forbidden Error? Your OAuth app is in Testing mode!
+        ### 🚨 Still getting 403 even though app is published?
         
-        **Option 1: Add yourself as a Test User (Quick Fix)**
-        1. Go to [Google Cloud Console - OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
-        2. Scroll down to **"Test users"** section
-        3. Click **"+ ADD USERS"**
-        4. Enter YOUR email address (the one you're signing in with)
-        5. Click **SAVE**
-        6. Wait 2-3 minutes for changes to take effect
+        **Most Common Causes:**
         
-        **Option 2: Publish Your App (Recommended for production)**
-        1. Go to [Google Cloud Console - OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
-        2. Under **"Publishing status"**, click **"PUBLISH APP"**
-        3. Confirm the publishing
-        4. Your app will work for all users immediately
+        **1. Google's Cache (Wait 5-10 minutes)** ⏱️
+        - After publishing, Google's servers need time to propagate changes
+        - Try again in 5-10 minutes
+        - Solution: Be patient! ☕
+        
+        **2. Browser/OAuth Cache** 🔄
+        - Your browser or Google might have cached the old "Testing" status
+        - Solution: Try these in order:
+          - Clear your browser cache and cookies
+          - Try in **Incognito/Private browsing mode**
+          - Try a different browser
+          - Try on a different device/phone
+        
+        **3. Redirect URI Mismatch** 🔗
+        - Check the "Redirect URI" shown above in green
+        - It must EXACTLY match one in Google Cloud Console (see your screenshot)
+        - Solution: Fix your Streamlit secret `GOOGLE_OAUTH_REDIRECT_URI`
+        
+        **4. If none of the above work:** 
+        - Go back to [OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
+        - Click "Back to testing" then "Publish app" again
+        - This forces a full refresh
         
         ---
         """)
         
-        st.info("🔍 **Also verify these settings:**")
+        st.info("🔍 **Verify these match Google Cloud Console:**")
         st.markdown(f"""
         **Redirect URI Configuration:**
         1. Go to [Credentials Page](https://console.cloud.google.com/apis/credentials)
@@ -182,26 +190,28 @@ def verify_google_oauth_callback(auth_code):
         
         # Check if it's a 403 Forbidden error
         if '403' in error_str or 'Forbidden' in error_str or 'access_denied' in error_str:
-            st.error("🚨 **403 FORBIDDEN ERROR - Your OAuth app is in Testing mode!**")
+            st.error("🚨 **403 FORBIDDEN - Publishing didn't work yet?**")
             st.markdown("""
-            ### Quick Fix Steps:
+            ### Most likely causes (after publishing):
             
-            **Option 1: Add yourself as a Test User (2 minutes)**
-            1. Open [Google Cloud Console - OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
-            2. Scroll to **"Test users"** section
-            3. Click **"+ ADD USERS"**
-            4. Enter the email address you're trying to sign in with
-            5. Click **SAVE**
-            6. Wait 2-3 minutes, then try signing in again
+            **1. Wait for propagation (5-10 minutes)** ⏱️
+            - Google's servers are still updating
+            - Come back in 5-10 minutes
             
-            **Option 2: Publish Your App (Recommended)**
-            1. Open [Google Cloud Console - OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
-            2. Click **"PUBLISH APP"** button
-            3. Confirm publishing
-            4. Try signing in again immediately
+            **2. Try incognito/private browsing** 🕵️
+            - Your browser has cached the old authorization state
+            - Open this app in incognito mode
+            
+            **3. Check redirect URI match** 🔗
+            - See configuration shown above
+            - Must match exactly what's in Google Cloud Console
+            
+            **4. Force refresh the OAuth app** 🔄
+            - Go to Google Cloud Console OAuth screen
+            - "Back to testing" → "Publish app" again
             
             ---
-            **Note:** You MUST do one of these steps to fix the 403 error!
+            **Try incognito mode first - it's the fastest way to test!**
             """)
         else:
             st.error(f"❌ OAuth verification error: {error_str}")
@@ -254,6 +264,12 @@ def is_authorized_google_user(email):
         bool: True if authorized, False otherwise
     """
     try:
+        # Check if authorization is disabled (for debugging)
+        skip_auth = st.secrets.get("SKIP_GOOGLE_EMAIL_CHECK", "false").lower() == "true"
+        if skip_auth:
+            st.warning("⚠️ Email authorization check is DISABLED (debug mode)")
+            return True
+        
         # Get list of authorized Google emails from secrets
         authorized_emails = st.secrets.get("AUTHORIZED_GOOGLE_EMAILS", "").split(',')
         authorized_emails = [e.strip().lower() for e in authorized_emails if e.strip()]
@@ -261,6 +277,11 @@ def is_authorized_google_user(email):
         # Allow specific domains
         authorized_domains = st.secrets.get("AUTHORIZED_GOOGLE_DOMAINS", "").split(',')
         authorized_domains = [d.strip().lower() for d in authorized_domains if d.strip()]
+        
+        # If no authorization is configured, allow all (open access)
+        if not authorized_emails and not authorized_domains:
+            st.info("💡 No email restrictions configured - allowing all Google users")
+            return True
         
         email_lower = email.lower()
         
@@ -362,29 +383,37 @@ def handle_oauth_callback():
         
         # Special handling for access_denied (403 error)
         if error_code == 'access_denied' or '403' in error_desc:
-            st.error("🚨 **403 ACCESS DENIED - Your OAuth app is in Testing mode!**")
+            st.error("🚨 **403 ACCESS DENIED - Even after publishing?**")
             st.markdown("""
-            ### You got this error because:
-            Your Google OAuth app is in **Testing mode** and your email is not added as a test user.
+            ### Why am I still getting this error?
             
-            ### How to fix this (choose one):
+            You published your OAuth app to "In production" but you're still seeing 403. This happens because:
             
-            **Option 1: Add yourself as a Test User** ⏱️ 2 minutes
-            1. Go to [Google Cloud Console - OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
-            2. Scroll down to **"Test users"** section
-            3. Click **"+ ADD USERS"**
-            4. Enter the email address you used to sign in
-            5. Click **SAVE**
-            6. Wait 2-3 minutes, then try signing in again
+            **1. Cache Propagation Delay** (Most likely!)
+            - Google's servers need **5-10 minutes** to update after publishing
+            - The error you're seeing is from Google's cached "Testing" status
+            - **Solution:** Wait 5-10 minutes, then try again
             
-            **Option 2: Publish Your App** ⏱️ 1 minute  
-            1. Go to [Google Cloud Console - OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
-            2. Under **"Publishing status"**, click **"PUBLISH APP"**
-            3. Confirm the publishing
-            4. Try signing in again immediately
+            **2. Your Browser Has Cached OAuth State**
+            - Your browser remembers you're unauthorized
+            - **Solution:** Try these:
+              - Open an **Incognito/Private browsing window**
+              - Clear your browser cache and cookies
+              - Try a different browser
+              - Try on your phone/mobile device
+            
+            **3. Redirect URI Mismatch**
+            - Your Streamlit secret doesn't match Google Cloud Console
+            - Check the configuration shown above the "Sign in" button
+            
+            **4. Force Refresh (If nothing else works)**
+            - Go to [OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
+            - Click "Back to testing"
+            - Click "Publish app" again
+            - Wait 5 minutes and try again
             
             ---
-            **After applying the fix, click "Sign in with Google" again below.**
+            **💡 TIP: Try incognito mode first - it's the quickest test!**
             """)
         else:
             st.error(f"❌ Google OAuth Error: {error_code}")
@@ -431,12 +460,37 @@ def handle_oauth_callback():
                 st.rerun()
                 return True
             else:
-                st.error(f"❌ Email {user_info['email']} is not authorized to access this app.")
-                st.info("💡 Contact the administrator to request access.")
-                st.write(f"🔍 **DEBUG - Authorization check:**")
-                st.write(f"- User email: {user_info['email']}")
-                st.write(f"- Authorized emails: {st.secrets.get('AUTHORIZED_GOOGLE_EMAILS', 'Not configured')}")
-                st.write(f"- Authorized domains: {st.secrets.get('AUTHORIZED_GOOGLE_DOMAINS', 'Not configured')}")
+                st.error(f"❌ Email `{user_info['email']}` is not authorized to access this app.")
+                st.warning("⚠️ You successfully authenticated with Google, but your email is not on the authorized list.")
+                
+                st.info("💡 **How to fix this:**")
+                st.markdown("""
+                **Option 1: Add your email to authorized list**
+                - Go to Streamlit Cloud → Your App Settings → Secrets
+                - Add your email to `AUTHORIZED_GOOGLE_EMAILS`:
+                  ```
+                  AUTHORIZED_GOOGLE_EMAILS = "your@email.com, another@email.com"
+                  ```
+                
+                **Option 2: Authorize by domain**
+                - If everyone with your domain should access, use:
+                  ```
+                  AUTHORIZED_GOOGLE_DOMAINS = "gmail.com"
+                  ```
+                
+                **Option 3: Allow all (not recommended for production)**
+                - Leave both secrets empty or add:
+                  ```
+                  SKIP_GOOGLE_EMAIL_CHECK = "true"
+                  ```
+                """)
+                
+                with st.expander("🔍 Debug Info - Current Configuration"):
+                    st.write(f"**Your email:** {user_info['email']}")
+                    st.write(f"**Configured authorized emails:** {st.secrets.get('AUTHORIZED_GOOGLE_EMAILS', 'Not configured')}")
+                    st.write(f"**Configured authorized domains:** {st.secrets.get('AUTHORIZED_GOOGLE_DOMAINS', 'Not configured')}")
+                    st.write(f"**Skip email check:** {st.secrets.get('SKIP_GOOGLE_EMAIL_CHECK', 'false')}")
+                
                 # Clear query params
                 st.query_params.clear()
                 return False
