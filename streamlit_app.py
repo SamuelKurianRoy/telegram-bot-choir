@@ -407,13 +407,16 @@ def check_password():
         
         # Show Password Reset Form if requested
         if st.session_state.get("show_forgot_password"):
-            st.markdown("🔓 **Password Reset**")
-            st.markdown("Enter your username to receive a temporary password via email.")
+            st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
+            st.markdown("<div class='reset-title'>🔓 Password Reset</div>", unsafe_allow_html=True)
+            st.markdown("<p style='color: white; text-align: center; margin-bottom: 2rem;'>Enter your username to receive a temporary password via email.</p>", unsafe_allow_html=True)
             
+            st.markdown("<div class='field-label'>👤 Username</div>", unsafe_allow_html=True)
             reset_username = st.text_input(
-                "👤 Username",
+                "Username",
                 key="reset_username",
-                placeholder="Enter your username..."
+                placeholder="Enter your username...",
+                label_visibility="collapsed"
             )
             
             col1, col2 = st.columns(2)
@@ -437,26 +440,29 @@ def check_password():
                 if st.button("🔙 Back to Login", use_container_width=True):
                     st.session_state["show_forgot_password"] = False
                     st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
         
         else:
             # Show Login Form
-            st.markdown("🔒 **User Authentication Required**")
+            st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
 
             col1, col2 = st.columns(2)
             with col1:
+                st.markdown("<div class='field-label'>👤 Username</div>", unsafe_allow_html=True)
                 st.text_input(
-                    "👤 Username",
+                    "Username",
                     key="username",
-                    help="Enter your username",
-                    placeholder="Enter username..."
+                    placeholder="Enter username...",
+                    label_visibility="collapsed"
                 )
             with col2:
+                st.markdown("<div class='field-label'>🔐 Password</div>", unsafe_allow_html=True)
                 st.text_input(
-                    "🔐 Password",
+                    "Password",
                     type="password",
                     key="password",
-                    help="Enter your password",
-                    placeholder="Enter password..."
+                    placeholder="Enter password...",
+                    label_visibility="collapsed"
                 )
 
             col1, col2 = st.columns([2, 1])
@@ -478,12 +484,14 @@ def check_password():
             # Google Sign In option
             if GOOGLE_OAUTH_AVAILABLE:
                 st.markdown("---")
-                st.markdown("**Or sign in with Google:**")
+                st.markdown("<p style='color: white; text-align: center; font-weight: 600; text-shadow: 0 2px 4px rgba(0,0,0,0.3);'>Or sign in with Google:</p>", unsafe_allow_html=True)
                 google_oauth.render_google_signin_button()
 
             if st.session_state.get("login_error"):
                 st.error("❌ Invalid username or password. Please try again.")
                 st.session_state["login_error"] = False
+            
+            st.markdown("</div>", unsafe_allow_html=True)
 
         return False
     elif not st.session_state["password_correct"]:
@@ -491,13 +499,16 @@ def check_password():
         
         # Show Password Reset Form if requested
         if st.session_state.get("show_forgot_password"):
-            st.markdown("🔓 **Password Reset**")
-            st.markdown("Enter your username to receive a temporary password via email.")
+            st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
+            st.markdown("<div class='reset-title'>🔓 Password Reset</div>", unsafe_allow_html=True)
+            st.markdown("<p style='color: white; text-align: center; margin-bottom: 2rem;'>Enter your username to receive a temporary password via email.</p>", unsafe_allow_html=True)
             
+            st.markdown("<div class='field-label'>👤 Username</div>", unsafe_allow_html=True)
             reset_username = st.text_input(
-                "👤 Username",
+                "Username",
                 key="reset_username2",
-                placeholder="Enter your username..."
+                placeholder="Enter your username...",
+                label_visibility="collapsed"
             )
             
             col1, col2 = st.columns(2)
@@ -521,26 +532,29 @@ def check_password():
                 if st.button("🔙 Back to Login", key="cancel_reset2", use_container_width=True):
                     st.session_state["show_forgot_password"] = False
                     st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
         
         else:
             # Show Login Form
-            st.markdown("🔒 **User Authentication Required**")
+            st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
 
             col1, col2 = st.columns(2)
             with col1:
+                st.markdown("<div class='field-label'>👤 Username</div>", unsafe_allow_html=True)
                 st.text_input(
-                    "👤 Username",
+                    "Username",
                     key="username",
-                    help="Enter your username",
-                    placeholder="Enter username..."
+                    placeholder="Enter username...",
+                    label_visibility="collapsed"
                 )
             with col2:
+                st.markdown("<div class='field-label'>🔐 Password</div>", unsafe_allow_html=True)
                 st.text_input(
-                    "🔐 Password",
+                    "Password",
                     type="password",
                     key="password",
-                    help="Enter your password",
-                    placeholder="Enter password..."
+                    placeholder="Enter password...",
+                    label_visibility="collapsed"
                 )
 
             col1, col2 = st.columns([2, 1])
@@ -560,6 +574,7 @@ def check_password():
                     st.rerun()
 
             st.error("❌ Invalid username or password. Please try again.")
+            st.markdown("</div>", unsafe_allow_html=True)
         return False
     else:
         # Credentials correct
@@ -634,6 +649,33 @@ st.markdown(f"""
     @keyframes bounce {{
         0%, 100% {{ transform: translateY(0); }}
         50% {{ transform: translateY(-10px); }}
+    }}
+    .glass-container {{
+        background: rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        padding: 3rem 2.5rem;
+        max-width: 600px;
+        margin: 2rem auto;
+    }}
+    .field-label {{
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #ffffff;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        margin-bottom: 0.5rem;
+        letter-spacing: 0.3px;
+    }}
+    .reset-title {{
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #ffffff;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+        margin-bottom: 1rem;
+        text-align: center;
     }}
     .sub-header {{
         font-size: 1.8rem;
