@@ -446,35 +446,35 @@ def check_password():
             # Show Login Form
             # st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
 
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("<div class='field-label'>👤 Username</div>", unsafe_allow_html=True)
-                st.text_input(
-                    "Username",
-                    key="username",
-                    placeholder="Enter username...",
-                    label_visibility="collapsed"
-                )
-            with col2:
-                st.markdown("<div class='field-label'>🔐 Password</div>", unsafe_allow_html=True)
-                st.text_input(
-                    "Password",
-                    type="password",
-                    key="password",
-                    placeholder="Enter password...",
-                    label_visibility="collapsed"
-                )
+            # Username field
+            st.markdown("<div class='input-group'><div class='input-icon'>👤</div><div class='input-label'>Username</div></div>", unsafe_allow_html=True)
+            st.text_input(
+                "Username",
+                key="username",
+                placeholder="Enter your username",
+                label_visibility="collapsed"
+            )
+            
+            # Password field
+            st.markdown("<div class='input-group'><div class='input-icon'>🔐</div><div class='input-label'>Password</div></div>", unsafe_allow_html=True)
+            st.text_input(
+                "Password",
+                type="password",
+                key="password",
+                placeholder="Enter your password",
+                label_visibility="collapsed"
+            )
 
             col1, col2 = st.columns([2, 1])
             with col1:
                 if st.button("🔑 Login", type="primary", use_container_width=True):
                     credentials_entered()
                     if st.session_state.get("password_correct"):
-                        st.success(f"✅ Welcome, {st.session_state['current_user']}!")
+                        st.success(f"Welcome, {st.session_state['current_user']}!")
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error("❌ Login failed. Please check your credentials.")
+                        st.error("Login failed. Please check your credentials.")
             
             with col2:
                 if st.button("🔓 Forgot Password?", use_container_width=True):
@@ -538,24 +538,24 @@ def check_password():
             # Show Login Form
             # st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
 
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("<div class='field-label'>👤 Username</div>", unsafe_allow_html=True)
-                st.text_input(
-                    "Username",
-                    key="username",
-                    placeholder="Enter username...",
-                    label_visibility="collapsed"
-                )
-            with col2:
-                st.markdown("<div class='field-label'>🔐 Password</div>", unsafe_allow_html=True)
-                st.text_input(
-                    "Password",
-                    type="password",
-                    key="password",
-                    placeholder="Enter password...",
-                    label_visibility="collapsed"
-                )
+            # Username field
+            st.markdown("<div class='input-group'><div class='input-icon'>👤</div><div class='input-label'>Username</div></div>", unsafe_allow_html=True)
+            st.text_input(
+                "Username",
+                key="username",
+                placeholder="Enter your username",
+                label_visibility="collapsed"
+            )
+            
+            # Password field
+            st.markdown("<div class='input-group'><div class='input-icon'>🔐</div><div class='input-label'>Password</div></div>", unsafe_allow_html=True)
+            st.text_input(
+                "Password",
+                type="password",
+                key="password",
+                placeholder="Enter your password",
+                label_visibility="collapsed"
+            )
 
             col1, col2 = st.columns([2, 1])
             with col1:
@@ -697,24 +697,61 @@ st.markdown(f"""
         max-width: 650px;
         margin: 2rem auto;
     }} */
-    /* Make inputs and buttons transparent inside glass container */
+    /* Modern input field styling */
+    .input-group {{
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.8rem;
+        gap: 1rem;
+    }}
+    .input-icon {{
+        font-size: 2rem;
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+    }}
+    .input-label {{
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: #ffffff;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+        letter-spacing: 0.5px;
+    }}
     .stTextInput input {{
-        background-color: rgba(255, 255, 255, 0.4) !important;
-        border: 1px solid rgba(255, 255, 255, 0.5) !important;
+        background-color: rgba(255, 255, 255, 0.85) !important;
+        border: 2px solid rgba(255, 255, 255, 0.9) !important;
+        border-radius: 12px !important;
         color: #000000 !important;
+        font-size: 1.1rem !important;
+        padding: 1rem 1.2rem !important;
+        font-weight: 500 !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+        transition: all 0.3s ease !important;
+    }}
+    .stTextInput input:focus {{
+        background-color: rgba(255, 255, 255, 0.95) !important;
+        border: 2px solid rgba(102, 126, 234, 0.8) !important;
+        box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3) !important;
     }}
     .stTextInput input::placeholder {{
-        color: rgba(0, 0, 0, 0.5) !important;
+        color: rgba(0, 0, 0, 0.45) !important;
+        font-weight: 400 !important;
     }}
     .stButton button {{
         width: 100%;
         background-color: rgba(255, 255, 255, 0.3) !important;
         border: 1px solid rgba(255, 255, 255, 0.4) !important;
+        font-size: 1.05rem !important;
+        padding: 0.7rem 1.5rem !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
     }}
     .stButton button[kind="primary"] {{
-        background-color: rgba(102, 126, 234, 0.6) !important;
+        background-color: rgba(102, 126, 234, 0.8) !important;
         color: white !important;
-        border: 1px solid rgba(102, 126, 234, 0.8) !important;
+        border: 2px solid rgba(102, 126, 234, 0.9) !important;
+        font-size: 1.15rem !important;
+        padding: 0.8rem 1.5rem !important;
+        font-weight: 700 !important;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3) !important;
     }}
     .field-label {{
         font-size: 0.95rem;
