@@ -618,24 +618,48 @@ if bg_image:
 st.markdown(f"""
 <style>
     {bg_style}
-    /* Hide Streamlit header and toolbar */
+    /* Hide Streamlit header and toolbar completely */
     header {{
-        visibility: hidden;
+        visibility: hidden !important;
+        display: none !important;
+        height: 0 !important;
     }}
     #MainMenu {{
-        visibility: hidden;
+        visibility: hidden !important;
+        display: none !important;
     }}
     footer {{
-        visibility: hidden;
+        visibility: hidden !important;
+        display: none !important;
     }}
     .stDeployButton {{
-        visibility: hidden;
+        visibility: hidden !important;
+        display: none !important;
     }}
     [data-testid="stHeader"] {{
-        display: none;
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
     }}
     [data-testid="stToolbar"] {{
-        display: none;
+        display: none !important;
+        visibility: hidden !important;
+    }}
+    [data-testid="stDecoration"] {{
+        display: none !important;
+        visibility: hidden !important;
+    }}
+    [data-testid="stStatusWidget"] {{
+        display: none !important;
+        visibility: hidden !important;
+    }}
+    /* Remove top padding caused by header */
+    .stApp {{
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+    }}
+    .block-container {{
+        padding-top: 2rem !important;
     }}
     .main-header {{
         font-size: 2.5rem;
