@@ -584,10 +584,37 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
-st.markdown("""
+# Load and encode background image
+import base64
+def get_base64_image(image_path):
+    """Convert image to base64 for embedding in CSS"""
+    try:
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except Exception as e:
+        return None
+
+# Get background image
+bg_image = get_base64_image("Chruch.jpg")
+
+# Custom CSS with background image
+bg_style = ""
+if bg_image:
+    bg_style = f"""
+    .stApp {{
+        background: linear-gradient(rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.92)), 
+                    url(data:image/jpeg;base64,{bg_image});
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+    }}
+    """
+
+st.markdown(f"""
 <style>
-    .main-header {
+    {bg_style}
+    .main-header {{
         font-size: 2.5rem;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         -webkit-background-clip: text;
@@ -597,8 +624,8 @@ st.markdown("""
         font-weight: 800;
         letter-spacing: -0.5px;
         margin-bottom: 0.5rem;
-    }
-    .login-header {
+    }}
+    .login-header {{
         font-size: 2.2rem;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 1.5rem;
@@ -609,46 +636,56 @@ st.markdown("""
         box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
         margin-bottom: 2rem;
         letter-spacing: 0.5px;
-    }
-    .login-header-icon {
+    }}
+    .login-header-icon {{
         font-size: 2.5rem;
         margin-right: 0.5rem;
         animation: bounce 2s infinite;
-    }
-    @keyframes bounce {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-10px); }
-    }
-    .sub-header {
+    }}
+    @keyframes bounce {{
+        0%, 100% {{ transform: translateY(0); }}
+        50% {{ transform: translateY(-10px); }}
+    }}
+    .sub-header {{
         font-size: 1.8rem;
         color: #0D47A1;
-    }
-    .status-running {
+    }}
+    .status-running {{
         font-size: 1.5rem;
         color: #4CAF50;
         font-weight: bold;
-    }
-    .status-stopped {
+    }}
+    .status-stopped {{
         font-size: 1.5rem;
         color: #F44336;
         font-weight: bold;
-    }
-    .info-box {
-        background-color: #E3F2FD;
+    }}
+    .info-box {{
+        background-color: rgba(227, 242, 253, 0.95);
         padding: 1rem;
         border-radius: 0.5rem;
         border-left: 5px solid #1E88E5;
-    }
-    .stButton button {
+        backdrop-filter: blur(10px);
+    }}
+    .stButton button {{
         width: 100%;
-    }
-    .log-container {
+    }}
+    .log-container {{
         max-height: 500px;
         overflow-y: auto;
-        background-color: #f5f5f5;
+        background-color: rgba(245, 245, 245, 0.95);
         padding: 10px;
         border-radius: 5px;
-    }
+        backdrop-filter: blur(10px);
+    }}
+    /* Make content boxes slightly transparent with blur for glass effect */
+    .element-container {{
+        backdrop-filter: blur(5px);
+    }}
+    [data-testid="stSidebar"] {{
+        background-color: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+    }}
 </style>
 """, unsafe_allow_html=True)
 
