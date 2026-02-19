@@ -602,7 +602,7 @@ bg_style = ""
 if bg_image:
     bg_style = f"""
     .stApp {{
-        background: linear-gradient(rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.92)), 
+        background: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), 
                     url(data:image/jpeg;base64,{bg_image});
         background-size: cover;
         background-position: center;
