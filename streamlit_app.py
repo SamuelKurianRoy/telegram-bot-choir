@@ -618,6 +618,25 @@ if bg_image:
 st.markdown(f"""
 <style>
     {bg_style}
+    /* Hide Streamlit header and toolbar */
+    header {{
+        visibility: hidden;
+    }}
+    #MainMenu {{
+        visibility: hidden;
+    }}
+    footer {{
+        visibility: hidden;
+    }}
+    .stDeployButton {{
+        visibility: hidden;
+    }}
+    [data-testid="stHeader"] {{
+        display: none;
+    }}
+    [data-testid="stToolbar"] {{
+        display: none;
+    }}
     .main-header {{
         font-size: 2.5rem;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
