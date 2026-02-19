@@ -74,12 +74,6 @@ def get_google_signin_url():
         
         config = get_google_oauth_config()
         
-        # Debug: Show configuration details
-        st.write("🔍 **DEBUG - OAuth Configuration:**")
-        st.write(f"- Client ID: {config['client_id'][:20]}...{config['client_id'][-20:]}")
-        st.write(f"- Redirect URI: `{config['redirect_uri']}`")
-        st.write(f"- Scopes: {SCOPES}")
-        
         authorization_url, state = flow.authorization_url(
             access_type='online',
             include_granted_scopes='true',
@@ -89,60 +83,12 @@ def get_google_signin_url():
         # Store state in session for verification
         st.session_state['oauth_state'] = state
         
-        # Debug: Show the authorization URL
-        st.write("🔗 **Authorization URL generated:**")
-        st.code(authorization_url, language=None)
-        
-        # Show what to check in Google Cloud Console
-        st.error("⚠️ **IF YOU GET A 403 ERROR - READ THIS FIRST:**")
-        st.markdown("""
-        ### 🚨 Still getting 403 even though app is published?
-        
-        **Most Common Causes:**
-        
-        **1. Google's Cache (Wait 5-10 minutes)** ⏱️
-        - After publishing, Google's servers need time to propagate changes
-        - Try again in 5-10 minutes
-        - Solution: Be patient! ☕
-        
-        **2. Browser/OAuth Cache** 🔄
-        - Your browser or Google might have cached the old "Testing" status
-        - Solution: Try these in order:
-          - Clear your browser cache and cookies
-          - Try in **Incognito/Private browsing mode**
-          - Try a different browser
-          - Try on a different device/phone
-        
-        **3. Redirect URI Mismatch** 🔗
-        - Check the "Redirect URI" shown above in green
-        - It must EXACTLY match one in Google Cloud Console (see your screenshot)
-        - Solution: Fix your Streamlit secret `GOOGLE_OAUTH_REDIRECT_URI`
-        
-        **4. If none of the above work:** 
-        - Go back to [OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
-        - Click "Back to testing" then "Publish app" again
-        - This forces a full refresh
-        
-        ---
-        """)
-        
-        st.info("🔍 **Verify these match Google Cloud Console:**")
-        st.markdown(f"""
-        **Redirect URI Configuration:**
-        1. Go to [Credentials Page](https://console.cloud.google.com/apis/credentials)
-        2. Click your OAuth 2.0 Client ID
-        3. Under **Authorized redirect URIs**, make sure you have EXACTLY:
-           ```
-           {config['redirect_uri']}
-           ```
-        4. Save if you made changes
-        """)
-        
         return authorization_url
     except Exception as e:
         st.error(f"❌ Error generating sign-in URL: {str(e)}")
         import traceback
-        st.code(traceback.format_exc())
+        with st.expander("🔍 Error Details"):
+            st.code(traceback.format_exc())
         return None
 
 def verify_google_oauth_callback(auth_code):
@@ -156,65 +102,24 @@ def verify_google_oauth_callback(auth_code):
         dict: User information or None if verification fails
     """
     try:
-        st.write("🔍 **DEBUG - Starting callback verification...**")
-        st.write(f"- Auth code received: {auth_code[:20]}...")
-        
         flow = create_oauth_flow()
         
         if not flow:
             st.error("❌ Failed to create OAuth flow in callback")
             return None
         
-        st.write("✅ OAuth flow created successfully")
-        
         # Exchange authorization code for credentials
-        st.write("🔄 Exchanging authorization code for credentials...")
         flow.fetch_token(code=auth_code)
         credentials = flow.credentials
         
-        st.write("✅ Token exchange successful")
-        
         # Get user info from Google
-        st.write("📧 Fetching user info from Google...")
         user_info = get_google_user_info(credentials)
-        
-        if user_info:
-            st.write("✅ User info retrieved:")
-            st.write(f"- Email: {user_info.get('email')}")
-            st.write(f"- Name: {user_info.get('name')}")
         
         return user_info
     
     except Exception as e:
         error_str = str(e)
-        
-        # Check if it's a 403 Forbidden error
-        if '403' in error_str or 'Forbidden' in error_str or 'access_denied' in error_str:
-            st.error("🚨 **403 FORBIDDEN - Publishing didn't work yet?**")
-            st.markdown("""
-            ### Most likely causes (after publishing):
-            
-            **1. Wait for propagation (5-10 minutes)** ⏱️
-            - Google's servers are still updating
-            - Come back in 5-10 minutes
-            
-            **2. Try incognito/private browsing** 🕵️
-            - Your browser has cached the old authorization state
-            - Open this app in incognito mode
-            
-            **3. Check redirect URI match** 🔗
-            - See configuration shown above
-            - Must match exactly what's in Google Cloud Console
-            
-            **4. Force refresh the OAuth app** 🔄
-            - Go to Google Cloud Console OAuth screen
-            - "Back to testing" → "Publish app" again
-            
-            ---
-            **Try incognito mode first - it's the fastest way to test!**
-            """)
-        else:
-            st.error(f"❌ OAuth verification error: {error_str}")
+        st.error(f"❌ OAuth verification error: {error_str}")
         
         import traceback
         with st.expander("🔍 Technical Error Details"):
@@ -308,56 +213,27 @@ def render_google_signin_button():
         st.info("💡 Google Sign In is not configured. Add GOOGLE_OAUTH_CLIENT_ID to secrets to enable it.")
         return False
     
-    st.info("🔍 **DEBUG MODE ENABLED** - Detailed OAuth information will be shown below the button.")
-    
-    # Create custom HTML/CSS for Google Sign In button
-    st.markdown("""
-    <style>
-    .google-signin-btn {
-        display: inline-flex;
-        align-items: center;
-        background-color: white;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        padding: 10px 20px;
-        font-size: 16px;
-        font-weight: 500;
-        color: #444;
-        cursor: pointer;
-        text-decoration: none;
-        transition: all 0.3s;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        width: 100%;
-        justify-content: center;
-        margin: 10px 0;
-    }
-    .google-signin-btn:hover {
-        background-color: #f8f9fa;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-    }
-    .google-icon {
-        width: 20px;
-        height: 20px;
-        margin-right: 12px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
     # Get authorization URL
     auth_url = get_google_signin_url()
     
     if auth_url:
-        st.markdown(f"""
-        <a href="{auth_url}" target="_self" class="google-signin-btn">
-            <svg class="google-icon" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-            </svg>
-            Sign in with Google
-        </a>
-        """, unsafe_allow_html=True)
+        st.info("🔍 **Choose how to sign in:**")
+        
+        # Method 1: Direct link (most reliable in Streamlit)
+        st.markdown(f"### 🔐 [Click here to Sign in with Google]({auth_url})")
+        
+        # Method 2: Button using st.link_button (Streamlit native - most reliable)
+        try:
+            # This is available in newer Streamlit versions
+            if hasattr(st, 'link_button'):
+                st.link_button("🔐 Sign in with Google", auth_url, use_container_width=True)
+        except:
+            pass
+        
+        # Method 3: Copy-paste option (fallback)
+        with st.expander("📋 Or copy this link and paste in your browser"):
+            st.code(auth_url, language=None)
+            st.caption("Copy the URL above, paste it in a new tab, and sign in. You'll be redirected back to this app.")
         
         return True
     
@@ -367,15 +243,6 @@ def handle_oauth_callback():
     """Handle OAuth callback from Google"""
     # Check if we have an authorization code in the URL
     query_params = st.query_params
-    
-    # Debug: Show all query parameters
-    if len(query_params) > 0:
-        st.write("🔍 **DEBUG - Query parameters received:**")
-        for key, value in query_params.items():
-            if key == 'code':
-                st.write(f"- {key}: {value[:20]}... (truncated)")
-            else:
-                st.write(f"- {key}: {value}")
     
     if 'error' in query_params:
         error_code = query_params['error']
@@ -427,26 +294,21 @@ def handle_oauth_callback():
         auth_code = query_params['code']
         state = query_params.get('state')
         
-        st.write("🔍 **DEBUG - OAuth callback received**")
-        
         # Verify state matches (if available)
         # Note: Streamlit loses session state on redirect, so state might be None
         stored_state = st.session_state.get('oauth_state')
         
         if stored_state and state != stored_state:
             st.error("❌ Invalid OAuth state. Please try again.")
-            st.write(f"- Expected state: {stored_state}")
-            st.write(f"- Received state: {state}")
+            with st.expander("🔍 Debug Info"):
+                st.write(f"- Expected state: {stored_state}")
+                st.write(f"- Received state: {state}")
             st.query_params.clear()
             return False
-        elif not stored_state:
-            st.warning("⚠️ State verification skipped (Streamlit session limitation)")
-            st.info("💡 This is normal for Streamlit OAuth flows - proceeding with authentication")
-        else:
-            st.write("✅ State verification passed")
         
         # Exchange code for user info
-        user_info = verify_google_oauth_callback(auth_code)
+        with st.spinner("🔄 Verifying your Google account..."):
+            user_info = verify_google_oauth_callback(auth_code)
         
         if user_info:
             # Check if user is authorized
