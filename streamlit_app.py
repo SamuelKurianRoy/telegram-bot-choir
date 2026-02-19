@@ -585,7 +585,7 @@ st.set_page_config(
     page_title="Choir Bot",
     page_icon="🎶",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # Load and encode background image
@@ -658,8 +658,24 @@ st.markdown(f"""
         padding-top: 0 !important;
         margin-top: 0 !important;
     }}
+    .stApp > header {{
+        background-color: transparent !important;
+        display: none !important;
+    }}
+    div[data-testid="stAppViewContainer"] {{
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+    }}
+    .appview-container {{
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+    }}
+    section[data-testid="stSidebar"] > div {{
+        padding-top: 2rem !important;
+    }}
     .block-container {{
         padding-top: 2rem !important;
+        padding-bottom: 0 !important;
     }}
     .main-header {{
         font-size: 2.5rem;
@@ -760,7 +776,6 @@ st.markdown(f"""
     }}
     [data-testid="stSidebar"] {{
         background-color: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
     }}
 </style>
 """, unsafe_allow_html=True)
