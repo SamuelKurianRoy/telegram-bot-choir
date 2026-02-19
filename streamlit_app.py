@@ -658,7 +658,7 @@ st.markdown(f"""
         border: 1px solid rgba(255, 255, 255, 0.3);
         box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
         padding: 3rem 2.5rem;
-        max-width: 600px;
+        max-width: 650px;
         margin: 2rem auto;
     }}
     .field-label {{
@@ -692,11 +692,10 @@ st.markdown(f"""
         font-weight: bold;
     }}
     .info-box {{
-        background-color: rgba(227, 242, 253, 0.95);
+        background-color: rgba(227, 242, 253, 0.85);
         padding: 1rem;
         border-radius: 0.5rem;
         border-left: 5px solid #1E88E5;
-        backdrop-filter: blur(10px);
     }}
     .stButton button {{
         width: 100%;
@@ -704,14 +703,9 @@ st.markdown(f"""
     .log-container {{
         max-height: 500px;
         overflow-y: auto;
-        background-color: rgba(245, 245, 245, 0.95);
+        background-color: rgba(245, 245, 245, 0.85);
         padding: 10px;
         border-radius: 5px;
-        backdrop-filter: blur(10px);
-    }}
-    /* Make content boxes slightly transparent with blur for glass effect */
-    .element-container {{
-        backdrop-filter: blur(5px);
     }}
     [data-testid="stSidebar"] {{
         background-color: rgba(255, 255, 255, 0.95);
