@@ -230,44 +230,9 @@ def handle_oauth_callback():
         error_code = query_params['error']
         error_desc = query_params.get('error_description', '')
         
-        # Special handling for access_denied (403 error)
-        if error_code == 'access_denied' or '403' in error_desc:
-            st.error("🚨 **403 ACCESS DENIED - Even after publishing?**")
-            st.markdown("""
-            ### Why am I still getting this error?
-            
-            You published your OAuth app to "In production" but you're still seeing 403. This happens because:
-            
-            **1. Cache Propagation Delay** (Most likely!)
-            - Google's servers need **5-10 minutes** to update after publishing
-            - The error you're seeing is from Google's cached "Testing" status
-            - **Solution:** Wait 5-10 minutes, then try again
-            
-            **2. Your Browser Has Cached OAuth State**
-            - Your browser remembers you're unauthorized
-            - **Solution:** Try these:
-              - Open an **Incognito/Private browsing window**
-              - Clear your browser cache and cookies
-              - Try a different browser
-              - Try on your phone/mobile device
-            
-            **3. Redirect URI Mismatch**
-            - Your Streamlit secret doesn't match Google Cloud Console
-            - Check the configuration shown above the "Sign in" button
-            
-            **4. Force Refresh (If nothing else works)**
-            - Go to [OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
-            - Click "Back to testing"
-            - Click "Publish app" again
-            - Wait 5 minutes and try again
-            
-            ---
-            **💡 TIP: Try incognito mode first - it's the quickest test!**
-            """)
-        else:
-            st.error(f"❌ Google OAuth Error: {error_code}")
-            if error_desc:
-                st.error(f"Description: {error_desc}")
+        # Show simple error message
+        st.error("❌ Sign-in Failed")
+        st.warning("Unable to complete Google sign-in. Please try again or contact the administrator.")
         
         st.query_params.clear()
         return False
@@ -308,30 +273,9 @@ def handle_oauth_callback():
                 st.rerun()
                 return True
             else:
-                st.error(f"❌ Email `{user_info['email']}` is not authorized to access this app.")
-                st.warning("⚠️ You successfully authenticated with Google, but your email is not on the authorized list.")
-                
-                st.info("💡 **How to fix this:**")
-                st.markdown("""
-                **Option 1: Add your email to authorized list**
-                - Go to Streamlit Cloud → Your App Settings → Secrets
-                - Add your email to `AUTHORIZED_GOOGLE_EMAILS`:
-                  ```
-                  AUTHORIZED_GOOGLE_EMAILS = "your@email.com, another@email.com"
-                  ```
-                
-                **Option 2: Authorize by domain**
-                - If everyone with your domain should access, use:
-                  ```
-                  AUTHORIZED_GOOGLE_DOMAINS = "gmail.com"
-                  ```
-                
-                **Option 3: Allow all (not recommended for production)**
-                - Leave both secrets empty or add:
-                  ```
-                  SKIP_GOOGLE_EMAIL_CHECK = "true"
-                  ```
-                """)
+                st.error(f"❌ Access Denied")
+                st.warning(f"Your email address ({user_info['email']}) is not authorized to access this application.")
+                st.info("💡 Please contact the administrator to request access.")
                 
                 # Clear query params
                 st.query_params.clear()
