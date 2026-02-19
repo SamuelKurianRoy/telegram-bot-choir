@@ -404,7 +404,7 @@ def check_password():
 
     if "password_correct" not in st.session_state:
         # First run, show login or password reset form
-        st.markdown("### 🎶 Choir Bot Control Panel")
+        st.markdown("<div class='login-header'><span class='login-header-icon'>🎶</span>Choir Bot Control Panel</div>", unsafe_allow_html=True)
         
         # Show Password Reset Form if requested
         if st.session_state.get("show_forgot_password"):
@@ -498,7 +498,7 @@ def check_password():
         return False
     elif not st.session_state["password_correct"]:
         # Credentials not correct, show login or password reset form
-        st.markdown("### 🎶 Choir Bot Control Panel")
+        st.markdown("<div class='login-header'><span class='login-header-icon'>🎶</span>Choir Bot Control Panel</div>", unsafe_allow_html=True)
         
         # Show Password Reset Form if requested
         if st.session_state.get("show_forgot_password"):
@@ -589,8 +589,35 @@ st.markdown("""
 <style>
     .main-header {
         font-size: 2.5rem;
-        color: #1E88E5;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
         text-align: center;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+        margin-bottom: 0.5rem;
+    }
+    .login-header {
+        font-size: 2.2rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 1.5rem;
+        border-radius: 15px;
+        text-align: center;
+        color: white;
+        font-weight: 700;
+        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+        margin-bottom: 2rem;
+        letter-spacing: 0.5px;
+    }
+    .login-header-icon {
+        font-size: 2.5rem;
+        margin-right: 0.5rem;
+        animation: bounce 2s infinite;
+    }
+    @keyframes bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
     }
     .sub-header {
         font-size: 1.8rem;
@@ -1143,7 +1170,7 @@ if not check_password():
 
 # Add a header to confirm authentication worked
 current_user = st.session_state.get("current_user", "Unknown")
-st.markdown("### 🎶 Choir Bot Control Panel")
+st.markdown("<div class='login-header'><span class='login-header-icon'>🎶</span>Choir Bot Control Panel</div>", unsafe_allow_html=True)
 st.markdown(f"✅ **Welcome, {current_user.title()}!** - You have access to bot controls")
 
 # Show user info and logout option in sidebar after authentication
@@ -1220,7 +1247,7 @@ with st.sidebar:
 
 # Main content
 if page == "Dashboard":
-    st.markdown("<h1 class='main-header'>🎶 Choir Bot Control Panel</h1>", unsafe_allow_html=True)
+    st.markdown("<div class='login-header'><span class='login-header-icon'>🎶</span>Choir Bot Control Panel</div>", unsafe_allow_html=True)
     
     # Enhanced Status card with logging information
     st.markdown("<h2 class='sub-header'>Bot Status & Control</h2>", unsafe_allow_html=True)
