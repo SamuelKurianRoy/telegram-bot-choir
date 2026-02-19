@@ -217,8 +217,6 @@ def render_google_signin_button():
     auth_url = get_google_signin_url()
     
     if auth_url:
-        st.info("🔍 **Choose how to sign in:**")
-        
         # Method 1: Direct link (most reliable in Streamlit)
         st.markdown(f"### 🔐 [Click here to Sign in with Google]({auth_url})")
         
@@ -299,10 +297,7 @@ def handle_oauth_callback():
         stored_state = st.session_state.get('oauth_state')
         
         if stored_state and state != stored_state:
-            st.error("❌ Invalid OAuth state. Please try again.")
-            with st.expander("🔍 Debug Info"):
-                st.write(f"- Expected state: {stored_state}")
-                st.write(f"- Received state: {state}")
+            st.error("❌ Invalid OAuth state. Please try signing in again.")
             st.query_params.clear()
             return False
         
@@ -353,12 +348,6 @@ def handle_oauth_callback():
                   SKIP_GOOGLE_EMAIL_CHECK = "true"
                   ```
                 """)
-                
-                with st.expander("🔍 Debug Info - Current Configuration"):
-                    st.write(f"**Your email:** {user_info['email']}")
-                    st.write(f"**Configured authorized emails:** {st.secrets.get('AUTHORIZED_GOOGLE_EMAILS', 'Not configured')}")
-                    st.write(f"**Configured authorized domains:** {st.secrets.get('AUTHORIZED_GOOGLE_DOMAINS', 'Not configured')}")
-                    st.write(f"**Skip email check:** {st.secrets.get('SKIP_GOOGLE_EMAIL_CHECK', 'false')}")
                 
                 # Clear query params
                 st.query_params.clear()
