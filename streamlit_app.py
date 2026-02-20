@@ -652,10 +652,19 @@ st.markdown(f"""
     /* Keep header visible for sidebar toggle */
     header {{
         background: transparent !important;
-        height: 2.875rem !important;
+        height: auto !important;
     }}
-    /* Hide settings menu and other header items except sidebar toggle */
-    header > div:not(:has([data-testid="collapsedControl"])) {{
+    /* Ensure sidebar toggle is always visible */
+    button[data-testid="baseButton-header"] {{
+        display: block !important;
+        visibility: visible !important;
+    }}
+    [data-testid="collapsedControl"] {{
+        display: block !important;
+        visibility: visible !important;
+    }}
+    /* Hide settings/menu in header */
+    header button[kind="header"]:not([data-testid="baseButton-header"]) {{
         display: none !important;
     }}
     #MainMenu {{
@@ -1448,8 +1457,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Show user info and logout option in sidebar after authentication
+# Add a header to confirm authentication worked
 current_user = st.session_state.get("current_user", "Unknown")
+st.markdown(f"**Welcome, {current_user.title()}!** - You have access to bot controls")
+
+# Show user info and logout option in sidebar after authentication
 with st.sidebar:
     st.markdown("---")
     # Show current user
@@ -1554,26 +1566,6 @@ if page == "Dashboard":
                     st.success("Bot started successfully!")
                     time.sleep(1)
                     st.rerun()
-
-    with col2:
-        st.markdown(
-            "<div class='info-box'>"
-            "<h3>Multi-User Control Panel</h3>"
-            "<p>This dashboard allows authorized users to manage the Choir Telegram Bot. "
-            "The system tracks who starts and stops the bot to prevent conflicts.</p>"
-            "<p>The bot provides search capabilities for hymns, lyrics, and convention songs "
-            "through a Telegram interface.</p>"
-            "<p><strong>Security Features:</strong></p>"
-            "<ul>"
-            "<li>👤 User authentication and tracking</li>"
-            "<li>📝 Operation logging and history</li>"
-            "<li>🚫 Prevention of multiple bot instances</li>"
-            "<li>⚠️ Emergency stop capabilities</li>"
-            "</ul>"
-            "</div>",
-            unsafe_allow_html=True
-        )
-
 
     
     # Add Emergency Stop button
