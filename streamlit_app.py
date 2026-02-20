@@ -683,6 +683,18 @@ st.markdown(f"""
         padding-top: 2rem !important;
         padding-bottom: 0 !important;
     }}
+    /* Hide empty alert/info boxes */
+    .stAlert:empty {{
+        display: none !important;
+    }}
+    div[data-testid="stMarkdownContainer"]:empty {{
+        display: none !important;
+    }}
+    /* Remove extra spacing from first element */
+    .block-container > div:first-child {{
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }}
     .main-header {{
         font-size: 2.5rem;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -706,7 +718,7 @@ st.markdown(f"""
     /* Centered login container */
     .login-container {{
         max-width: 420px;
-        margin: 5rem auto;
+        margin: 2rem auto;
         padding: 3rem 2.5rem;
         background: rgba(255, 255, 255, 0.95);
         border-radius: 16px;
