@@ -1569,7 +1569,7 @@ if page == "Dashboard":
         
         # Emergency Stop button (always visible)
         st.markdown("---")
-        st.warning("⚠️ Emergency Stop")
+        # st.warning("⚠️ Emergency Stop")
         if st.button("🚨 Force Stop All", key="main_emergency_stop", help="Use if bot is stuck or multiple instances are running"):
             if emergency_stop_bot():
                 st.success("All bot instances forcefully terminated!")
