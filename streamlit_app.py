@@ -443,11 +443,12 @@ def check_password():
             # st.markdown("</div>", unsafe_allow_html=True)
         
         else:
-            # Show Login Form
-            # st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
-
+            # Show Login Form - Centered
+            st.markdown("<div class='login-container'>", unsafe_allow_html=True)
+            st.markdown("<div class='login-title'>Sign In</div>", unsafe_allow_html=True)
+            
             # Username field
-            st.markdown("<div class='input-group'><div class='input-icon'>👤</div><div class='input-label'>Username</div></div>", unsafe_allow_html=True)
+            st.markdown("<div class='input-label'>Username</div>", unsafe_allow_html=True)
             st.text_input(
                 "Username",
                 key="username",
@@ -456,7 +457,7 @@ def check_password():
             )
             
             # Password field
-            st.markdown("<div class='input-group'><div class='input-icon'>🔐</div><div class='input-label'>Password</div></div>", unsafe_allow_html=True)
+            st.markdown("<div class='input-label'>Password</div>", unsafe_allow_html=True)
             st.text_input(
                 "Password",
                 type="password",
@@ -465,33 +466,32 @@ def check_password():
                 label_visibility="collapsed"
             )
 
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                if st.button("🔑 Login", type="primary", use_container_width=True):
-                    credentials_entered()
-                    if st.session_state.get("password_correct"):
-                        st.success(f"Welcome, {st.session_state['current_user']}!")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("Login failed. Please check your credentials.")
-            
-            with col2:
-                if st.button("🔓 Forgot Password?", use_container_width=True):
-                    st.session_state["show_forgot_password"] = True
+            # Login button
+            if st.button("Sign In", type="primary", use_container_width=True, key="signin_btn"):
+                credentials_entered()
+                if st.session_state.get("password_correct"):
+                    st.success(f"Welcome, {st.session_state['current_user']}!")
+                    time.sleep(1)
                     st.rerun()
+                else:
+                    st.error("Login failed. Please check your credentials.")
+            
+            # Forgot password link
+            st.markdown("<div class='forgot-password-link'><a href='#' onclick='return false;'>Forgot Password?</a></div>", unsafe_allow_html=True)
+            if st.button("Forgot Password?", key="forgot_link", use_container_width=True):
+                st.session_state["show_forgot_password"] = True
+                st.rerun()
             
             # Google Sign In option
             if GOOGLE_OAUTH_AVAILABLE:
-                st.markdown("---")
-                st.markdown("<p style='color: white; text-align: center; font-weight: 600; text-shadow: 0 2px 4px rgba(0,0,0,0.3);'>Or sign in with Google:</p>", unsafe_allow_html=True)
+                st.markdown("<div class='divider-text'>Or</div>", unsafe_allow_html=True)
                 google_oauth.render_google_signin_button()
 
             if st.session_state.get("login_error"):
                 st.error("❌ Invalid username or password. Please try again.")
                 st.session_state["login_error"] = False
             
-            # st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
         return False
     elif not st.session_state["password_correct"]:
@@ -535,11 +535,12 @@ def check_password():
             # st.markdown("</div>", unsafe_allow_html=True)
         
         else:
-            # Show Login Form
-            # st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
-
+            # Show Login Form - Centered
+            st.markdown("<div class='login-container'>", unsafe_allow_html=True)
+            st.markdown("<div class='login-title'>Sign In</div>", unsafe_allow_html=True)
+            
             # Username field
-            st.markdown("<div class='input-group'><div class='input-icon'>👤</div><div class='input-label'>Username</div></div>", unsafe_allow_html=True)
+            st.markdown("<div class='input-label'>Username</div>", unsafe_allow_html=True)
             st.text_input(
                 "Username",
                 key="username",
@@ -548,7 +549,7 @@ def check_password():
             )
             
             # Password field
-            st.markdown("<div class='input-group'><div class='input-icon'>🔐</div><div class='input-label'>Password</div></div>", unsafe_allow_html=True)
+            st.markdown("<div class='input-label'>Password</div>", unsafe_allow_html=True)
             st.text_input(
                 "Password",
                 type="password",
@@ -557,24 +558,29 @@ def check_password():
                 label_visibility="collapsed"
             )
 
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                if st.button("🔑 Login", key="login2", type="primary", use_container_width=True):
-                    credentials_entered()
-                    if st.session_state.get("password_correct"):
-                        st.success(f"✅ Welcome, {st.session_state['current_user']}!")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("❌ Login failed. Please check your credentials.")
-            
-            with col2:
-                if st.button("🔓 Forgot Password?", key="forgot2", use_container_width=True):
-                    st.session_state["show_forgot_password"] = True
+            # Login button
+            if st.button("Sign In", type="primary", use_container_width=True, key="signin_btn2"):
+                credentials_entered()
+                if st.session_state.get("password_correct"):
+                    st.success(f"✅ Welcome, {st.session_state['current_user']}!")
+                    time.sleep(1)
                     st.rerun()
+                else:
+                    st.error("❌ Login failed. Please check your credentials.")
+            
+            # Forgot password link
+            st.markdown("<div class='forgot-password-link'><a href='#' onclick='return false;'>Forgot Password?</a></div>", unsafe_allow_html=True)
+            if st.button("Forgot Password?", key="forgot_link2", use_container_width=True):
+                st.session_state["show_forgot_password"] = True
+                st.rerun()
+            
+            # Google Sign In option
+            if GOOGLE_OAUTH_AVAILABLE:
+                st.markdown("<div class='divider-text'>Or</div>", unsafe_allow_html=True)
+                google_oauth.render_google_signin_button()
 
             st.error("❌ Invalid username or password. Please try again.")
-            # st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
         return False
     else:
         # Credentials correct
@@ -697,61 +703,98 @@ st.markdown(f"""
         max-width: 650px;
         margin: 2rem auto;
     }} */
-    /* Modern input field styling */
-    .input-group {{
-        display: flex;
-        align-items: center;
-        margin-bottom: 0.8rem;
-        gap: 1rem;
+    /* Centered login container */
+    .login-container {{
+        max-width: 420px;
+        margin: 5rem auto;
+        padding: 3rem 2.5rem;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 16px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
     }}
-    .input-icon {{
+    .login-title {{
         font-size: 2rem;
-        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+        font-weight: 700;
+        color: #1a1a1a;
+        text-align: center;
+        margin-bottom: 2rem;
+        letter-spacing: -0.5px;
     }}
     .input-label {{
-        font-size: 1.3rem;
-        font-weight: 700;
-        color: #ffffff;
-        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-        letter-spacing: 0.5px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #1a1a1a;
+        margin-bottom: 0.5rem;
+        margin-top: 1rem;
+        display: block;
     }}
     .stTextInput input {{
-        background-color: rgba(255, 255, 255, 0.85) !important;
-        border: 2px solid rgba(255, 255, 255, 0.9) !important;
-        border-radius: 12px !important;
-        color: #000000 !important;
-        font-size: 1.1rem !important;
-        padding: 1rem 1.2rem !important;
-        font-weight: 500 !important;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-        transition: all 0.3s ease !important;
+        background-color: #ffffff !important;
+        border: 1.5px solid #d1d5db !important;
+        border-radius: 8px !important;
+        color: #1a1a1a !important;
+        font-size: 1rem !important;
+        padding: 0.75rem 1rem !important;
+        font-weight: 400 !important;
+        box-shadow: none !important;
+        transition: all 0.2s ease !important;
+        width: 100% !important;
     }}
     .stTextInput input:focus {{
-        background-color: rgba(255, 255, 255, 0.95) !important;
-        border: 2px solid rgba(102, 126, 234, 0.8) !important;
-        box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3) !important;
+        background-color: #ffffff !important;
+        border: 1.5px solid #667eea !important;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+        outline: none !important;
     }}
     .stTextInput input::placeholder {{
-        color: rgba(0, 0, 0, 0.45) !important;
+        color: #9ca3af !important;
         font-weight: 400 !important;
     }}
     .stButton button {{
         width: 100%;
-        background-color: rgba(255, 255, 255, 0.3) !important;
-        border: 1px solid rgba(255, 255, 255, 0.4) !important;
-        font-size: 1.05rem !important;
-        padding: 0.7rem 1.5rem !important;
-        border-radius: 10px !important;
-        font-weight: 600 !important;
+        background-color: #f3f4f6 !important;
+        border: 1px solid #d1d5db !important;
+        color: #1a1a1a !important;
+        font-size: 0.95rem !important;
+        padding: 0.65rem 1.2rem !important;
+        border-radius: 8px !important;
+        font-weight: 500 !important;
+        transition: all 0.2s ease !important;
+        margin-top: 0.5rem !important;
+    }}
+    .stButton button:hover {{
+        background-color: #e5e7eb !important;
     }}
     .stButton button[kind="primary"] {{
-        background-color: rgba(102, 126, 234, 0.8) !important;
+        background-color: #667eea !important;
         color: white !important;
-        border: 2px solid rgba(102, 126, 234, 0.9) !important;
-        font-size: 1.15rem !important;
-        padding: 0.8rem 1.5rem !important;
-        font-weight: 700 !important;
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3) !important;
+        border: none !important;
+        font-size: 1rem !important;
+        padding: 0.75rem 1.2rem !important;
+        font-weight: 600 !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+        margin-top: 1.5rem !important;
+    }}
+    .stButton button[kind="primary"]:hover {{
+        background-color: #5568d3 !important;
+    }}
+    .forgot-password-link {{
+        text-align: center;
+        margin-top: 1rem;
+        display: none;
+    }}
+    .forgot-password-link a {{
+        color: #667eea;
+        text-decoration: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }}
+    .divider-text {{
+        text-align: center;
+        margin: 1.5rem 0;
+        color: #6b7280;
+        font-size: 0.9rem;
+        font-weight: 500;
     }}
     .field-label {{
         font-size: 0.95rem;
