@@ -584,7 +584,7 @@ def check_password():
                 if st.button("Sign In", type="primary", use_container_width=True, key="signin_btn2"):
                     credentials_entered()
                     if st.session_state.get("password_correct"):
-                        st.success(f"✅ Welcome, {st.session_state['current_user']}!")
+                        st.success(f"Welcome, {st.session_state['current_user']}!")
                         time.sleep(1)
                         st.rerun()
                     else:
@@ -649,21 +649,20 @@ st.markdown(f"""
         margin-top: 0 !important;
         padding-top: 0 !important;
     }}
-    /* Hide Streamlit header and toolbar completely but keep sidebar toggle */
+    /* Hide unwanted header elements but keep sidebar toggle visible */
     header {{
-        visibility: hidden !important;
-        display: none !important;
-        height: 0 !important;
+        background: transparent !important;
     }}
-    /* Show sidebar toggle button */
-    button[kind="header"] {{
-        visibility: visible !important;
-        display: block !important;
-    }}
+    /* Keep sidebar toggle button always visible */
     [data-testid="collapsedControl"] {{
         visibility: visible !important;
         display: block !important;
+        position: fixed !important;
+        top: 0.5rem !important;
+        left: 0.5rem !important;
+        z-index: 999999 !important;
     }}
+    /* Hide other header elements */
     #MainMenu {{
         visibility: hidden !important;
         display: none !important;
@@ -675,11 +674,6 @@ st.markdown(f"""
     .stDeployButton {{
         visibility: hidden !important;
         display: none !important;
-    }}
-    [data-testid="stHeader"] {{
-        display: none !important;
-        visibility: hidden !important;
-        height: 0 !important;
     }}
     [data-testid="stToolbar"] {{
         display: none !important;
