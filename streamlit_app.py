@@ -1535,15 +1535,16 @@ with st.sidebar:
 
 # Main content
 if page == "Dashboard":
-    # Enhanced Status card with logging information
-    st.markdown("<h2 class='sub-header'>Bot Status & Control</h2>", unsafe_allow_html=True)
+    # Center the dashboard content
+    _, center_col, _ = st.columns([1, 2, 1])
+    
+    with center_col:
+        # Enhanced Status card with logging information
+        st.markdown("<h2 class='sub-header'>Bot Status & Control</h2>", unsafe_allow_html=True)
 
-    # Get current bot status from log
-    bot_status = get_bot_status()
+        # Get current bot status from log
+        bot_status = get_bot_status()
 
-    col1, col2 = st.columns([1, 2])
-
-    with col1:
         # Show status from our logging system
         if bot_status["running"]:
             st.markdown("<p class='status-running'>🟢 Running</p>", unsafe_allow_html=True)
@@ -1552,7 +1553,7 @@ if page == "Dashboard":
             st.info(f"👤 Started by: **{started_by}**")
             st.info(f"⏰ Started at: {started_at_ist}")
 
-            if st.button("Stop Bot", type="primary", key="main_stop"):
+            if st.button("Stop Bot", type="primary", key="main_stop", use_container_width=True):
                 if stop_bot():
                     st.success("Bot stopped successfully!")
                     time.sleep(1)
@@ -1561,7 +1562,7 @@ if page == "Dashboard":
             st.markdown("<p class='status-stopped'>🔴 Stopped</p>", unsafe_allow_html=True)
             st.info("Bot is currently not running")
 
-            if st.button("Start Bot", type="primary", key="main_start"):
+            if st.button("Start Bot", type="primary", key="main_start", use_container_width=True):
                 if start_bot():
                     st.success("Bot started successfully!")
                     time.sleep(1)
@@ -1569,8 +1570,7 @@ if page == "Dashboard":
         
         # Emergency Stop button (always visible)
         st.markdown("---")
-        # st.warning("⚠️ Emergency Stop")
-        if st.button("🚨 Force Stop All", key="main_emergency_stop", help="Use if bot is stuck or multiple instances are running"):
+        if st.button("🚨 Force Stop All", key="main_emergency_stop", help="Use if bot is stuck or multiple instances are running", use_container_width=True):
             if emergency_stop_bot():
                 st.success("All bot instances forcefully terminated!")
                 time.sleep(1)
