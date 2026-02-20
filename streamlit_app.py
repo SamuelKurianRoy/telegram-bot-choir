@@ -447,54 +447,53 @@ def check_password():
         
         else:
             # Show Login Form - Centered
-            st.markdown("<div class='login-container'>", unsafe_allow_html=True)
-            st.markdown("<div class='login-title'>Sign In</div>", unsafe_allow_html=True)
-            
-            # Username field
-            st.markdown("<div class='input-label'>Username</div>", unsafe_allow_html=True)
-            st.text_input(
-                "Username",
-                key="username",
-                placeholder="Enter your username",
-                label_visibility="collapsed"
-            )
-            
-            # Password field
-            st.markdown("<div class='input-label'>Password</div>", unsafe_allow_html=True)
-            st.text_input(
-                "Password",
-                type="password",
-                key="password",
-                placeholder="Enter your password",
-                label_visibility="collapsed"
-            )
+            # Center content using columns
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.markdown("<div class='login-title'>Sign In</div>", unsafe_allow_html=True)
+                
+                # Username field
+                st.markdown("<div class='input-label'>Username</div>", unsafe_allow_html=True)
+                st.text_input(
+                    "Username",
+                    key="username",
+                    placeholder="Enter your username",
+                    label_visibility="collapsed"
+                )
+                
+                # Password field
+                st.markdown("<div class='input-label'>Password</div>", unsafe_allow_html=True)
+                st.text_input(
+                    "Password",
+                    type="password",
+                    key="password",
+                    placeholder="Enter your password",
+                    label_visibility="collapsed"
+                )
 
-            # Login button
-            if st.button("Sign In", type="primary", use_container_width=True, key="signin_btn"):
-                credentials_entered()
-                if st.session_state.get("password_correct"):
-                    st.success(f"Welcome, {st.session_state['current_user']}!")
-                    time.sleep(1)
+                # Login button
+                if st.button("Sign In", type="primary", use_container_width=True, key="signin_btn"):
+                    credentials_entered()
+                    if st.session_state.get("password_correct"):
+                        st.success(f"Welcome, {st.session_state['current_user']}!")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Login failed. Please check your credentials.")
+                
+                # Forgot password link
+                if st.button("Forgot Password?", key="forgot_link", use_container_width=True):
+                    st.session_state["show_forgot_password"] = True
                     st.rerun()
-                else:
-                    st.error("Login failed. Please check your credentials.")
-            
-            # Forgot password link
-            st.markdown("<div class='forgot-password-link'><a href='#' onclick='return false;'>Forgot Password?</a></div>", unsafe_allow_html=True)
-            if st.button("Forgot Password?", key="forgot_link", use_container_width=True):
-                st.session_state["show_forgot_password"] = True
-                st.rerun()
-            
-            # Google Sign In option
-            if GOOGLE_OAUTH_AVAILABLE:
-                st.markdown("<div class='divider-text'>Or</div>", unsafe_allow_html=True)
-                google_oauth.render_google_signin_button()
+                
+                # Google Sign In option
+                if GOOGLE_OAUTH_AVAILABLE:
+                    st.markdown("<div class='divider-text'>Or</div>", unsafe_allow_html=True)
+                    google_oauth.render_google_signin_button()
 
-            if st.session_state.get("login_error"):
-                st.error("❌ Invalid username or password. Please try again.")
-                st.session_state["login_error"] = False
-            
-            st.markdown("</div>", unsafe_allow_html=True)
+                if st.session_state.get("login_error"):
+                    st.error("❌ Invalid username or password. Please try again.")
+                    st.session_state["login_error"] = False
 
         return False
     elif not st.session_state["password_correct"]:
@@ -539,51 +538,51 @@ def check_password():
         
         else:
             # Show Login Form - Centered
-            st.markdown("<div class='login-container'>", unsafe_allow_html=True)
-            st.markdown("<div class='login-title'>Sign In</div>", unsafe_allow_html=True)
-            
-            # Username field
-            st.markdown("<div class='input-label'>Username</div>", unsafe_allow_html=True)
-            st.text_input(
-                "Username",
-                key="username",
-                placeholder="Enter your username",
-                label_visibility="collapsed"
-            )
-            
-            # Password field
-            st.markdown("<div class='input-label'>Password</div>", unsafe_allow_html=True)
-            st.text_input(
-                "Password",
-                type="password",
-                key="password",
-                placeholder="Enter your password",
-                label_visibility="collapsed"
-            )
+            # Center content using columns
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.markdown("<div class='login-title'>Sign In</div>", unsafe_allow_html=True)
+                
+                # Username field
+                st.markdown("<div class='input-label'>Username</div>", unsafe_allow_html=True)
+                st.text_input(
+                    "Username",
+                    key="username",
+                    placeholder="Enter your username",
+                    label_visibility="collapsed"
+                )
+                
+                # Password field
+                st.markdown("<div class='input-label'>Password</div>", unsafe_allow_html=True)
+                st.text_input(
+                    "Password",
+                    type="password",
+                    key="password",
+                    placeholder="Enter your password",
+                    label_visibility="collapsed"
+                )
 
-            # Login button
-            if st.button("Sign In", type="primary", use_container_width=True, key="signin_btn2"):
-                credentials_entered()
-                if st.session_state.get("password_correct"):
-                    st.success(f"✅ Welcome, {st.session_state['current_user']}!")
-                    time.sleep(1)
+                # Login button
+                if st.button("Sign In", type="primary", use_container_width=True, key="signin_btn2"):
+                    credentials_entered()
+                    if st.session_state.get("password_correct"):
+                        st.success(f"✅ Welcome, {st.session_state['current_user']}!")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("❌ Login failed. Please check your credentials.")
+                
+                # Forgot password link
+                if st.button("Forgot Password?", key="forgot_link2", use_container_width=True):
+                    st.session_state["show_forgot_password"] = True
                     st.rerun()
-                else:
-                    st.error("❌ Login failed. Please check your credentials.")
-            
-            # Forgot password link
-            st.markdown("<div class='forgot-password-link'><a href='#' onclick='return false;'>Forgot Password?</a></div>", unsafe_allow_html=True)
-            if st.button("Forgot Password?", key="forgot_link2", use_container_width=True):
-                st.session_state["show_forgot_password"] = True
-                st.rerun()
-            
-            # Google Sign In option
-            if GOOGLE_OAUTH_AVAILABLE:
-                st.markdown("<div class='divider-text'>Or</div>", unsafe_allow_html=True)
-                google_oauth.render_google_signin_button()
+                
+                # Google Sign In option
+                if GOOGLE_OAUTH_AVAILABLE:
+                    st.markdown("<div class='divider-text'>Or</div>", unsafe_allow_html=True)
+                    google_oauth.render_google_signin_button()
 
-            st.error("❌ Invalid username or password. Please try again.")
-            st.markdown("</div>", unsafe_allow_html=True)
+                st.error("❌ Invalid username or password. Please try again.")
         return False
     else:
         # Credentials correct
@@ -740,21 +739,13 @@ st.markdown(f"""
         max-width: 650px;
         margin: 2rem auto;
     }} */
-    /* Centered login container */
-    .login-container {{
-        max-width: 420px;
-        margin: 1rem auto;
-        padding: 3rem 2.5rem;
+    /* Style the middle column to create the login box */
+    div[data-testid="column"]:has(.login-title) {{
         background: rgba(255, 255, 255, 0.95);
         border-radius: 16px;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    }}
-    .login-container > div:first-child {{
-        margin-top: 0 !important;
-        padding-top: 0 !important;
-    }}
-    .login-container + div {{
-        margin-top: 0 !important;
+        padding: 3rem 2.5rem;
+        margin-top: 2rem;
     }}
     .login-title {{
         font-size: 2rem;
