@@ -649,11 +649,20 @@ st.markdown(f"""
         margin-top: 0 !important;
         padding-top: 0 !important;
     }}
-    /* Hide Streamlit header and toolbar completely */
+    /* Hide Streamlit header and toolbar completely but keep sidebar toggle */
     header {{
         visibility: hidden !important;
         display: none !important;
         height: 0 !important;
+    }}
+    /* Show sidebar toggle button */
+    button[kind="header"] {{
+        visibility: visible !important;
+        display: block !important;
+    }}
+    [data-testid="collapsedControl"] {{
+        visibility: visible !important;
+        display: block !important;
     }}
     #MainMenu {{
         visibility: hidden !important;
@@ -1438,6 +1447,21 @@ if st.query_params.get("reset_auth") == "true":
 if not check_password():
     # Force stop execution if not authenticated
     st.stop()
+
+# Make sidebar toggle button visible and styled after login
+st.markdown("""
+<style>
+    /* Style the sidebar toggle button to be visible */
+    [data-testid="collapsedControl"] {
+        background-color: rgba(102, 126, 234, 0.15) !important;
+        border-radius: 8px !important;
+        padding: 8px !important;
+    }
+    [data-testid="collapsedControl"]:hover {
+        background-color: rgba(102, 126, 234, 0.25) !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Add a header to confirm authentication worked
 current_user = st.session_state.get("current_user", "Unknown")
