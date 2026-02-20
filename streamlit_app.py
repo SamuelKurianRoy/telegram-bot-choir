@@ -408,6 +408,15 @@ def check_password():
     if "password_correct" not in st.session_state:
         # First run, show login or password reset form
         
+        # Hide sidebar on login page
+        st.markdown("""
+        <style>
+            [data-testid="stSidebar"] {
+                display: none;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+        
         # Show Password Reset Form if requested
         if st.session_state.get("show_forgot_password"):
             # st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
@@ -498,6 +507,15 @@ def check_password():
         return False
     elif not st.session_state["password_correct"]:
         # Credentials not correct, show login or password reset form
+        
+        # Hide sidebar on login page
+        st.markdown("""
+        <style>
+            [data-testid="stSidebar"] {
+                display: none;
+            }
+        </style>
+        """, unsafe_allow_html=True)
         
         # Show Password Reset Form if requested
         if st.session_state.get("show_forgot_password"):
@@ -593,7 +611,7 @@ st.set_page_config(
     page_title="Choir Bot",
     page_icon="🎶",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # Load and encode background image
@@ -1421,60 +1439,9 @@ if not check_password():
     # Force stop execution if not authenticated
     st.stop()
 
-# Make the sidebar toggle button more visible and add a prominent message
-st.markdown("""
-<style>
-    /* Make sidebar toggle button more visible and animated */
-    button[data-testid="collapsedControl"] {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-        color: white !important;
-        font-size: 1.5rem !important;
-        padding: 0.75rem !important;
-        border-radius: 8px !important;
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5) !important;
-        animation: pulse 2s infinite !important;
-    }
-    
-    @keyframes pulse {
-        0%, 100% {
-            transform: scale(1);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
-        }
-        50% {
-            transform: scale(1.05);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.8);
-        }
-    }
-</style>
-""", unsafe_allow_html=True)
-
 # Add a header to confirm authentication worked
 current_user = st.session_state.get("current_user", "Unknown")
 st.markdown(f"✅ **Welcome, {current_user.title()}!** - You have access to bot controls")
-
-# Add a prominent banner about opening the sidebar
-st.markdown("""
-<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-            color: white; 
-            padding: 2rem; 
-            border-radius: 12px; 
-            margin: 1rem 0;
-            text-align: center;
-            font-size: 1.4rem;
-            font-weight: 700;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-            border: 3px solid rgba(255, 255, 255, 0.3);">
-    <div style="font-size: 3rem; margin-bottom: 0.5rem; animation: pointLeft 1s infinite;">←</div>
-    <strong>CLICK THE PURPLE BUTTON </strong> (top-left corner)<br/>
-    to open the sidebar and access all bot controls!
-</div>
-<style>
-    @keyframes pointLeft {
-        0%, 100% { transform: translateX(0); }
-        50% { transform: translateX(-10px); }
-    }
-</style>
-""", unsafe_allow_html=True)
 
 # Show user info and logout option in sidebar after authentication
 with st.sidebar:
