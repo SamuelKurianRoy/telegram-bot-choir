@@ -1459,7 +1459,7 @@ st.markdown("""
 
 # Add a header to confirm authentication worked
 current_user = st.session_state.get("current_user", "Unknown")
-st.markdown(f"✅ **Welcome, {current_user.title()}!** - You have access to bot controls")
+st.markdown(f"**Welcome, {current_user.title()}!** - You have access to bot controls")
 
 # Show user info and logout option in sidebar after authentication
 with st.sidebar:
