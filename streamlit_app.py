@@ -1421,9 +1421,25 @@ if not check_password():
     # Force stop execution if not authenticated
     st.stop()
 
+# Auto-expand sidebar after login using JavaScript
+st.markdown("""
+<script>
+    // Auto-expand sidebar on login
+    setTimeout(function() {
+        const toggleButton = window.parent.document.querySelector('[data-testid="collapsedControl"]');
+        if (toggleButton) {
+            toggleButton.click();
+        }
+    }, 100);
+</script>
+""", unsafe_allow_html=True)
+
 # Add a header to confirm authentication worked
 current_user = st.session_state.get("current_user", "Unknown")
 st.markdown(f"✅ **Welcome, {current_user.title()}!** - You have access to bot controls")
+
+# Add a helpful note about the sidebar
+st.info("📋 **Tip:** Use the sidebar (→) to access bot controls, logs, and settings.")
 
 # Show user info and logout option in sidebar after authentication
 with st.sidebar:
