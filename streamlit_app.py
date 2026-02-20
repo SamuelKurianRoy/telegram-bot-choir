@@ -649,20 +649,15 @@ st.markdown(f"""
         margin-top: 0 !important;
         padding-top: 0 !important;
     }}
-    /* Hide unwanted header elements but keep sidebar toggle visible */
+    /* Keep header visible for sidebar toggle */
     header {{
         background: transparent !important;
+        height: 2.875rem !important;
     }}
-    /* Keep sidebar toggle button always visible */
-    [data-testid="collapsedControl"] {{
-        visibility: visible !important;
-        display: block !important;
-        position: fixed !important;
-        top: 0.5rem !important;
-        left: 0.5rem !important;
-        z-index: 999999 !important;
+    /* Hide settings menu and other header items except sidebar toggle */
+    header > div:not(:has([data-testid="collapsedControl"])) {{
+        display: none !important;
     }}
-    /* Hide other header elements */
     #MainMenu {{
         visibility: hidden !important;
         display: none !important;
@@ -691,10 +686,6 @@ st.markdown(f"""
     .stApp {{
         padding-top: 0 !important;
         margin-top: 0 !important;
-    }}
-    .stApp > header {{
-        background-color: transparent !important;
-        display: none !important;
     }}
     div[data-testid="stAppViewContainer"] {{
         padding-top: 0 !important;
@@ -1457,11 +1448,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Add a header to confirm authentication worked
-current_user = st.session_state.get("current_user", "Unknown")
-st.markdown(f"**Welcome, {current_user.title()}!** - You have access to bot controls")
-
 # Show user info and logout option in sidebar after authentication
+current_user = st.session_state.get("current_user", "Unknown")
 with st.sidebar:
     st.markdown("---")
     # Show current user
