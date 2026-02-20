@@ -1459,7 +1459,7 @@ st.markdown("""
 
 # Add a header to confirm authentication worked
 current_user = st.session_state.get("current_user", "Unknown")
-st.markdown(f"**Welcome, {current_user.title()}!** - You have access to bot controls")
+st.markdown(f"**Welcome, {current_user.title()}!**")
 
 # Show user info and logout option in sidebar after authentication
 with st.sidebar:
@@ -1566,6 +1566,15 @@ if page == "Dashboard":
                     st.success("Bot started successfully!")
                     time.sleep(1)
                     st.rerun()
+        
+        # Emergency Stop button (always visible)
+        st.markdown("---")
+        st.warning("⚠️ Emergency Stop")
+        if st.button("🚨 Force Stop All", key="main_emergency_stop", help="Use if bot is stuck or multiple instances are running"):
+            if emergency_stop_bot():
+                st.success("All bot instances forcefully terminated!")
+                time.sleep(1)
+                st.rerun()
 
 elif page == "Logs":
     st.markdown("<h1 class='main-header'>Bot Logs</h1>", unsafe_allow_html=True)
