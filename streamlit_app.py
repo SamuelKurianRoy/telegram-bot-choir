@@ -382,6 +382,7 @@ def check_password():
                 st.session_state["password_correct"] = True
                 st.session_state["current_user"] = username
                 st.session_state["login_time"] = time.time()
+                st.session_state["has_logged_in_before"] = True
                 # Clear credentials from session state
                 if "username" in st.session_state:
                     del st.session_state["username"]
@@ -400,7 +401,9 @@ def check_password():
                 del st.session_state["login_time"]
             if "current_user" in st.session_state:
                 del st.session_state["current_user"]
-            st.warning("⏰ Session expired. Please login again.")
+            # Only show warning if we're not on first run
+            if st.session_state.get("has_logged_in_before"):
+                st.warning("⏰ Session expired. Please login again.")
 
     if "password_correct" not in st.session_state:
         # First run, show login or password reset form
@@ -624,6 +627,11 @@ if bg_image:
 st.markdown(f"""
 <style>
     {bg_style}
+    /* Remove all top spacing for login page */
+    .stApp > div:first-child {{
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }}
     /* Hide Streamlit header and toolbar completely */
     header {{
         visibility: hidden !important;
@@ -672,6 +680,10 @@ st.markdown(f"""
         padding-top: 0 !important;
         margin-top: 0 !important;
     }}
+    div[data-testid="stAppViewContainer"] > section {{
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+    }}
     .appview-container {{
         padding-top: 0 !important;
         margin-top: 0 !important;
@@ -680,8 +692,17 @@ st.markdown(f"""
         padding-top: 2rem !important;
     }}
     .block-container {{
-        padding-top: 2rem !important;
+        padding-top: 0 !important;
         padding-bottom: 0 !important;
+        margin-top: 0 !important;
+    }}
+    /* Target main content area */
+    .main .block-container {{
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+    }}
+    section.main > div {{
+        padding-top: 0 !important;
     }}
     /* Hide empty alert/info boxes */
     .stAlert:empty {{
@@ -692,6 +713,10 @@ st.markdown(f"""
     }}
     /* Remove extra spacing from first element */
     .block-container > div:first-child {{
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }}
+    div[data-testid="stVerticalBlock"] > div:first-child {{
         margin-top: 0 !important;
         padding-top: 0 !important;
     }}
@@ -718,11 +743,18 @@ st.markdown(f"""
     /* Centered login container */
     .login-container {{
         max-width: 420px;
-        margin: 2rem auto;
+        margin: 1rem auto;
         padding: 3rem 2.5rem;
         background: rgba(255, 255, 255, 0.95);
         border-radius: 16px;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }}
+    .login-container > div:first-child {{
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }}
+    .login-container + div {{
+        margin-top: 0 !important;
     }}
     .login-title {{
         font-size: 2rem;
@@ -730,6 +762,7 @@ st.markdown(f"""
         color: #1a1a1a;
         text-align: center;
         margin-bottom: 2rem;
+        margin-top: 0 !important;
         letter-spacing: -0.5px;
     }}
     .input-label {{
@@ -739,6 +772,17 @@ st.markdown(f"""
         margin-bottom: 0.5rem;
         margin-top: 1rem;
         display: block;
+    }}
+    .input-label:first-of-type {{
+        margin-top: 0 !important;
+    }}
+    .stTextInput {{
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }}
+    .stTextInput > div {{
+        margin-top: 0 !important;
+        padding-top: 0 !important;
     }}
     .stTextInput input {{
         background-color: #ffffff !important;
