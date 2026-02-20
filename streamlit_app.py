@@ -1457,9 +1457,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Add a header to confirm authentication worked
+# Add a centered welcome message
 current_user = st.session_state.get("current_user", "Unknown")
-st.markdown(f"**Welcome, {current_user.title()}!**")
+st.markdown(f"""
+<div style='text-align: center; padding: 1rem 0; margin-bottom: 1rem;'>
+    <h2 style='color: #667eea; font-weight: 600; margin: 0;'>👋 Welcome, {current_user.title()}!</h2>
+    <p style='color: #6b7280; font-size: 0.9rem; margin-top: 0.5rem;'>Manage your Choir Telegram Bot</p>
+</div>
+""", unsafe_allow_html=True)
 
 # Show user info and logout option in sidebar after authentication
 with st.sidebar:
@@ -1539,8 +1544,22 @@ if page == "Dashboard":
     _, center_col, _ = st.columns([1, 2, 1])
     
     with center_col:
+        # Add styled card container
+        st.markdown("""
+        <style>
+            .dashboard-card {
+                background: rgba(255, 255, 255, 0.95);
+                border-radius: 16px;
+                padding: 2rem;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                margin-bottom: 1rem;
+            }
+        </style>
+        <div class='dashboard-card'>
+        """, unsafe_allow_html=True)
+        
         # Enhanced Status card with logging information
-        st.markdown("<h2 class='sub-header'>Bot Status & Control</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; color: #1a1a1a; margin-bottom: 1.5rem; font-size: 1.8rem;'>🎵 Bot Status & Control</h2>", unsafe_allow_html=True)
 
         # Get current bot status from log
         bot_status = get_bot_status()
@@ -1569,12 +1588,16 @@ if page == "Dashboard":
                     st.rerun()
         
         # Emergency Stop button (always visible)
-        st.markdown("---")
+        st.markdown("<div style='margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;'></div>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #ef4444; font-size: 0.85rem; margin-bottom: 0.5rem;'>⚠️ Emergency Stop - Use only if bot is stuck</p>", unsafe_allow_html=True)
         if st.button("🚨 Force Stop All", key="main_emergency_stop", help="Use if bot is stuck or multiple instances are running", use_container_width=True):
             if emergency_stop_bot():
                 st.success("All bot instances forcefully terminated!")
                 time.sleep(1)
                 st.rerun()
+        
+        # Close card div
+        st.markdown("</div>", unsafe_allow_html=True)
 
 elif page == "Logs":
     st.markdown("<h1 class='main-header'>Bot Logs</h1>", unsafe_allow_html=True)
