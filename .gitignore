@@ -6,7 +6,7 @@ secrets.toml
 .env
 
 # But allow streamlit config and example configs
-!.streamlit/config.toml
+.streamlit/config.toml
 !config.json.example
 !secrets.toml.example
 
