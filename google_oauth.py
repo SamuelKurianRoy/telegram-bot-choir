@@ -152,7 +152,8 @@ def get_google_user_info(credentials):
 
 def is_authorized_google_user(email):
     """
-    Check if a Google email is authorized to access the app
+    Check if a Google email is authorized to access the app.
+    Now checks against the BotUsers sheet email addresses for seamless passwordless login.
     
     Args:
         email: Google email address
@@ -161,7 +162,16 @@ def is_authorized_google_user(email):
         bool: True if authorized, False otherwise
     """
     try:
-        # Get list of authorized Google emails from secrets
+        # First, check against BotUsers sheet (primary method)
+        from data.auth import get_all_authorized_emails
+        
+        authorized_emails_from_sheet = get_all_authorized_emails()
+        email_lower = email.lower()
+        
+        if email_lower in authorized_emails_from_sheet:
+            return True
+        
+        # Fallback: Check secrets configuration (backward compatibility)
         authorized_emails = st.secrets.get("AUTHORIZED_GOOGLE_EMAILS", "").split(',')
         authorized_emails = [e.strip().lower() for e in authorized_emails if e.strip()]
         
@@ -169,32 +179,28 @@ def is_authorized_google_user(email):
         authorized_domains = st.secrets.get("AUTHORIZED_GOOGLE_DOMAINS", "").split(',')
         authorized_domains = [d.strip().lower() for d in authorized_domains if d.strip()]
         
-        # If no authorization is configured, allow all (open access)
-        if not authorized_emails and not authorized_domains:
-            return True
-        
-        email_lower = email.lower()
-        
-        # Check if email is in authorized list
+        # Check if email is in authorized list from secrets
         if email_lower in authorized_emails:
             return True
         
         # Check if email domain is authorized
-        email_domain = email_lower.split('@')[-1]
-        if email_domain in authorized_domains:
-            return True
+        if authorized_domains:
+            email_domain = email_lower.split('@')[-1]
+            if email_domain in authorized_domains:
+                return True
         
         return False
     
     except Exception as e:
+        st.error(f"Authorization check error: {str(e)}")
         return False
 
 def render_google_signin_button():
-    """Render Google Sign In button"""
+    """Render Google Sign In button - uses email addresses from BotUsers sheet"""
     config = get_google_oauth_config()
     
     if not config or not config.get('client_id'):
-        st.info("💡 Google Sign In is not configured. Add GOOGLE_OAUTH_CLIENT_ID to secrets to enable it.")
+        st.info("💡 Passwordless sign-in with Google is not configured. Contact administrator to enable it.")
         return False
     
     # Get authorization URL
@@ -309,25 +315,38 @@ def handle_oauth_callback():
         if user_info:
             # Check if user is authorized
             if is_authorized_google_user(user_info['email']):
+                # Get username from email in BotUsers sheet
+                from data.auth import get_username_from_email
+                
+                username = get_username_from_email(user_info['email'])
+                
                 # Set session state
                 st.session_state['password_correct'] = True
-                st.session_state['current_user'] = user_info['name']
+                st.session_state['current_user'] = username if username else user_info['name']
                 st.session_state['user_email'] = user_info['email']
                 st.session_state['user_picture'] = user_info.get('picture')
                 st.session_state['login_time'] = time.time()
                 st.session_state['auth_method'] = 'google'
+                st.session_state['has_logged_in_before'] = True
+                
+                # Log the Google OAuth login
+                if username:
+                    from logging_utils import setup_loggers
+                    _, user_logger = setup_loggers()
+                    user_logger.info(f"Google OAuth login: {username}")
                 
                 # Clear query params
                 st.query_params.clear()
                 
-                st.success(f"✅ Welcome, {user_info['name']}!")
+                display_name = username.title() if username else user_info['name']
+                st.success(f"✅ Welcome, {display_name}!")
                 st.balloons()
                 st.rerun()
                 return True
             else:
                 st.error(f"❌ Access Denied")
-                st.warning(f"Your email address ({user_info['email']}) is not authorized to access this application.")
-                st.info("💡 Please contact the administrator to request access.")
+                st.warning(f"Your email address ({user_info['email']}) is not linked to any user account.")
+                st.info("💡 To enable passwordless sign-in:\n\n1. Ask your administrator to add your email to your user profile\n2. Or use the regular username/password login below")
                 
                 # Clear query params
                 st.query_params.clear()
