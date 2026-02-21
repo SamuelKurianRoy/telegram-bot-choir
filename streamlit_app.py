@@ -1460,6 +1460,16 @@ st.markdown("""
 # Add a centered welcome message
 current_user = st.session_state.get("current_user", "Unknown")
 st.markdown(f"""
+<style>
+    /* Hide any orphan/empty elements after welcome message */
+    .main .block-container > div > div:empty {{
+        display: none !important;
+    }}
+    /* Hide white input boxes that shouldn't be visible */
+    .main .block-container > div > div > div.stTextInput {{
+        display: none !important;
+    }}
+</style>
 <div style='text-align: center; padding: 1rem 0; margin-bottom: 1rem;'>
     <h2 style='color: #667eea; font-weight: 600; margin: 0;'>👋 Welcome, {current_user.title()}!</h2>
     <p style='color: #6b7280; font-size: 0.9rem; margin-top: 0.5rem;'>Manage your Choir Telegram Bot</p>
