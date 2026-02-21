@@ -3775,43 +3775,52 @@ async def execute_notation(update: Update, context: CallbackContext, song_code: 
         hymn_no = int(song_code.split('-')[1])
         
         # First, check if we have the PDF in the notation database
-        from telegram_handlers.conversations import Music_notation_downloader, file_map
-        import os
-        
-        notation_results = Music_notation_downloader(hymn_no, file_map)
-        
-        # Check if any notation was found in the database
-        notation_found_in_db = any(
-            path != "Notation not found" and path != "Page not found" and path 
-            for path in notation_results.values()
-        )
-        
-        if notation_found_in_db:
-            # Found notation in database - send all available tunes
-            await update.message.reply_text(f"✅ Found notation for {song_code} in database!")
+        try:
+            from telegram_handlers.conversations import Music_notation_downloader, file_map
+            import os
             
-            for tune_name, pdf_path in notation_results.items():
-                if pdf_path and pdf_path not in ["Notation not found", "Page not found"] and os.path.exists(pdf_path):
-                    try:
-                        file_size = os.path.getsize(pdf_path)
-                        if file_size > 50 * 1024 * 1024:  # 50MB limit for Telegram
-                            await update.message.reply_text(f"❌ PDF for tune '{tune_name}' is too large to send.")
-                        else:
-                            with open(pdf_path, 'rb') as pdf_file:
-                                await update.message.reply_document(
-                                    document=pdf_file,
-                                    filename=f"{song_code}_{tune_name}.pdf",
-                                    caption=f"🎵 Notation for {song_code} - {tune_name}"
-                                )
-                            user_logger.info(f"✅ AI assistant sent notation for {song_code} ({tune_name}) from database")
-                        # Clean up the downloaded file after sending
-                        try:
-                            os.remove(pdf_path)
-                        except:
-                            pass  # Ignore cleanup errors
-                    except Exception as e:
-                        user_logger.error(f"Error sending notation PDF for {tune_name}: {str(e)}")
-            return  # Successfully sent from database - exit
+            notation_results = Music_notation_downloader(hymn_no, file_map)
+            
+            # Check if there was an error loading data
+            if "error" in notation_results:
+                user_logger.warning(f"Notation database error for {song_code}: {notation_results['error']}")
+                # Continue to fallback
+            else:
+                # Check if any notation was found in the database
+                notation_found_in_db = any(
+                    path != "Notation not found" and path != "Page not found" and path 
+                    for path in notation_results.values()
+                )
+                
+                if notation_found_in_db:
+                    # Found notation in database - send all available tunes
+                    await update.message.reply_text(f"✅ Found notation for {song_code} in database!")
+                    
+                    for tune_name, pdf_path in notation_results.items():
+                        if pdf_path and pdf_path not in ["Notation not found", "Page not found"] and os.path.exists(pdf_path):
+                            try:
+                                file_size = os.path.getsize(pdf_path)
+                                if file_size > 50 * 1024 * 1024:  # 50MB limit for Telegram
+                                    await update.message.reply_text(f"❌ PDF for tune '{tune_name}' is too large to send.")
+                                else:
+                                    with open(pdf_path, 'rb') as pdf_file:
+                                        await update.message.reply_document(
+                                            document=pdf_file,
+                                            filename=f"{song_code}_{tune_name}.pdf",
+                                            caption=f"🎵 Notation for {song_code} - {tune_name}"
+                                        )
+                                    user_logger.info(f"✅ AI assistant sent notation for {song_code} ({tune_name}) from database")
+                                # Clean up the downloaded file after sending
+                                try:
+                                    os.remove(pdf_path)
+                                except:
+                                    pass  # Ignore cleanup errors
+                            except Exception as e:
+                                user_logger.error(f"Error sending notation PDF for {tune_name}: {str(e)}")
+                    return  # Successfully sent from database - exit
+        except Exception as e:
+            user_logger.error(f"Error checking notation database for {song_code}: {str(e)}")
+            # Continue to fallback even if database check fails
         
         # If not found in notation database, proceed with tune pages (external links)
         tunes = Tune_finder_of_known_songs(song_code)

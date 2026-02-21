@@ -710,9 +710,22 @@ def Music_notation_downloader(hymnno, file_map):
     hymnno = int(hymnno)
     results = {}
 
+    # Load the data first
+    all_data = get_all_data()
+    dfH = all_data.get('dfH')
+    dfTH = all_data.get('dfTH')
+    
+    if dfH is None or dfTH is None:
+        bot_logger.error("Failed to load hymn data for notation downloader")
+        return {"error": "Data not available"}
+
     # Get tunes for the hymn
-    tunes_str = dfH["Tunes"][hymnno - 1]
-    tune_names = [t.strip() for t in tunes_str.split(',')]
+    try:
+        tunes_str = dfH["Tunes"][hymnno - 1]
+        tune_names = [t.strip() for t in tunes_str.split(',')]
+    except (IndexError, KeyError) as e:
+        bot_logger.error(f"Error getting tunes for hymn {hymnno}: {e}")
+        return {"error": "Hymn not found"}
 
     for tune_name in tune_names:
         # Check if the exact tune is present for this hymn
