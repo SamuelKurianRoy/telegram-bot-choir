@@ -1487,10 +1487,17 @@ st.markdown(f"""
     div.element-container:empty {{
         display: none !important;
     }}
+    /* Reduce spacing between elements */
+    .main .block-container > div {{
+        gap: 0 !important;
+    }}
+    .main div[data-testid="stVerticalBlock"] > div {{
+        gap: 0.25rem !important;
+    }}
 </style>
-<div style='text-align: center; padding: 1rem 0; margin-bottom: 1rem;'>
+<div style='text-align: center; padding: 0.5rem 0 0 0; margin-bottom: 0;'>
     <h2 style='color: #667eea; font-weight: 600; margin: 0;'>👋 Welcome, {current_user.title()}!</h2>
-    <p style='color: #6b7280; font-size: 0.9rem; margin-top: 0.5rem;'>Manage your Choir Telegram Bot</p>
+    <p style='color: #6b7280; font-size: 0.9rem; margin-top: 0.5rem; margin-bottom: 0;'>Manage your Choir Telegram Bot</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1578,7 +1585,8 @@ if page == "Dashboard":
             .dashboard-card {
                 background: transparent;
                 border-radius: 16px;
-                padding: 2rem;
+                padding: 0.5rem 2rem 2rem 2rem;
+                margin-top: 0;
                 margin-bottom: 1rem;
             }
         </style>
@@ -1586,7 +1594,7 @@ if page == "Dashboard":
         """, unsafe_allow_html=True)
         
         # Enhanced Status card with logging information
-        st.markdown("<h2 style='text-align: center; color: #1a1a1a; margin-bottom: 1.5rem; font-size: 1.8rem;'>🎵 Bot Status & Control</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; color: #1a1a1a; margin-top: 0; margin-bottom: 1rem; font-size: 1.8rem;'>🎵 Bot Status & Control</h2>", unsafe_allow_html=True)
 
         # Get current bot status from log
         bot_status = get_bot_status()
