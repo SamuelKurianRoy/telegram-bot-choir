@@ -760,14 +760,14 @@ st.markdown(f"""
         max-width: 650px;
         margin: 2rem auto;
     }} */
-    /* Style the middle column to create the login box */
-    div[data-testid="column"]:has(.login-title) {{
+    /* Style the middle column to create the login box - COMMENTED OUT TO REMOVE WHITE BOX */
+    /* div[data-testid="column"]:has(.login-title) {{
         background: rgba(255, 255, 255, 0.95);
         border-radius: 16px;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
         padding: 3rem 2.5rem;
         margin-top: 2rem;
-    }}
+    }} */
     .login-title {{
         font-size: 2rem;
         font-weight: 700;
@@ -1461,12 +1461,30 @@ st.markdown("""
 current_user = st.session_state.get("current_user", "Unknown")
 st.markdown(f"""
 <style>
-    /* Hide any orphan/empty elements after welcome message */
+    /* Aggressively remove white boxes and containers */
     .main .block-container > div > div:empty {{
         display: none !important;
     }}
     /* Hide white input boxes that shouldn't be visible */
     .main .block-container > div > div > div.stTextInput {{
+        display: none !important;
+    }}
+    /* Remove any white backgrounds from columns after login */
+    div[data-testid="column"] {{
+        background: transparent !important;
+    }}
+    /* Remove white backgrounds from any blocks in main area */
+    .main div[data-testid="stVerticalBlock"] {{
+        background: transparent !important;
+    }}
+    .main div[data-testid="stHorizontalBlock"] {{
+        background: transparent !important;
+    }}
+    /* Hide any empty containers that might show as white boxes */
+    div[data-testid="stVerticalBlock"]:empty {{
+        display: none !important;
+    }}
+    div.element-container:empty {{
         display: none !important;
     }}
 </style>
@@ -1554,14 +1572,13 @@ if page == "Dashboard":
     _, center_col, _ = st.columns([1, 2, 1])
     
     with center_col:
-        # Add styled card container
+        # Add styled card container - WHITE BOX REMOVED
         st.markdown("""
         <style>
             .dashboard-card {
-                background: rgba(255, 255, 255, 0.95);
+                background: transparent;
                 border-radius: 16px;
                 padding: 2rem;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
                 margin-bottom: 1rem;
             }
         </style>
