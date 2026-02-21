@@ -236,9 +236,10 @@ Guidelines:
     - Context: User asked "find abridge", then says "tune name" → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}, "response_text": "Searching for tune 'abridge'!", "confidence": 0.9}}
   
 - For notation requests: Use "notation" command with song_code parameter
-  * System will automatically check if user is authorized
+  * System checks notation database FIRST, then provides external links if not found
   * "get notation for H-21" → {{"command": "notation", "parameters": {{"song_code": "H-21"}}}}
   * "show me sheet music for L-323" → {{"command": "notation", "parameters": {{"song_code": "L-323"}}}}
+  * "can you get me the notation of H21" → {{"command": "notation", "parameters": {{"song_code": "H-21"}}}}
   
 - For searches, include the search query in parameters
 - Set confidence between 0-1 based on how clear the intent is
@@ -262,8 +263,9 @@ Examples:
 "tune name" (with context showing user asked about "abridge") → {{"command": "tune", "parameters": {{"tune_name": "abridge"}}, "response_text": "Got it! Searching for tune 'abridge'!", "confidence": 0.95}}
 "song name" (with context showing user asked about "abridge") → {{"command": "search", "parameters": {{"query": "abridge"}}, "response_text": "Got it! Searching for song 'abridge'!", "confidence": 0.95}}
 "Find abridge" → {{"command": null, "parameters": {{}}, "response_text": "Could you clarify? Are you searching for:\\n\\n• A song named 'abridge'? → Use /search\\n• A tune named 'abridge'? → Use /tune\\n\\nOr just specify: 'find tune abridge' or 'find song abridge'", "confidence": 1.0, "mentioned_entities": {{"pending_query": "abridge"}}}}
-"Get notation for hymn 21" → {{"command": "notation", "parameters": {{"song_code": "H-21"}}, "response_text": "Let me check if I can access the notation for H-21.", "confidence": 0.95}}
-"Show me sheet music for H-44" → {{"command": "notation", "parameters": {{"song_code": "H-44"}}, "response_text": "I'll try to get the sheet music for H-44.", "confidence": 0.95}}
+"Get notation for hymn 21" → {{"command": "notation", "parameters": {{"song_code": "H-21"}}, "response_text": "Let me check the notation database for H-21!", "confidence": 0.95}}
+"can you get me the notation of H21" → {{"command": "notation", "parameters": {{"song_code": "H-21"}}, "response_text": "I'll fetch the notation for H-21 from our database!", "confidence": 0.95}}
+"Show me sheet music for H-44" → {{"command": "notation", "parameters": {{"song_code": "H-44"}}, "response_text": "Checking our notation library for H-44...", "confidence": 0.95}}
 "Who made this bot?" → {{"command": null, "parameters": {{}}, "response_text": "This bot was created by Samuel Kurian Roy to help our church choir manage songs and information. How can I assist you today?", "confidence": 1.0}}
 "Hello" → {{"command": null, "parameters": {{}}, "response_text": "Hello! I'm here to help you with choir songs. You can ask me things like 'What songs were sung on Christmas?' or 'Find H-44'.", "confidence": 1.0}}
 """
