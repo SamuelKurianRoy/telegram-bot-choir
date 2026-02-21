@@ -1,18 +1,19 @@
 # Secrets and configuration
-.streamlit/
+.streamlit/secrets.toml
 config.json
 secrets.toml
 *.env
 .env
 
+# But allow streamlit config and example configs
+!.streamlit/config.toml
+!config.json.example
+!secrets.toml.example
+
 # API Keys and tokens (extra safety)
 *token*
 *api_key*
 *secret*
-
-# But allow example configs
-!config.json.example
-!secrets.toml.example
 
 # Logs
 user_log.txt

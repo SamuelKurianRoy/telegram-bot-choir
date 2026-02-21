@@ -1,0 +1,25 @@
+[server]
+# Streamlit Cloud configuration for Telegram bot deployment
+headless = true
+enableCORS = false
+enableXsrfProtection = false
+fileWatcherType = "none"
+
+[browser]
+# Don't try to open browser
+gatherUsageStats = false
+serverAddress = "0.0.0.0"
+
+[runner]
+# Optimize for background bot process
+magicEnabled = false
+fastReruns = false
+
+[logger]
+# Set appropriate log level
+level = "info"
+
+[client]
+# Optimize for bot deployment
+showErrorDetails = false
+toolbarMode = "minimal"
