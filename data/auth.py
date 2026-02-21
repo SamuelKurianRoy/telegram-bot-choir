@@ -565,6 +565,74 @@ def get_user_email(username: str) -> str:
         user_logger.error(f"Error getting email: {str(e)[:50]}")
         return None
 
+def get_username_from_email(email: str) -> str:
+    """
+    Get username for an email address from Google Sheet.
+    Used for Google OAuth authentication.
+    
+    Args:
+        email: Email address to look up
+        
+    Returns:
+        str: Username or None if not found
+    """
+    df = load_bot_users_from_sheet()
+    
+    if df is None:
+        return None
+    
+    try:
+        # Check if email column exists
+        if 'email' not in df.columns:
+            user_logger.error("Email column not found in sheet")
+            return None
+        
+        # Find user with matching email (case-insensitive)
+        user_row = df[df['email'].str.lower() == email.lower()]
+        if user_row.empty:
+            return None
+        
+        # Check if user is active
+        if 'is_active' in df.columns and not user_row.iloc[0]['is_active']:
+            return None
+        
+        username = user_row.iloc[0]['username']
+        return username if pd.notna(username) else None
+    
+    except Exception as e:
+        user_logger.error(f"Error getting username from email: {str(e)[:50]}")
+        return None
+
+def get_all_authorized_emails() -> list:
+    """
+    Get all authorized email addresses from the BotUsers sheet.
+    Used for Google OAuth validation.
+    
+    Returns:
+        list: List of authorized email addresses
+    """
+    df = load_bot_users_from_sheet()
+    
+    if df is None:
+        return []
+    
+    try:
+        # Check if email column exists
+        if 'email' not in df.columns:
+            return []
+        
+        # Filter active users if is_active column exists
+        if 'is_active' in df.columns:
+            df = df[df['is_active'] == True]
+        
+        # Get all non-null emails and convert to lowercase
+        emails = df['email'].dropna().str.lower().tolist()
+        return emails
+    
+    except Exception as e:
+        user_logger.error(f"Error getting authorized emails: {str(e)[:50]}")
+        return []
+
 def send_password_reset_email(to_email: str, username: str, temp_password: str) -> bool:
     """
     Send password reset email to user.
