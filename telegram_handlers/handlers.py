@@ -2240,7 +2240,6 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/model` - Check current AI model status (Gemini/Groq/Sarvam)
 • `/switchmodel <provider>` - Switch AI provider (gemini/groq/sarvam/all)
 • `/testmodel` - Test AI providers with actual requests (uses quota)
-• `/testsarvam` - Test different Sarvam model names (debugging)
 
 **Notation & Sheet Music Management:**
 • `/notation_status <number>` - Check if a specific lyric notation is available
@@ -2716,79 +2715,6 @@ async def admin_test_ai_model(update: Update, context: CallbackContext) -> None:
     except Exception as e:
         await update.message.reply_text(f"❌ Error testing models: {str(e)}")
         user_logger.error(f"Error in admin_test_ai_model: {e}")
-
-async def admin_test_sarvam_models(update: Update, context: CallbackContext) -> None:
-    """Admin command to test different Sarvam model names"""
-    user = update.effective_user
-    
-    # Check if user is admin
-    config = get_config()
-    admin_id = config.ADMIN_ID
-    if user.id != admin_id:
-        await update.message.reply_text("❌ Admin access required")
-        return
-    
-    try:
-        from utils import ai_assistant
-        
-        # Check if Sarvam is initialized
-        if ai_assistant._sarvam_client is None:
-            await update.message.reply_text(
-                "⚠️ Sarvam AI not initialized\n\n"
-                "Run: `/switchmodel sarvam` first",
-                parse_mode="Markdown"
-            )
-            return
-        
-        status_msg = await update.message.reply_text("🧪 Testing Sarvam AI with different models...")
-        
-        # List of model names to try
-        test_models = [
-            "sarvam-m",      # Official free chat model
-            "sarvam-2b",     # Was our guess
-            "sarvam-1",
-            "sarvam-small",
-            "sarvam-base",
-            "sarvam-large",
-            "sarvam-chat",
-            "sarvam"
-        ]
-        
-        results = ["🧪 *Sarvam Model Testing*\n"]
-        
-        for model_name in test_models:
-            results.append(f"Testing `{model_name}`:")
-            try:
-                response = ai_assistant._sarvam_client.chat.completions.create(
-                    model=model_name,
-                    messages=[{"role": "user", "content": "Say OK"}],
-                    max_tokens=10,
-                    timeout=10.0
-                )
-                response_text = response.choices[0].message.content.strip()
-                results.append(f"  ✅ Works! Response: {response_text[:20]}")
-                user_logger.info(f"✅ Sarvam model '{model_name}' works!")
-            except Exception as e:
-                error_str = str(e)
-                if "404" in error_str or "not found" in error_str.lower():
-                    results.append(f"  ❌ Not found")
-                elif "401" in error_str:
-                    results.append(f"  ❌ Unauthorized")
-                else:
-                    results.append(f"  ❌ Error: {error_str[:50]}")
-                user_logger.error(f"❌ Sarvam model '{model_name}' failed: {error_str[:100]}")
-            results.append("")
-        
-        results.append("💡 *Next steps:*")
-        results.append("• Check Sarvam docs for correct model name")
-        results.append("• If none work, API might not be OpenAI-compatible")
-        
-        response_text = "\n".join(results)
-        await status_msg.edit_text(response_text, parse_mode="Markdown")
-        
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error testing Sarvam: {str(e)}")
-        user_logger.error(f"Error in admin_test_sarvam_models: {e}")
 
 # === FEATURE CONTROL ADMIN COMMANDS ===
 
