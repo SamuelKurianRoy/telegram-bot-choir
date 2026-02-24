@@ -48,8 +48,12 @@ def initialize_gemini():
         user_logger.error(f"Init traceback: {traceback.format_exc()[:500]}")
         return False
 
-def initialize_groq():
-    """Initialize Groq API as a free fallback option"""
+def initialize_groq(test_connection=True):
+    """Initialize Groq API as a free fallback option
+    
+    Args:
+        test_connection: If True, tests the API with a request. Set False to save quota.
+    """
     global _groq_client
     
     try:
@@ -71,14 +75,17 @@ def initialize_groq():
         # Initialize Groq client
         _groq_client = Groq(api_key=api_key)
         
-        # Test the client
-        test_response = _groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": "Say OK"}],
-            model="llama-3.3-70b-versatile",  # Fast and free
-            max_tokens=10
-        )
+        if test_connection:
+            # Test the client
+            test_response = _groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": "Say OK"}],
+                model="llama-3.3-70b-versatile",  # Fast and free
+                max_tokens=10
+            )
+            user_logger.info(f"✅ Groq AI (free) initialized with test")
+        else:
+            user_logger.info(f"✅ Groq AI (free) initialized (no test)")
         
-        user_logger.info(f"✅ Groq AI (free) initialized as fallback")
         return True
         
     except Exception as e:
@@ -170,7 +177,7 @@ def parse_user_intent(user_message: str, conversation_history: list = None) -> d
     
     # Try to initialize Sarvam first if not already done
     if _sarvam_client is None:
-        sarvam_ok = initialize_sarvam()
+        sarvam_ok = initialize_sarvam(test_connection=False)  # Skip test to save quota
         if not sarvam_ok:
             user_logger.warning("Sarvam not available, will try Gemini fallback")
     
@@ -182,7 +189,7 @@ def parse_user_intent(user_message: str, conversation_history: list = None) -> d
     
     # If both Sarvam and Gemini failed, try Groq
     if _sarvam_client is None and _gemini_model is None and _groq_client is None:
-        groq_ok = initialize_groq()
+        groq_ok = initialize_groq(test_connection=False)  # Skip test to save quota
         if not groq_ok:
             return {
                 "command": None,
@@ -424,9 +431,9 @@ Examples:
                 # Gemini failed, use Groq as fallback
                 try:
                     if _groq_client is None:
-                        if not initialize_groq():
+                        if not initialize_groq(test_connection=False):  # Skip test to save quota
                             # Groq also failed, try Sarvam
-                            if _sarvam_client is not None or initialize_sarvam():
+                            if _sarvam_client is not None or initialize_sarvam(test_connection=False):
                                 sarvam_response = _sarvam_client.chat.completions.create(
                                     model="sarvam-m",
                                     messages=[
@@ -465,7 +472,7 @@ Examples:
                     user_logger.warning(f"Groq fallback failed: {str(groq_error)[:100]}, trying Sarvam...")
                     try:
                         if _sarvam_client is None:
-                            initialize_sarvam()
+                            initialize_sarvam(test_connection=False)  # Skip test to save quota
                         
                         if _sarvam_client is not None:
                             sarvam_response = _sarvam_client.chat.completions.create(
@@ -505,7 +512,7 @@ Examples:
                     user_logger.warning(f"Gemini fallback failed: {str(gemini_error)[:100]}, trying Sarvam...")
                     try:
                         if _sarvam_client is None:
-                            initialize_sarvam()
+                            initialize_sarvam(test_connection=False)  # Skip test to save quota
                         
                         if _sarvam_client is not None:
                             sarvam_response = _sarvam_client.chat.completions.create(
@@ -552,7 +559,7 @@ Examples:
                     user_logger.warning(f"Gemini fallback failed: {str(gemini_error)[:100]}, trying Groq...")
                     try:
                         if _groq_client is None:
-                            initialize_groq()
+                            initialize_groq(test_connection=False)  # Skip test to save quota
                         
                         if _groq_client is not None:
                             groq_response = _groq_client.chat.completions.create(

@@ -421,14 +421,36 @@ def run_bot():
     print("🚀 Initializing theme components...")
     initialize_theme_components()
     
-    # Initialize AI assistant
-    print("🤖 Initializing AI assistant (Gemini)...")
+    # Initialize AI assistants
+    print("🤖 Initializing AI assistants...")
     try:
-        from utils.ai_assistant import initialize_gemini
-        if initialize_gemini():
+        from utils.ai_assistant import initialize_sarvam, initialize_gemini, initialize_groq
+        
+        # Initialize Sarvam AI first (primary, free tier)
+        sarvam_ok = initialize_sarvam(test_connection=False)  # Skip test to speed up startup
+        if sarvam_ok:
+            print("✅ Sarvam AI initialized (primary)")
+        else:
+            print("⚠️ Sarvam AI not available")
+        
+        # Initialize Gemini (fallback)
+        gemini_ok = initialize_gemini()
+        if gemini_ok:
+            print("✅ Gemini AI initialized (fallback)")
+        else:
+            print("⚠️ Gemini not available")
+        
+        # Initialize Groq (optional third fallback)
+        groq_ok = initialize_groq(test_connection=False)  # Skip test to save quota
+        if groq_ok:
+            print("✅ Groq AI initialized (fallback)")
+        else:
+            print("⚠️ Groq not available")
+        
+        if sarvam_ok or gemini_ok or groq_ok:
             print("✅ AI assistant ready")
         else:
-            print("⚠️ AI assistant disabled (no API key or error)")
+            print("⚠️ All AI assistants disabled (no API keys)")
     except Exception as e:
         print(f"⚠️ Could not initialize AI: {str(e)[:100]}")
     
