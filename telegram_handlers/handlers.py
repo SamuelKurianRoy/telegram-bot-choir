@@ -2342,6 +2342,15 @@ async def admin_check_ai_model(update: Update, context: CallbackContext) -> None
             response_lines.append(f"⚠️ *Groq:* Not initialized")
         
         response_lines.append("")
+        
+        # Check Sarvam
+        if ai_assistant._sarvam_client is not None:
+            response_lines.append(f"✅ *Sarvam AI:* Active")
+            response_lines.append(f"   Model: `sarvam-2b`")
+        else:
+            response_lines.append(f"⚠️ *Sarvam AI:* Not initialized")
+        
+        response_lines.append("")
         response_lines.append("*Current Behavior:*")
         
         # Show behavior based on preferred provider
@@ -2350,37 +2359,78 @@ async def admin_check_ai_model(update: Update, context: CallbackContext) -> None
         if preferred == 'gemini':
             if ai_assistant._gemini_model is not None:
                 response_lines.append("• Using *Gemini* as primary")
+                fallbacks = []
                 if ai_assistant._groq_client is not None:
-                    response_lines.append("• Will fallback to Groq if Gemini fails")
+                    fallbacks.append("Groq")
+                if ai_assistant._sarvam_client is not None:
+                    fallbacks.append("Sarvam")
+                if fallbacks:
+                    response_lines.append(f"• Will fallback to {' → '.join(fallbacks)}")
                 else:
                     response_lines.append("• No fallback available")
             else:
+                # Gemini not available, check what is
                 if ai_assistant._groq_client is not None:
                     response_lines.append("• Gemini unavailable, using Groq")
+                elif ai_assistant._sarvam_client is not None:
+                    response_lines.append("• Gemini unavailable, using Sarvam")
                 else:
                     response_lines.append("• ⚠️ No AI providers available")
         
         elif preferred == 'groq':
             if ai_assistant._groq_client is not None:
                 response_lines.append("• Using *Groq* as primary")
+                fallbacks = []
                 if ai_assistant._gemini_model is not None:
-                    response_lines.append("• Will fallback to Gemini if Groq fails")
+                    fallbacks.append("Gemini")
+                if ai_assistant._sarvam_client is not None:
+                    fallbacks.append("Sarvam")
+                if fallbacks:
+                    response_lines.append(f"• Will fallback to {' → '.join(fallbacks)}")
                 else:
                     response_lines.append("• No fallback available")
             else:
                 if ai_assistant._gemini_model is not None:
                     response_lines.append("• Groq unavailable, using Gemini")
+                elif ai_assistant._sarvam_client is not None:
+                    response_lines.append("• Groq unavailable, using Sarvam")
                 else:
                     response_lines.append("• ⚠️ No AI providers available")
         
-        elif preferred == 'both':
-            if ai_assistant._gemini_model is not None and ai_assistant._groq_client is not None:
-                response_lines.append("• Using *both* providers (Gemini primary)")
-                response_lines.append("• Will fallback to Groq if Gemini fails")
-            elif ai_assistant._gemini_model is not None:
-                response_lines.append("• Only Gemini available")
-            elif ai_assistant._groq_client is not None:
-                response_lines.append("• Only Groq available")
+        elif preferred == 'sarvam':
+            if ai_assistant._sarvam_client is not None:
+                response_lines.append("• Using *Sarvam AI* as primary")
+                fallbacks = []
+                if ai_assistant._gemini_model is not None:
+                    fallbacks.append("Gemini")
+                if ai_assistant._groq_client is not None:
+                    fallbacks.append("Groq")
+                if fallbacks:
+                    response_lines.append(f"• Will fallback to {' → '.join(fallbacks)}")
+                else:
+                    response_lines.append("• No fallback available")
+            else:
+                if ai_assistant._gemini_model is not None:
+                    response_lines.append("• Sarvam unavailable, using Gemini")
+                elif ai_assistant._groq_client is not None:
+                    response_lines.append("• Sarvam unavailable, using Groq")
+                else:
+                    response_lines.append("• ⚠️ No AI providers available")
+        
+        elif preferred in ['both', 'all']:
+            active_providers = []
+            if ai_assistant._gemini_model is not None:
+                active_providers.append("Gemini")
+            if ai_assistant._groq_client is not None:
+                active_providers.append("Groq")
+            if ai_assistant._sarvam_client is not None:
+                active_providers.append("Sarvam")
+            
+            if len(active_providers) > 1:
+                response_lines.append(f"• Using all providers: {' → '.join(active_providers)}")
+                response_lines.append("• Automatic fallback cascade enabled")
+            elif len(active_providers) == 1:
+                response_lines.append(f"• Only {active_providers[0]} available")
             else:
                 response_lines.append("• ⚠️ No AI providers available")
         

@@ -98,11 +98,13 @@ def initialize_sarvam():
             return False
         
         config = get_config()
-        api_key = config.secrets.get("SARVAM_API_KEY")
+        # Try both possible key names for compatibility
+        api_key = config.secrets.get("SARVAM_API_KEY") or config.secrets.get("SARVAMAPIKEY")
         
         if not api_key:
             user_logger.warning("SARVAM_API_KEY not found in secrets. Sarvam AI fallback disabled.")
             user_logger.info("To enable Sarvam AI: Get free API key from https://www.sarvam.ai/")
+            user_logger.info("Add to secrets: SARVAM_API_KEY = 'your-key' (with underscores)")
             return False
         
         # Initialize Sarvam client using OpenAI-compatible interface
