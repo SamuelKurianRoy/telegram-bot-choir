@@ -126,7 +126,7 @@ def initialize_sarvam(test_connection=True):
             user_logger.info("Testing Sarvam AI connection...")
             try:
                 test_response = _sarvam_client.chat.completions.create(
-                    model="sarvam-2b",  # Sarvam's small fast model
+                    model="sarvam-m",  # Sarvam-M: Free chat completion model
                     messages=[{"role": "user", "content": "Say OK"}],
                     max_tokens=10,
                     timeout=10.0  # 10 second timeout
@@ -385,21 +385,36 @@ Examples:
         elif primary_provider == 'sarvam' and _sarvam_client is not None:
             try:
                 # Use Sarvam as primary
+                user_logger.info(f"Attempting Sarvam AI call with model: sarvam-m")
                 sarvam_response = _sarvam_client.chat.completions.create(
                     messages=[
                         {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
                         {"role": "user", "content": prompt}
                     ],
-                    model="sarvam-2b",
+                    model="sarvam-m",
                     temperature=0.3,
-                    max_tokens=500
+                    max_tokens=500,
+                    timeout=15.0
                 )
                 response_text = sarvam_response.choices[0].message.content.strip()
                 used_provider = "Sarvam"
+                user_logger.info(f"✅ Sarvam AI responded successfully")
                 
             except Exception as sarvam_error:
                 # If Sarvam fails, try fallbacks
-                user_logger.warning(f"Sarvam failed: {str(sarvam_error)[:100]}, trying fallback...")
+                error_msg = str(sarvam_error)
+                user_logger.error(f"❌ Sarvam failed: {error_msg[:300]}")
+                
+                # Log specific error types for troubleshooting
+                if "404" in error_msg or "not found" in error_msg.lower():
+                    user_logger.error("⚠️ Model 'sarvam-m' not found - check Sarvam API documentation")
+                    user_logger.info("💡 Try checking Sarvam AI docs for current model names")
+                elif "401" in error_msg or "unauthorized" in error_msg.lower():
+                    user_logger.error("⚠️ Unauthorized - API key may be invalid or expired")
+                elif "model" in error_msg.lower() and "support" in error_msg.lower():
+                    user_logger.error("⚠️ Model not supported - check Sarvam's available models")
+                
+                user_logger.warning(f"Trying fallback to Gemini/Groq...")
                 response_text = None
         
         # If primary provider failed or wasn't available, try fallback
@@ -413,7 +428,7 @@ Examples:
                             # Groq also failed, try Sarvam
                             if _sarvam_client is not None or initialize_sarvam():
                                 sarvam_response = _sarvam_client.chat.completions.create(
-                                    model="sarvam-2b",
+                                    model="sarvam-m",
                                     messages=[
                                         {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
                                         {"role": "user", "content": prompt}
@@ -454,7 +469,7 @@ Examples:
                         
                         if _sarvam_client is not None:
                             sarvam_response = _sarvam_client.chat.completions.create(
-                                model="sarvam-2b",
+                                model="sarvam-m",
                                 messages=[
                                     {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
                                     {"role": "user", "content": prompt}
@@ -494,7 +509,7 @@ Examples:
                         
                         if _sarvam_client is not None:
                             sarvam_response = _sarvam_client.chat.completions.create(
-                                model="sarvam-2b",
+                                model="sarvam-m",
                                 messages=[
                                     {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
                                     {"role": "user", "content": prompt}

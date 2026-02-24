@@ -25,7 +25,7 @@ try:
         admin_disable_feature, admin_enable_feature, admin_feature_status,
         admin_restrict_access, admin_unrestrict_access, admin_set_admin_only, admin_unset_admin_only,
         admin_debug_features, admin_add_missing_features, admin_restore_all_features,
-        admin_check_ai_model, admin_switch_ai_model, admin_test_ai_model,
+        admin_check_ai_model, admin_switch_ai_model, admin_test_ai_model, admin_test_sarvam_models,
         list_uploads_command, notation_status_command, missing_notations_command, update_notation_status_command,
         ai_message_handler, midi_command, handle_midi_file
     )
@@ -322,6 +322,7 @@ app.add_handler(CommandHandler("restore_all_features", admin_restore_all_feature
 app.add_handler(CommandHandler("model", admin_check_ai_model))
 app.add_handler(CommandHandler("switchmodel", admin_switch_ai_model))
 app.add_handler(CommandHandler("testmodel", admin_test_ai_model))
+app.add_handler(CommandHandler("testsarvam", admin_test_sarvam_models))  # Debug Sarvam models
 
 # Upload list command
 app.add_handler(CommandHandler("listuploads", list_uploads_command))
