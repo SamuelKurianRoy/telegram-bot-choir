@@ -323,7 +323,7 @@ Examples:
         used_provider = None
         
         # Determine which provider to try first based on preference
-        primary_provider = _preferred_provider if _preferred_provider in ['gemini', 'groq'] else 'gemini'
+        primary_provider = _preferred_provider if _preferred_provider in ['gemini', 'groq', 'sarvam'] else 'gemini'
         
         if primary_provider == 'gemini' and _gemini_model is not None:
             try:
@@ -356,8 +356,28 @@ Examples:
                 used_provider = "Groq"
                 
             except Exception as groq_error:
-                # If Groq fails, try Gemini fallback
-                user_logger.warning(f"Groq failed: {str(groq_error)[:100]}, trying Gemini fallback...")
+                # If Groq fails, try fallbacks
+                user_logger.warning(f"Groq failed: {str(groq_error)[:100]}, trying fallback...")
+                response_text = None
+        
+        elif primary_provider == 'sarvam' and _sarvam_client is not None:
+            try:
+                # Use Sarvam as primary
+                sarvam_response = _sarvam_client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    model="sarvam-2b",
+                    temperature=0.3,
+                    max_tokens=500
+                )
+                response_text = sarvam_response.choices[0].message.content.strip()
+                used_provider = "Sarvam"
+                
+            except Exception as sarvam_error:
+                # If Sarvam fails, try fallbacks
+                user_logger.warning(f"Sarvam failed: {str(sarvam_error)[:100]}, trying fallback...")
                 response_text = None
         
         # If primary provider failed or wasn't available, try fallback

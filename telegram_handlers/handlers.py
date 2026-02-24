@@ -2237,8 +2237,8 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/restore_all_features` - Restore all features (fix missing features)
 
 **AI Model Management:**
-• `/model` - Check current AI model status (Gemini/Groq)
-• `/switchmodel <provider>` - Switch AI provider (gemini/groq/both)
+• `/model` - Check current AI model status (Gemini/Groq/Sarvam)
+• `/switchmodel <provider>` - Switch AI provider (gemini/groq/sarvam/all)
 • `/testmodel` - Test AI providers with actual requests (uses quota)
 
 **Notation & Sheet Music Management:**
@@ -2299,7 +2299,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/missing_notations`
 • `/disable bible Maintenance work`
 • `/reply Thanks for your feedback!`
-• `/switchmodel groq`
+• `/switchmodel sarvam`
 """
         await update.message.reply_text(admin_commands, parse_mode="Markdown")
         user_logger.info(f"Admin {user.id} viewed admin commands list")
@@ -2423,10 +2423,16 @@ async def admin_switch_ai_model(update: Update, context: CallbackContext) -> Non
         else:
             status_lines.append("• Groq: ❌ Inactive")
         
+        if ai_assistant._sarvam_client is not None:
+            status_lines.append("• Sarvam: ✅ Active")
+        else:
+            status_lines.append("• Sarvam: ❌ Inactive")
+        
         status_lines.append("\n*Usage:*")
         status_lines.append("• `/switchmodel gemini` - Switch to Gemini")
         status_lines.append("• `/switchmodel groq` - Switch to Groq")
-        status_lines.append("• `/switchmodel both` - Initialize both")
+        status_lines.append("• `/switchmodel sarvam` - Switch to Sarvam AI")
+        status_lines.append("• `/switchmodel all` - Initialize all providers")
         
         await update.message.reply_text("\n".join(status_lines), parse_mode="Markdown")
         return
@@ -2482,14 +2488,39 @@ async def admin_switch_ai_model(update: Update, context: CallbackContext) -> Non
                     parse_mode="Markdown"
                 )
         
-        elif provider == "both":
-            # Initialize both (no tests to save quota)
+        elif provider == "sarvam":
+            # Force reinitialize Sarvam
+            ai_assistant._sarvam_client = None
+            ai_assistant._preferred_provider = "sarvam"
+            success = ai_assistant.initialize_sarvam()
+            
+            if success:
+                await update.message.reply_text(
+                    "✅ *Switched to Sarvam AI*\n\n"
+                    "AI requests will now use Sarvam AI (Indian) as primary provider.",
+                    parse_mode="Markdown"
+                )
+                user_logger.info(f"Admin {user.id} switched to Sarvam AI")
+            else:
+                await update.message.reply_text(
+                    "❌ *Failed to initialize Sarvam AI*\n\n"
+                    "Check if:\n"
+                    "• SARVAM_API_KEY is set in config\n"
+                    "• openai package is installed (`pip install openai`)\n"
+                    "• Network connection is working",
+                    parse_mode="Markdown"
+                )
+        
+        elif provider in ["both", "all"]:
+            # Initialize all providers (no tests to save quota)
             ai_assistant._gemini_model = None
             ai_assistant._groq_client = None
-            ai_assistant._preferred_provider = "both"
+            ai_assistant._sarvam_client = None
+            ai_assistant._preferred_provider = "gemini"  # Default to gemini
             
             gemini_ok = ai_assistant.initialize_gemini()
             groq_ok = ai_assistant.initialize_groq()
+            sarvam_ok = ai_assistant.initialize_sarvam()
             
             results = []
             if gemini_ok:
@@ -2502,16 +2533,21 @@ async def admin_switch_ai_model(update: Update, context: CallbackContext) -> Non
             else:
                 results.append("❌ Groq failed")
             
+            if sarvam_ok:
+                results.append("✅ Sarvam AI initialized")
+            else:
+                results.append("❌ Sarvam AI failed")
+            
             await update.message.reply_text(
-                "🔄 *Initialized Both Providers*\n\n" + "\n".join(results),
+                "🔄 *Initialized All Providers*\n\n" + "\n".join(results),
                 parse_mode="Markdown"
             )
-            user_logger.info(f"Admin {user.id} initialized both AI providers")
+            user_logger.info(f"Admin {user.id} initialized all AI providers")
         
         else:
             await update.message.reply_text(
                 f"❌ Unknown provider: `{provider}`\n\n"
-                f"Use: `gemini`, `groq`, or `both`",
+                f"Use: `gemini`, `groq`, `sarvam`, or `all`",
                 parse_mode="Markdown"
             )
     
@@ -2578,6 +2614,27 @@ async def admin_test_ai_model(update: Update, context: CallbackContext) -> None:
                 response_text = test_response.choices[0].message.content.strip()
                 results.append(f"✅ Working!")
                 results.append(f"   Model: `llama-3.3-70b-versatile`")
+                results.append(f"   Response: {response_text[:30]}")
+            except Exception as e:
+                results.append(f"❌ Error: {str(e)[:100]}")
+        
+        results.append("")
+        
+        # Test Sarvam
+        results.append("*Testing Sarvam AI:*")
+        if ai_assistant._sarvam_client is None:
+            results.append("❌ Not initialized")
+            results.append("   Initialize: `/switchmodel sarvam`")
+        else:
+            try:
+                test_response = ai_assistant._sarvam_client.chat.completions.create(
+                    messages=[{"role": "user", "content": "Reply with just 'OK'"}],
+                    model="sarvam-2b",
+                    max_tokens=10
+                )
+                response_text = test_response.choices[0].message.content.strip()
+                results.append(f"✅ Working!")
+                results.append(f"   Model: `sarvam-2b`")
                 results.append(f"   Response: {response_text[:30]}")
             except Exception as e:
                 results.append(f"❌ Error: {str(e)[:100]}")

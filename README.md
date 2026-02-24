@@ -983,12 +983,12 @@ def get_unused_songs(category: str, duration: str):
 
 **/ model**
 - Check current AI model status
-- Display active provider (Gemini/Groq)
+- Display active provider (Gemini/Groq/Sarvam)
 - Show configuration
 
 **/ switchmodel <provider>**
 - Switch between AI providers
-- Options: gemini, groq, both
+- Options: gemini, groq, sarvam, or all
 
 **/ testmodel <message>**
 - Test AI model with sample input
