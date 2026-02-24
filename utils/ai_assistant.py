@@ -85,8 +85,13 @@ def initialize_groq():
         user_logger.error(f"Failed to initialize Groq: {str(e)[:200]}")
         return False
 
-def initialize_sarvam():
-    """Initialize Sarvam AI (Indian AI) as a third fallback option"""
+def initialize_sarvam(test_connection=True):
+    """
+    Initialize Sarvam AI (Indian AI) as a third fallback option
+    
+    Args:
+        test_connection: If True, tests the API with a request. Set False to save quota.
+    """
     global _sarvam_client
     
     try:
@@ -95,6 +100,7 @@ def initialize_sarvam():
             from openai import OpenAI
         except ImportError:
             user_logger.warning("OpenAI package not installed. Install with: pip install openai")
+            user_logger.info("To fix: pip install openai")
             return False
         
         config = get_config()
@@ -104,8 +110,10 @@ def initialize_sarvam():
         if not api_key:
             user_logger.warning("SARVAM_API_KEY not found in secrets. Sarvam AI fallback disabled.")
             user_logger.info("To enable Sarvam AI: Get free API key from https://www.sarvam.ai/")
-            user_logger.info("Add to secrets: SARVAM_API_KEY = 'your-key' (with underscores)")
+            user_logger.info("Add to Streamlit secrets: SARVAM_API_KEY = 'your-key-here'")
             return False
+        
+        user_logger.info(f"Found Sarvam API key (length: {len(api_key)})")
         
         # Initialize Sarvam client using OpenAI-compatible interface
         _sarvam_client = OpenAI(
@@ -113,18 +121,30 @@ def initialize_sarvam():
             base_url="https://api.sarvam.ai/v1"
         )
         
-        # Test the client with a simple request
-        test_response = _sarvam_client.chat.completions.create(
-            model="sarvam-2b",  # Sarvam's small fast model
-            messages=[{"role": "user", "content": "Say OK"}],
-            max_tokens=10
-        )
+        if test_connection:
+            # Test the client with a simple request
+            user_logger.info("Testing Sarvam AI connection...")
+            try:
+                test_response = _sarvam_client.chat.completions.create(
+                    model="sarvam-2b",  # Sarvam's small fast model
+                    messages=[{"role": "user", "content": "Say OK"}],
+                    max_tokens=10,
+                    timeout=10.0  # 10 second timeout
+                )
+                user_logger.info(f"✅ Sarvam AI connection test successful")
+            except Exception as test_error:
+                user_logger.error(f"Sarvam connection test failed: {str(test_error)[:300]}")
+                user_logger.error(f"This might be due to: invalid API key, wrong model name, or API downtime")
+                user_logger.info(f"Continuing anyway - will work if API call succeeds later")
+                # Don't return False - allow it to work without test
         
-        user_logger.info(f"✅ Sarvam AI (Indian, free) initialized as fallback")
+        user_logger.info(f"✅ Sarvam AI (Indian) initialized {'with test' if test_connection else '(no test)'}")
         return True
         
     except Exception as e:
-        user_logger.error(f"Failed to initialize Sarvam: {str(e)[:200]}")
+        user_logger.error(f"Failed to initialize Sarvam AI: {str(e)[:300]}")
+        import traceback
+        user_logger.error(f"Sarvam init traceback: {traceback.format_exc()[:500]}")
         return False
 
 def parse_user_intent(user_message: str, conversation_history: list = None) -> dict:

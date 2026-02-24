@@ -2542,24 +2542,28 @@ async def admin_switch_ai_model(update: Update, context: CallbackContext) -> Non
             # Force reinitialize Sarvam
             ai_assistant._sarvam_client = None
             ai_assistant._preferred_provider = "sarvam"
-            success = ai_assistant.initialize_sarvam()
+            success = ai_assistant.initialize_sarvam(test_connection=False)  # Don't test to save quota
             
             if success:
                 await update.message.reply_text(
                     "✅ *Switched to Sarvam AI*\n\n"
-                    "AI requests will now use Sarvam AI (Indian) as primary provider.",
+                    "AI requests will now use Sarvam AI (Indian) as primary provider.\n\n"
+                    "💡 First request will test the connection.",
                     parse_mode="Markdown"
                 )
                 user_logger.info(f"Admin {user.id} switched to Sarvam AI")
             else:
                 await update.message.reply_text(
                     "❌ *Failed to initialize Sarvam AI*\n\n"
-                    "Check if:\n"
-                    "• SARVAM_API_KEY is set in config\n"
-                    "• openai package is installed (`pip install openai`)\n"
-                    "• Network connection is working",
+                    "Possible issues:\n"
+                    "• `SARVAM_API_KEY` not in Streamlit secrets\n"
+                    "• `openai` package not installed\n"
+                    "• Invalid API key format\n\n"
+                    "📋 Check `user_log.txt` for detailed error\n"
+                    "🔧 Verify: Settings → Secrets → SARVAM_API_KEY",
                     parse_mode="Markdown"
                 )
+                user_logger.error(f"Admin {user.id} failed to switch to Sarvam - check logs above")
         
         elif provider in ["both", "all"]:
             # Initialize all providers (no tests to save quota)
@@ -2570,7 +2574,7 @@ async def admin_switch_ai_model(update: Update, context: CallbackContext) -> Non
             
             gemini_ok = ai_assistant.initialize_gemini()
             groq_ok = ai_assistant.initialize_groq()
-            sarvam_ok = ai_assistant.initialize_sarvam()
+            sarvam_ok = ai_assistant.initialize_sarvam(test_connection=False)  # No test for Sarvam
             
             results = []
             if gemini_ok:
@@ -2586,12 +2590,13 @@ async def admin_switch_ai_model(update: Update, context: CallbackContext) -> Non
             if sarvam_ok:
                 results.append("✅ Sarvam AI initialized")
             else:
-                results.append("❌ Sarvam AI failed")
+                results.append("❌ Sarvam AI failed (check logs)")
             
-            await update.message.reply_text(
-                "🔄 *Initialized All Providers*\n\n" + "\n".join(results),
-                parse_mode="Markdown"
-            )
+            status_msg = "🔄 *Initialized All Providers*\n\n" + "\n".join(results)
+            if sarvam_ok:
+                status_msg += "\n\n💡 Run `/testmodel` to verify all connections"
+            
+            await update.message.reply_text(status_msg, parse_mode="Markdown")
             user_logger.info(f"Admin {user.id} initialized all AI providers")
         
         else:
@@ -2680,14 +2685,25 @@ async def admin_test_ai_model(update: Update, context: CallbackContext) -> None:
                 test_response = ai_assistant._sarvam_client.chat.completions.create(
                     messages=[{"role": "user", "content": "Reply with just 'OK'"}],
                     model="sarvam-2b",
-                    max_tokens=10
+                    max_tokens=10,
+                    timeout=10.0
                 )
                 response_text = test_response.choices[0].message.content.strip()
                 results.append(f"✅ Working!")
                 results.append(f"   Model: `sarvam-2b`")
                 results.append(f"   Response: {response_text[:30]}")
             except Exception as e:
-                results.append(f"❌ Error: {str(e)[:100]}")
+                error_str = str(e)
+                results.append(f"❌ Error: {error_str[:150]}")
+                # Provide specific troubleshooting
+                if "401" in error_str or "unauthorized" in error_str.lower():
+                    results.append("   🔑 Check API key in secrets")
+                elif "404" in error_str or "not found" in error_str.lower():
+                    results.append("   🎯 Model name might be wrong")
+                elif "timeout" in error_str.lower():
+                    results.append("   ⏱️ API response timeout")
+                else:
+                    results.append("   📋 Check user_log.txt for details")
         
         results.append("")
         results.append("💡 *Note:* Testing uses API quota")
