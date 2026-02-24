@@ -4240,7 +4240,18 @@ async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
         elif command == "notation":
             song_code = parameters.get("song_code", "")
             if song_code:
-                await execute_notation(update, context, song_code)
+                # Start the interactive notation conversation instead of direct execution
+                # This ensures tune selection works properly
+                from telegram_handlers.conversations import notation, notation_code_input
+                from telegram.ext import ConversationHandler
+                
+                # Start the notation conversation
+                state = await notation(update, context)
+                
+                # Simulate user entering the song code
+                # Create a new update with the song code as the message text
+                update.message.text = song_code
+                await notation_code_input(update, context)
             else:
                 await update.message.reply_text("Please specify a song code. Example: 'get notation for H-44'")
         
