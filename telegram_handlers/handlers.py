@@ -3966,31 +3966,48 @@ async def execute_notation(update: Update, context: CallbackContext, song_code: 
             await update.message.reply_text("❌ No tunes available.")
             return
         
-        # Get notation for all tunes (external links as fallback)
+        # If multiple tunes, show selection buttons
+        if len(tune_list) > 1:
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            
+            keyboard = [
+                [InlineKeyboardButton(tune, callback_data=f"notation:{tune}|{song_code}")]
+                for tune in tune_list
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(
+                f"🎶 Select a tune for {song_code}:", 
+                reply_markup=reply_markup
+            )
+            return
+        
+        # Single tune - show external link directly
+        tune_name = tune_list[0]
+        
+        # Get notation for the single tune (external link as fallback)
         all_data = get_all_data()
         dfH = all_data.get('dfH')
         dfTH = all_data.get('dfTH')
         
+        page_no, source = find_tune_page_number(tune_name, hymn_no, dfH, dfTH)
+        
         result_lines = [
-            f"ℹ️ **{song_code} not found in notation database.**\n",
+            f"ℹ️ {song_code} not found in notation database.\n",
             f"📚 Here are external tune reference pages:\n"
         ]
         
-        for i, tune_name in enumerate(tune_list, 1):
-            page_no, source = find_tune_page_number(tune_name, hymn_no, dfH, dfTH)
-            
-            line = f"{i}. ♪ {tune_name}"
-            
-            if page_no:
-                notation_link = getNotation(page_no)
-                if notation_link and "http" in str(notation_link):
-                    line += f" - [📖 View Notation]({notation_link})"
-                else:
-                    line += f" - Page {page_no}"
+        line = f"1. ♪ {tune_name}"
+        
+        if page_no:
+            notation_link = getNotation(page_no)
+            if notation_link and "http" in str(notation_link):
+                line += f" - [📖 View Notation]({notation_link})"
             else:
-                line += " - ❌ No notation found"
-            
-            result_lines.append(line)
+                line += f" - Page {page_no}"
+        else:
+            line += " - ❌ No notation found"
+        
+        result_lines.append(line)
         
         result = "\n".join(result_lines)
         await update.message.reply_text(result, parse_mode="Markdown", disable_web_page_preview=True)
@@ -4240,18 +4257,7 @@ async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
         elif command == "notation":
             song_code = parameters.get("song_code", "")
             if song_code:
-                # Start the interactive notation conversation instead of direct execution
-                # This ensures tune selection works properly
-                from telegram_handlers.conversations import notation, notation_code_input
-                from telegram.ext import ConversationHandler
-                
-                # Start the notation conversation
-                state = await notation(update, context)
-                
-                # Simulate user entering the song code
-                # Create a new update with the song code as the message text
-                update.message.text = song_code
-                await notation_code_input(update, context)
+                await execute_notation(update, context, song_code)
             else:
                 await update.message.reply_text("Please specify a song code. Example: 'get notation for H-44'")
         
