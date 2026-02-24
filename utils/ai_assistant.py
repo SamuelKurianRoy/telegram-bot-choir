@@ -1,5 +1,5 @@
 # utils/ai_assistant.py
-# AI Assistant for natural language command interpretation using Sarvam AI (primary), Google Gemini, and Groq
+# AI Assistant for natural language command interpretation using Google Gemini (primary), with Groq and Sarvam AI as fallbacks
 
 from google import genai
 from google.genai import types
@@ -14,7 +14,7 @@ bot_logger, user_logger = setup_loggers()
 _gemini_model = None
 _groq_client = None
 _sarvam_client = None
-_preferred_provider = "sarvam"  # Track user's preferred provider: 'gemini', 'groq', 'sarvam', or 'both'
+_preferred_provider = "gemini"  # Track user's preferred provider: 'gemini', 'groq', 'sarvam', or 'both'
 
 def initialize_gemini():
     """
@@ -175,22 +175,22 @@ def parse_user_intent(user_message: str, conversation_history: list = None) -> d
     global _sarvam_client
     global _preferred_provider
     
-    # Try to initialize Sarvam first if not already done
-    if _sarvam_client is None:
-        sarvam_ok = initialize_sarvam(test_connection=False)  # Skip test to save quota
-        if not sarvam_ok:
-            user_logger.warning("Sarvam not available, will try Gemini fallback")
-    
-    # If Sarvam is not available, try Gemini
-    if _sarvam_client is None and _gemini_model is None:
+    # Try to initialize Gemini first if not already done
+    if _gemini_model is None:
         gemini_ok = initialize_gemini()
         if not gemini_ok:
             user_logger.warning("Gemini not available, will try Groq fallback")
     
-    # If both Sarvam and Gemini failed, try Groq
-    if _sarvam_client is None and _gemini_model is None and _groq_client is None:
+    # If Gemini is not available, try Groq
+    if _gemini_model is None and _groq_client is None:
         groq_ok = initialize_groq(test_connection=False)  # Skip test to save quota
         if not groq_ok:
+            user_logger.warning("Groq not available, will try Sarvam fallback")
+    
+    # If both Gemini and Groq failed, try Sarvam
+    if _gemini_model is None and _groq_client is None and _sarvam_client is None:
+        sarvam_ok = initialize_sarvam(test_connection=False)  # Skip test to save quota
+        if not sarvam_ok:
             return {
                 "command": None,
                 "parameters": {},
@@ -347,12 +347,12 @@ Examples:
 "Hello" → {{"command": null, "parameters": {{}}, "response_text": "Hello! I'm here to help you with choir songs. You can ask me things like 'What songs were sung on Christmas?' or 'Find H-44'.", "confidence": 1.0}}
 """
 
-        # Try primary provider (Sarvam by default, unless user switched)
+        # Try primary provider (Gemini by default, unless user switched)
         response_text = None
         used_provider = None
         
         # Determine which provider to try first based on preference
-        primary_provider = _preferred_provider if _preferred_provider in ['gemini', 'groq', 'sarvam'] else 'sarvam'
+        primary_provider = _preferred_provider if _preferred_provider in ['gemini', 'groq', 'sarvam'] else 'gemini'
         
         if primary_provider == 'gemini' and _gemini_model is not None:
             try:

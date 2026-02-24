@@ -425,28 +425,28 @@ def run_bot():
     try:
         from utils.ai_assistant import initialize_sarvam, initialize_gemini, initialize_groq
         
-        # Initialize Sarvam AI first (primary, free tier)
-        sarvam_ok = initialize_sarvam(test_connection=False)  # Skip test to speed up startup
-        if sarvam_ok:
-            print("✅ Sarvam AI initialized (primary)")
-        else:
-            print("⚠️ Sarvam AI not available")
-        
-        # Initialize Gemini (fallback)
+        # Initialize Gemini AI first (primary, best accuracy)
         gemini_ok = initialize_gemini()
         if gemini_ok:
-            print("✅ Gemini AI initialized (fallback)")
+            print("✅ Gemini AI initialized (primary)")
         else:
             print("⚠️ Gemini not available")
         
-        # Initialize Groq (optional third fallback)
+        # Initialize Groq (fallback)
         groq_ok = initialize_groq(test_connection=False)  # Skip test to save quota
         if groq_ok:
             print("✅ Groq AI initialized (fallback)")
         else:
             print("⚠️ Groq not available")
         
-        if sarvam_ok or gemini_ok or groq_ok:
+        # Initialize Sarvam AI (optional third fallback)
+        sarvam_ok = initialize_sarvam(test_connection=False)  # Skip test to speed up startup
+        if sarvam_ok:
+            print("✅ Sarvam AI initialized (fallback)")
+        else:
+            print("⚠️ Sarvam AI not available")
+        
+        if gemini_ok or groq_ok or sarvam_ok:
             print("✅ AI assistant ready")
         else:
             print("⚠️ All AI assistants disabled (no API keys)")
