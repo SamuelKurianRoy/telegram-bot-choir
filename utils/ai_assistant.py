@@ -1,5 +1,5 @@
 # utils/ai_assistant.py
-# AI Assistant for natural language command interpretation using Google Gemini
+# AI Assistant for natural language command interpretation using Sarvam AI (primary), Google Gemini, and Groq
 
 from google import genai
 from google.genai import types
@@ -14,7 +14,7 @@ bot_logger, user_logger = setup_loggers()
 _gemini_model = None
 _groq_client = None
 _sarvam_client = None
-_preferred_provider = "gemini"  # Track user's preferred provider: 'gemini', 'groq', 'sarvam', or 'both'
+_preferred_provider = "sarvam"  # Track user's preferred provider: 'gemini', 'groq', 'sarvam', or 'both'
 
 def initialize_gemini():
     """
@@ -168,22 +168,22 @@ def parse_user_intent(user_message: str, conversation_history: list = None) -> d
     global _sarvam_client
     global _preferred_provider
     
-    # Try to initialize Gemini if not already done
-    if _gemini_model is None:
+    # Try to initialize Sarvam first if not already done
+    if _sarvam_client is None:
+        sarvam_ok = initialize_sarvam()
+        if not sarvam_ok:
+            user_logger.warning("Sarvam not available, will try Gemini fallback")
+    
+    # If Sarvam is not available, try Gemini
+    if _sarvam_client is None and _gemini_model is None:
         gemini_ok = initialize_gemini()
         if not gemini_ok:
             user_logger.warning("Gemini not available, will try Groq fallback")
     
-    # If Gemini is still not available, try Groq
-    if _gemini_model is None and _groq_client is None:
+    # If both Sarvam and Gemini failed, try Groq
+    if _sarvam_client is None and _gemini_model is None and _groq_client is None:
         groq_ok = initialize_groq()
         if not groq_ok:
-            user_logger.warning("Groq not available, will try Sarvam fallback")
-    
-    # If both Gemini and Groq failed, try Sarvam
-    if _gemini_model is None and _groq_client is None and _sarvam_client is None:
-        sarvam_ok = initialize_sarvam()
-        if not sarvam_ok:
             return {
                 "command": None,
                 "parameters": {},
@@ -340,12 +340,12 @@ Examples:
 "Hello" → {{"command": null, "parameters": {{}}, "response_text": "Hello! I'm here to help you with choir songs. You can ask me things like 'What songs were sung on Christmas?' or 'Find H-44'.", "confidence": 1.0}}
 """
 
-        # Try Gemini first (if available)
+        # Try primary provider (Sarvam by default, unless user switched)
         response_text = None
         used_provider = None
         
         # Determine which provider to try first based on preference
-        primary_provider = _preferred_provider if _preferred_provider in ['gemini', 'groq', 'sarvam'] else 'gemini'
+        primary_provider = _preferred_provider if _preferred_provider in ['gemini', 'groq', 'sarvam'] else 'sarvam'
         
         if primary_provider == 'gemini' and _gemini_model is not None:
             try:
@@ -529,6 +529,53 @@ Examples:
                             }
                     except Exception as sarvam_error:
                         user_logger.error(f"All providers failed. Sarvam: {str(sarvam_error)[:100]}")
+                        return {
+                            "command": None,
+                            "parameters": {},
+                            "response_text": "AI assistant encountered an error. Please use /help.",
+                            "confidence": 0.0
+                        }
+            
+            elif primary_provider == 'sarvam' and _gemini_model is not None:
+                # Sarvam failed, use Gemini as fallback
+                try:
+                    client, model_name = _gemini_model
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt
+                    )
+                    response_text = response.text.strip()
+                    used_provider = "Gemini (fallback)"
+                    user_logger.info("✅ Used Gemini fallback successfully after Sarvam failure")
+                except Exception as gemini_error:
+                    # Gemini also failed, try Groq as third fallback
+                    user_logger.warning(f"Gemini fallback failed: {str(gemini_error)[:100]}, trying Groq...")
+                    try:
+                        if _groq_client is None:
+                            initialize_groq()
+                        
+                        if _groq_client is not None:
+                            groq_response = _groq_client.chat.completions.create(
+                                model="llama-3.3-70b-versatile",
+                                messages=[
+                                    {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
+                                    {"role": "user", "content": prompt}
+                                ],
+                                temperature=0.3,
+                                max_tokens=500
+                            )
+                            response_text = groq_response.choices[0].message.content.strip()
+                            used_provider = "Groq (fallback)"
+                            user_logger.info("✅ Used Groq fallback successfully")
+                        else:
+                            return {
+                                "command": None,
+                                "parameters": {},
+                                "response_text": "AI assistant encountered an error. Please use /help.",
+                                "confidence": 0.0
+                            }
+                    except Exception as groq_error:
+                        user_logger.error(f"All providers failed. Groq: {str(groq_error)[:100]}")
                         return {
                             "command": None,
                             "parameters": {},
