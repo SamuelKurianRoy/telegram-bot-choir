@@ -8,6 +8,7 @@ google-genai>=1.0.0
 
 # AI/LLM providers
 groq>=0.4.0  # Free tier fallback for AI assistant
+openai>=1.0.0  # For Sarvam AI compatibility (OpenAI-compatible API)
 
 # Data manipulation and file handling
 pandas>=1.3.0

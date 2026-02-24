@@ -1433,9 +1433,10 @@ private_key_id = "your-key-id"
 client_email = "your-service-account@project.iam.gserviceaccount.com"
 # ... (private_key split into l1-l28)
 
-# AI API Keys
-GEMINI_API_KEY = "your-gemini-api-key"
+# AI API Keys (free tiers available)
+GEMINI_API_KEY = "your-gemini-api-key"  # Primary (Google)
 GROQ_API_KEY = "your-groq-api-key"  # Optional fallback
+SARVAM_API_KEY = "your-sarvam-api-key"  # Optional fallback (Indian AI)
 
 # Settings
 LOG_UPLOAD_INTERVAL = "3600"  # seconds

@@ -13,7 +13,8 @@ bot_logger, user_logger = setup_loggers()
 # Initialize AI providers
 _gemini_model = None
 _groq_client = None
-_preferred_provider = "gemini"  # Track user's preferred provider: 'gemini', 'groq', or 'both'
+_sarvam_client = None
+_preferred_provider = "gemini"  # Track user's preferred provider: 'gemini', 'groq', 'sarvam', or 'both'
 
 def initialize_gemini():
     """
@@ -84,6 +85,46 @@ def initialize_groq():
         user_logger.error(f"Failed to initialize Groq: {str(e)[:200]}")
         return False
 
+def initialize_sarvam():
+    """Initialize Sarvam AI (Indian AI) as a third fallback option"""
+    global _sarvam_client
+    
+    try:
+        # Sarvam AI uses OpenAI-compatible API, so we can use openai or requests
+        try:
+            from openai import OpenAI
+        except ImportError:
+            user_logger.warning("OpenAI package not installed. Install with: pip install openai")
+            return False
+        
+        config = get_config()
+        api_key = config.secrets.get("SARVAM_API_KEY")
+        
+        if not api_key:
+            user_logger.warning("SARVAM_API_KEY not found in secrets. Sarvam AI fallback disabled.")
+            user_logger.info("To enable Sarvam AI: Get free API key from https://www.sarvam.ai/")
+            return False
+        
+        # Initialize Sarvam client using OpenAI-compatible interface
+        _sarvam_client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.sarvam.ai/v1"
+        )
+        
+        # Test the client with a simple request
+        test_response = _sarvam_client.chat.completions.create(
+            model="sarvam-2b",  # Sarvam's small fast model
+            messages=[{"role": "user", "content": "Say OK"}],
+            max_tokens=10
+        )
+        
+        user_logger.info(f"✅ Sarvam AI (Indian, free) initialized as fallback")
+        return True
+        
+    except Exception as e:
+        user_logger.error(f"Failed to initialize Sarvam: {str(e)[:200]}")
+        return False
+
 def parse_user_intent(user_message: str, conversation_history: list = None) -> dict:
     """
     Parse user's natural language message to determine intent and extract parameters.
@@ -102,6 +143,7 @@ def parse_user_intent(user_message: str, conversation_history: list = None) -> d
     """
     global _gemini_model
     global _groq_client
+    global _sarvam_client
     global _preferred_provider
     
     # Try to initialize Gemini if not already done
@@ -114,6 +156,12 @@ def parse_user_intent(user_message: str, conversation_history: list = None) -> d
     if _gemini_model is None and _groq_client is None:
         groq_ok = initialize_groq()
         if not groq_ok:
+            user_logger.warning("Groq not available, will try Sarvam fallback")
+    
+    # If both Gemini and Groq failed, try Sarvam
+    if _gemini_model is None and _groq_client is None and _sarvam_client is None:
+        sarvam_ok = initialize_sarvam()
+        if not sarvam_ok:
             return {
                 "command": None,
                 "parameters": {},
@@ -317,27 +365,72 @@ Examples:
             # Try the other provider as fallback
             if primary_provider == 'gemini' and _groq_client is not None:
                 # Gemini failed, use Groq as fallback
-                if _groq_client is None:
-                    if not initialize_groq():
+                try:
+                    if _groq_client is None:
+                        if not initialize_groq():
+                            # Groq also failed, try Sarvam
+                            if _sarvam_client is not None or initialize_sarvam():
+                                sarvam_response = _sarvam_client.chat.completions.create(
+                                    model="sarvam-2b",
+                                    messages=[
+                                        {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
+                                        {"role": "user", "content": prompt}
+                                    ],
+                                    temperature=0.3,
+                                    max_tokens=500
+                                )
+                                response_text = sarvam_response.choices[0].message.content.strip()
+                                used_provider = "Sarvam (fallback)"
+                                user_logger.info("✅ Used Sarvam fallback successfully")
+                            else:
+                                return {
+                                    "command": None,
+                                    "parameters": {},
+                                    "response_text": "AI assistant encountered an error. Please use /help.",
+                                    "confidence": 0.0
+                                }
+                    
+                    if response_text is None:
+                        groq_response = _groq_client.chat.completions.create(
+                            messages=[
+                                {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
+                                {"role": "user", "content": prompt}
+                            ],
+                            model="llama-3.3-70b-versatile",
+                            temperature=0.3,
+                            max_tokens=500
+                        )
+                        response_text = groq_response.choices[0].message.content.strip()
+                        used_provider = "Groq (fallback)"
+                        user_logger.info("✅ Used Groq fallback successfully")
+                except Exception as groq_error:
+                    # Groq also failed, try Sarvam as third fallback
+                    user_logger.warning(f"Groq fallback failed: {str(groq_error)[:100]}, trying Sarvam...")
+                    try:
+                        if _sarvam_client is None:
+                            initialize_sarvam()
+                        
+                        if _sarvam_client is not None:
+                            sarvam_response = _sarvam_client.chat.completions.create(
+                                model="sarvam-2b",
+                                messages=[
+                                    {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
+                                    {"role": "user", "content": prompt}
+                                ],
+                                temperature=0.3,
+                                max_tokens=500
+                            )
+                            response_text = sarvam_response.choices[0].message.content.strip()
+                            used_provider = "Sarvam (fallback)"
+                            user_logger.info("✅ Used Sarvam fallback successfully")
+                    except Exception as sarvam_error:
+                        user_logger.error(f"All providers failed. Sarvam: {str(sarvam_error)[:100]}")
                         return {
                             "command": None,
                             "parameters": {},
                             "response_text": "AI assistant encountered an error. Please use /help.",
                             "confidence": 0.0
                         }
-                
-                groq_response = _groq_client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    model="llama-3.3-70b-versatile",
-                    temperature=0.3,
-                    max_tokens=500
-                )
-                response_text = groq_response.choices[0].message.content.strip()
-                used_provider = "Groq (fallback)"
-                user_logger.info("✅ Used Groq fallback successfully")
                 
             elif primary_provider == 'groq' and _gemini_model is not None:
                 # Groq failed, use Gemini as fallback
@@ -350,14 +443,41 @@ Examples:
                     response_text = response.text.strip()
                     used_provider = "Gemini (fallback)"
                     user_logger.info("✅ Used Gemini fallback successfully")
-                except Exception as e:
-                    user_logger.error(f"Both providers failed: {str(e)[:100]}")
-                    return {
-                        "command": None,
-                        "parameters": {},
-                        "response_text": "AI assistant encountered an error. Please use /help.",
-                        "confidence": 0.0
-                    }
+                except Exception as gemini_error:
+                    # Gemini also failed, try Sarvam as third fallback
+                    user_logger.warning(f"Gemini fallback failed: {str(gemini_error)[:100]}, trying Sarvam...")
+                    try:
+                        if _sarvam_client is None:
+                            initialize_sarvam()
+                        
+                        if _sarvam_client is not None:
+                            sarvam_response = _sarvam_client.chat.completions.create(
+                                model="sarvam-2b",
+                                messages=[
+                                    {"role": "system", "content": "You are a helpful assistant that interprets user messages for a church choir bot. Always respond with valid JSON only."},
+                                    {"role": "user", "content": prompt}
+                                ],
+                                temperature=0.3,
+                                max_tokens=500
+                            )
+                            response_text = sarvam_response.choices[0].message.content.strip()
+                            used_provider = "Sarvam (fallback)"
+                            user_logger.info("✅ Used Sarvam fallback successfully")
+                        else:
+                            return {
+                                "command": None,
+                                "parameters": {},
+                                "response_text": "AI assistant encountered an error. Please use /help.",
+                                "confidence": 0.0
+                            }
+                    except Exception as sarvam_error:
+                        user_logger.error(f"All providers failed. Sarvam: {str(sarvam_error)[:100]}")
+                        return {
+                            "command": None,
+                            "parameters": {},
+                            "response_text": "AI assistant encountered an error. Please use /help.",
+                            "confidence": 0.0
+                        }
         
         # Clean up response - remove markdown code blocks if present
         response_text = re.sub(r'^```json\s*', '', response_text)
