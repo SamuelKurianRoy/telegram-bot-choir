@@ -154,13 +154,14 @@ def initialize_sarvam(test_connection=True):
         user_logger.error(f"Sarvam init traceback: {traceback.format_exc()[:500]}")
         return False
 
-def parse_user_intent(user_message: str, conversation_history: list = None) -> dict:
+def parse_user_intent(user_message: str, conversation_history: list = None, user_id: int = None) -> dict:
     """
     Parse user's natural language message to determine intent and extract parameters.
     
     Args:
         user_message: The user's message text
         conversation_history: Optional list of recent messages for context [{"role": "user"/"bot", "message": "...", "entities": {...}}]
+        user_id: Optional Telegram user ID to determine which AI model to use
         
     Returns:
         dict with keys:
@@ -175,28 +176,49 @@ def parse_user_intent(user_message: str, conversation_history: list = None) -> d
     global _sarvam_client
     global _preferred_provider
     
-    # Try to initialize Gemini first if not already done
-    if _gemini_model is None:
-        gemini_ok = initialize_gemini()
-        if not gemini_ok:
-            user_logger.warning("Gemini not available, will try Groq fallback")
+    # Determine which model to use based on user's role
+    assigned_model = None
+    if user_id is not None:
+        try:
+            from data.ai_model_config import get_model_for_user
+            assigned_model = get_model_for_user(user_id)
+            user_logger.info(f"User {user_id} assigned model: {assigned_model}")
+        except Exception as e:
+            user_logger.warning(f"Could not get assigned model for user {user_id}: {e}")
+            assigned_model = None
     
-    # If Gemini is not available, try Groq
-    if _gemini_model is None and _groq_client is None:
-        groq_ok = initialize_groq(test_connection=False)  # Skip test to save quota
-        if not groq_ok:
-            user_logger.warning("Groq not available, will try Sarvam fallback")
+    # Initialize the assigned model if specified
+    if assigned_model == 'gemini' and _gemini_model is None:
+        initialize_gemini()
+    elif assigned_model == 'groq' and _groq_client is None:
+        initialize_groq(test_connection=False)
+    elif assigned_model == 'sarvam' and _sarvam_client is None:
+        initialize_sarvam(test_connection=False)
     
-    # If both Gemini and Groq failed, try Sarvam
-    if _gemini_model is None and _groq_client is None and _sarvam_client is None:
-        sarvam_ok = initialize_sarvam(test_connection=False)  # Skip test to save quota
-        if not sarvam_ok:
-            return {
-                "command": None,
-                "parameters": {},
-                "response_text": "AI assistant is not available. Please use /help to see available commands.",
-                "confidence": 0.0
-            }
+    # Fallback: Try to initialize any available model if assignment failed
+    if assigned_model is None or (assigned_model == 'gemini' and _gemini_model is None and _groq_client is None and _sarvam_client is None):
+        # Try to initialize Gemini first if not already done
+        if _gemini_model is None:
+            gemini_ok = initialize_gemini()
+            if not gemini_ok:
+                user_logger.warning("Gemini not available, will try Groq fallback")
+        
+        # If Gemini is not available, try Groq
+        if _gemini_model is None and _groq_client is None:
+            groq_ok = initialize_groq(test_connection=False)  # Skip test to save quota
+            if not groq_ok:
+                user_logger.warning("Groq not available, will try Sarvam fallback")
+        
+        # If both Gemini and Groq failed, try Sarvam
+        if _gemini_model is None and _groq_client is None and _sarvam_client is None:
+            sarvam_ok = initialize_sarvam(test_connection=False)  # Skip test to save quota
+            if not sarvam_ok:
+                return {
+                    "command": None,
+                    "parameters": {},
+                    "response_text": "AI assistant is not available. Please use /help to see available commands.",
+                    "confidence": 0.0
+                }
     
     try:
         # Get current date for relative date calculations
@@ -347,12 +369,14 @@ Examples:
 "Hello" → {{"command": null, "parameters": {{}}, "response_text": "Hello! I'm here to help you with choir songs. You can ask me things like 'What songs were sung on Christmas?' or 'Find H-44'.", "confidence": 1.0}}
 """
 
-        # Try primary provider (Gemini by default, unless user switched)
+        # Try primary provider (based on user's assigned model or default preference)
         response_text = None
         used_provider = None
         
-        # Determine which provider to try first based on preference
-        primary_provider = _preferred_provider if _preferred_provider in ['gemini', 'groq', 'sarvam'] else 'gemini'
+        # Determine which provider to try first based on assigned model or preference
+        primary_provider = assigned_model if assigned_model in ['gemini', 'groq', 'sarvam'] else (_preferred_provider if _preferred_provider in ['gemini', 'groq', 'sarvam'] else 'gemini')
+        
+        user_logger.info(f"Using primary provider: {primary_provider}")
         
         if primary_provider == 'gemini' and _gemini_model is not None:
             try:
@@ -365,9 +389,19 @@ Examples:
                 used_provider = "Gemini"
                 
             except Exception as gemini_error:
-                # If Gemini fails (rate limit, quota, etc.), try Groq fallback
-                user_logger.warning(f"Gemini failed: {str(gemini_error)[:100]}, trying Groq fallback...")
-                response_text = None
+                # If Gemini fails (rate limit, quota, etc.), only try fallback if no specific assignment
+                user_logger.warning(f"Gemini failed: {str(gemini_error)[:100]}")
+                if assigned_model is None:
+                    user_logger.info("Trying Groq fallback...")
+                    response_text = None
+                else:
+                    # If user has assigned model, don't fallback to other models
+                    return {
+                        "command": None,
+                        "parameters": {},
+                        "response_text": "AI assistant temporarily unavailable. Please try again later.",
+                        "confidence": 0.0
+                    }
         
         elif primary_provider == 'groq' and _groq_client is not None:
             try:
@@ -385,9 +419,19 @@ Examples:
                 used_provider = "Groq"
                 
             except Exception as groq_error:
-                # If Groq fails, try fallbacks
-                user_logger.warning(f"Groq failed: {str(groq_error)[:100]}, trying fallback...")
-                response_text = None
+                # If Groq fails, only try fallback if no specific assignment
+                user_logger.warning(f"Groq failed: {str(groq_error)[:100]}")
+                if assigned_model is None:
+                    user_logger.info("Trying fallback...")
+                    response_text = None
+                else:
+                    # If user has assigned model, don't fallback to other models
+                    return {
+                        "command": None,
+                        "parameters": {},
+                        "response_text": "AI assistant temporarily unavailable. Please try again later.",
+                        "confidence": 0.0
+                    }
         
         elif primary_provider == 'sarvam' and _sarvam_client is not None:
             try:
@@ -400,7 +444,7 @@ Examples:
                     ],
                     model="sarvam-m",
                     temperature=0.3,
-                    max_tokens=500,
+max_tokens=500,
                     timeout=15.0
                 )
                 response_text = sarvam_response.choices[0].message.content.strip()

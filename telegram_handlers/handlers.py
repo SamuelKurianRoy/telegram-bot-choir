@@ -3150,6 +3150,122 @@ async def admin_debug_features(update: Update, context: CallbackContext) -> None
         await update.message.reply_text(f"❌ Error debugging features: {str(e)}")
         user_logger.error(f"Error in admin_debug_features: {e}")
 
+# === AI MODEL ASSIGNMENT ADMIN COMMANDS ===
+
+async def admin_ai_models_status(update: Update, context: CallbackContext) -> None:
+    """Admin command to view current AI model assignments"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        from data.ai_model_config import get_ai_model_config
+
+        config = get_ai_model_config()
+        assignments = config.get_all_assignments()
+
+        status_text = "🤖 **AI Model Assignments**\n\n"
+
+        # Display assignments for each user type
+        for user_type in ['admin', 'authorized', 'normal']:
+            assignment = assignments.get(user_type, {})
+            model = assignment.get('model', 'unknown')
+            last_modified = assignment.get('last_modified', 'Unknown')
+            modified_by = assignment.get('modified_by', 'System')
+            
+            # Get model info
+            model_info = config.get_model_info(model)
+            model_name = model_info.get('name', model)
+            model_desc = model_info.get('description', '')
+            model_cost = model_info.get('cost', '')
+            model_quality = model_info.get('quality', '')
+
+            status_text += f"**{user_type.title()} Users:**\n"
+            status_text += f"   Model: {model_name}\n"
+            status_text += f"   Description: {model_desc}\n"
+            status_text += f"   Cost: {model_cost} | Quality: {model_quality}\n"
+            status_text += f"   Last Modified: {last_modified}\n"
+            status_text += f"   Modified By: {modified_by}\n\n"
+
+        status_text += "**Available Models:**\n"
+        for model_key, model_info in config.available_models.items():
+            status_text += f"• `{model_key}` - {model_info['name']}\n"
+            status_text += f"  {model_info['description']}\n"
+            status_text += f"  Cost: {model_info['cost']} | Quality: {model_info['quality']}\n\n"
+
+        status_text += "**Commands:**\n"
+        status_text += "• `/set_ai_model <user_type> <model>` - Set AI model for user type\n"
+        status_text += "• `/ai_models_status` - View this status\n\n"
+        status_text += "**Example:** `/set_ai_model authorized groq`\n"
+        status_text += "**User Types:** `admin`, `authorized`, `normal`\n"
+        status_text += "**Models:** `gemini`, `groq`, `sarvam`"
+
+        await update.message.reply_text(status_text, parse_mode="Markdown")
+        user_logger.info(f"Admin {user.id} viewed AI model assignments")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error retrieving AI model status: {str(e)}")
+        user_logger.error(f"Error in admin_ai_models_status: {e}")
+
+async def admin_set_ai_model(update: Update, context: CallbackContext) -> None:
+    """Admin command to set AI model for a user type"""
+    user = update.effective_user
+
+    # Check if user is admin
+    if user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return
+
+    try:
+        from data.ai_model_config import get_ai_model_config
+
+        config = get_ai_model_config()
+
+        # Get arguments
+        if len(context.args) < 2:
+            await update.message.reply_text(
+                "❌ **Invalid usage**\n\n"
+                "**Usage:** `/set_ai_model <user_type> <model>`\n\n"
+                "**User Types:** `admin`, `authorized`, `normal`\n"
+                "**Models:** `gemini`, `groq`, `sarvam`\n\n"
+                "**Examples:**\n"
+                "• `/set_ai_model admin gemini` - Admins use Gemini\n"
+                "• `/set_ai_model authorized groq` - Authorized users use Groq\n"
+                "• `/set_ai_model normal sarvam` - Normal users use Sarvam\n\n"
+                "**Model Info:**\n"
+                "• **gemini** - Google Gemini (Best quality, paid)\n"
+                "• **groq** - Groq/Llama (Very good, free)\n"
+                "• **sarvam** - Sarvam AI (Good, free, Indian AI)",
+                parse_mode="Markdown"
+            )
+            return
+
+        user_type = context.args[0].lower()
+        model = context.args[1].lower()
+
+        success, message = config.set_model_for_user_type(user_type, model, user.id)
+
+        if success:
+            model_info = config.get_model_info(model)
+            await update.message.reply_text(
+                f"{message}\n\n"
+                f"**Model:** {model_info.get('name', model)}\n"
+                f"**Description:** {model_info.get('description', '')}\n"
+                f"**Cost:** {model_info.get('cost', '')} | **Quality:** {model_info.get('quality', '')}\n\n"
+                f"All {user_type} users will now use this model for AI conversations.",
+                parse_mode="Markdown"
+            )
+            user_logger.info(f"Admin {user.id} set AI model '{model}' for '{user_type}' users")
+        else:
+            await update.message.reply_text(f"❌ {message}")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error setting AI model: {str(e)}")
+        user_logger.error(f"Error in admin_set_ai_model: {e}")
+
 async def admin_add_missing_features(update: Update, context: CallbackContext) -> None:
     """Admin command to add missing features to Database"""
     user = update.effective_user
@@ -4147,8 +4263,8 @@ async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.chat.send_action("typing")
     
     try:
-        # Parse user intent with Gemini, including conversation history
-        intent = parse_user_intent(message_text, conversation_history)
+        # Parse user intent with AI, including conversation history and user ID for model assignment
+        intent = parse_user_intent(message_text, conversation_history, user_id=user.id)
         
         command = intent.get("command")
         parameters = intent.get("parameters", {})
