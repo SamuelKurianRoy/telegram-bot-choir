@@ -4117,9 +4117,17 @@ async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     This is called for messages that don't start with / and aren't song codes.
     """
     from utils.ai_assistant import parse_user_intent, should_use_ai
+    from data.feature_control import can_user_access_feature
     
     user = update.effective_user
     message_text = update.message.text.strip()
+    
+    # Check if AI feature is enabled and user has access
+    can_access, error_message = can_user_access_feature('ai', user.id)
+    if not can_access:
+        if error_message:
+            await update.message.reply_text(error_message)
+        return
     
     # Check if this message should be processed by AI
     if not should_use_ai(message_text):

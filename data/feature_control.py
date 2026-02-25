@@ -110,6 +110,12 @@ class FeatureController:
                 'description': 'Reload all bot datasets and configurations',
                 'commands': '/refresh',
                 'enabled': True
+            },
+            'ai': {
+                'name': 'AI Assistant',
+                'description': 'Natural language processing for conversational bot interaction',
+                'commands': 'AI natural language, conversational queries',
+                'enabled': True
             }
         }
     
