@@ -5237,7 +5237,7 @@ async def handle_user_type_selection(update: Update, context: ContextTypes.DEFAU
         [InlineKeyboardButton("🟢 Gemini (Excellent, Free)", callback_data="model_gemini")],
         [InlineKeyboardButton("🔵 Groq (Very Good, Free)", callback_data="model_groq")],
         [InlineKeyboardButton("🟡 Sarvam (Good, Free, Indian)", callback_data="model_sarvam")],
-        [InlineKeyboardButton("❌ Cancel", callback_data="model_cancel")]
+        [InlineKeyboardButton("◀️ Back", callback_data="model_back"), InlineKeyboardButton("❌ Cancel", callback_data="model_cancel")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -5277,6 +5277,33 @@ async def handle_model_selection(update: Update, context: ContextTypes.DEFAULT_T
     if model == "cancel":
         await query.edit_message_text("❌ AI model assignment cancelled.")
         return ConversationHandler.END
+    
+    if model == "back":
+        # Go back to user type selection
+        context.user_data.pop('ai_switch_user_type', None)
+        
+        # Recreate user type selection keyboard
+        keyboard = [
+            [InlineKeyboardButton("👤 Admin Users", callback_data="usertype_admin")],
+            [InlineKeyboardButton("✅ Authorized Users", callback_data="usertype_authorized")],
+            [InlineKeyboardButton("👥 Normal Users", callback_data="usertype_normal")],
+            [InlineKeyboardButton("🌐 All Users", callback_data="usertype_all")],
+            [InlineKeyboardButton("❌ Cancel", callback_data="usertype_cancel")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            "🤖 **AI Model Assignment**\n\n"
+            "Which user type do you want to configure?\n\n"
+            "**Current Assignments:**\n"
+            "• Admin users might use Gemini\n"
+            "• Authorized users might use Gemini\n"
+            "• Normal users might use Sarvam\n\n"
+            "Select a user type to change their AI model:",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+        return SELECT_USER_TYPE
     
     user_type = context.user_data.get('ai_switch_user_type')
     if not user_type:
