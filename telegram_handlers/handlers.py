@@ -2238,7 +2238,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 
 **AI Model Management:**
 • `/model` - Check current AI model status (Gemini/Groq/Sarvam)
-• `/switchmodel <provider>` - Switch AI provider (gemini/groq/sarvam/all)
+• `/switchmodel` - Assign AI models to user types (interactive menu)
 • `/testmodel` - Test AI providers with actual requests (uses quota)
 
 **Notation & Sheet Music Management:**
@@ -2299,7 +2299,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/missing_notations`
 • `/disable bible Maintenance work`
 • `/reply Thanks for your feedback!`
-• `/switchmodel sarvam`
+• `/switchmodel` - Opens interactive menu to assign AI models
 """
         await update.message.reply_text(admin_commands, parse_mode="Markdown")
         user_logger.info(f"Admin {user.id} viewed admin commands list")
@@ -3199,7 +3199,7 @@ async def admin_ai_models_status(update: Update, context: CallbackContext) -> No
         status_text += "**Commands:**\n"
         status_text += "• `/set_ai_model <user_type> <model>` - Set AI model for user type\n"
         status_text += "• `/ai_models_status` - View this status\n\n"
-        status_text += "**Example:** `/set_ai_model authorized groq`\n"
+        status_text += "**Example:** `/set_ai_model authorized gemini`\n"
         status_text += "**User Types:** `admin`, `authorized`, `normal`\n"
         status_text += "**Models:** `gemini`, `groq`, `sarvam`"
 
@@ -3233,10 +3233,10 @@ async def admin_set_ai_model(update: Update, context: CallbackContext) -> None:
                 "**Models:** `gemini`, `groq`, `sarvam`\n\n"
                 "**Examples:**\n"
                 "• `/set_ai_model admin gemini` - Admins use Gemini\n"
-                "• `/set_ai_model authorized groq` - Authorized users use Groq\n"
+                "• `/set_ai_model authorized gemini` - Authorized users use Gemini\n"
                 "• `/set_ai_model normal sarvam` - Normal users use Sarvam\n\n"
                 "**Model Info:**\n"
-                "• **gemini** - Google Gemini (Best quality, paid)\n"
+                "• **gemini** - Google Gemini (Excellent quality, free)\n"
                 "• **groq** - Groq/Llama (Very good, free)\n"
                 "• **sarvam** - Sarvam AI (Good, free, Indian AI)",
                 parse_mode="Markdown"

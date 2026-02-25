@@ -33,9 +33,9 @@ class AIModelConfig:
 
         # Default model assignments
         self.default_assignments = {
-            'admin': 'gemini',        # Admins get Gemini (best, paid)
-            'authorized': 'groq',     # Authorized users get Groq (good, free)
-            'normal': 'sarvam'        # Normal users get Sarvam (basic, indian AI)
+            'admin': 'gemini',        # Admins get Gemini (best, free Google API)
+            'authorized': 'gemini',   # Authorized users get Gemini (best, free Google API)
+            'normal': 'sarvam'        # Normal users get Sarvam (basic, free Indian AI)
         }
         
         # Available models
@@ -43,7 +43,7 @@ class AIModelConfig:
             'gemini': {
                 'name': 'Google Gemini',
                 'description': 'Advanced AI with best understanding',
-                'cost': 'Paid (primary)',
+                'cost': 'Free (Google API)',
                 'quality': 'Excellent'
             },
             'groq': {
@@ -316,7 +316,7 @@ def get_ai_model_config() -> AIModelConfig:
             # Return a dummy config that uses defaults
             class DummyConfig:
                 def get_model_for_user_type(self, user_type: str) -> str:
-                    defaults = {'admin': 'gemini', 'authorized': 'groq', 'normal': 'sarvam'}
+                    defaults = {'admin': 'gemini', 'authorized': 'gemini', 'normal': 'sarvam'}
                     return defaults.get(user_type, 'sarvam')
             _ai_model_config = DummyConfig()
     return _ai_model_config

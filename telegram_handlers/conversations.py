@@ -1654,6 +1654,9 @@ CHOOSE_METHOD, GET_INPUT = range(2)
 
 # Bible Game States
 BIBLE_GAME_LANGUAGE, BIBLE_GAME_DIFFICULTY, BIBLE_GAME_QUESTION = range(3)
+
+# AI Model Switch States
+SELECT_USER_TYPE, SELECT_MODEL = range(2)
  
 # Store user input temporarily
 user_input_method = {}
@@ -5136,6 +5139,222 @@ async def cancel_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     
     await update.message.reply_text(
         "❌ Upload cancelled.",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
+
+
+# ============================================================================
+# AI MODEL ASSIGNMENT CONVERSATION HANDLER
+# ============================================================================
+
+async def admin_switch_ai_model_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start the AI model switching conversation"""
+    user = update.effective_user
+    
+    # Check if user is admin
+    config = get_config()
+    if user.id != config.ADMIN_ID:
+        await update.message.reply_text("❌ Admin access required")
+        return ConversationHandler.END
+    
+    user_logger.info(f"Admin {user.id} started AI model switch conversation")
+    
+    # Create buttons for user type selection
+    keyboard = [
+        [InlineKeyboardButton("👤 Admin Users", callback_data="usertype_admin")],
+        [InlineKeyboardButton("✅ Authorized Users", callback_data="usertype_authorized")],
+        [InlineKeyboardButton("👥 Normal Users", callback_data="usertype_normal")],
+        [InlineKeyboardButton("🌐 All Users", callback_data="usertype_all")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="usertype_cancel")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "🤖 **AI Model Assignment**\n\n"
+        "Which user type do you want to configure?\n\n"
+        "**Current Assignments:**\n"
+        "• Admin users might use Gemini\n"
+        "• Authorized users might use Gemini\n"
+        "• Normal users might use Sarvam\n\n"
+        "Select a user type to change their AI model:",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+    
+    return SELECT_USER_TYPE
+
+
+async def handle_user_type_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle user type selection and show model options"""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    config = get_config()
+    
+    # Check if user is still admin
+    if user.id != config.ADMIN_ID:
+        await query.edit_message_text("❌ Admin access required")
+        return ConversationHandler.END
+    
+    choice = query.data.replace("usertype_", "")
+    
+    if choice == "cancel":
+        await query.edit_message_text("❌ AI model assignment cancelled.")
+        return ConversationHandler.END
+    
+    # Store the user type choice
+    context.user_data['ai_switch_user_type'] = choice
+    
+    # Get current assignments to show
+    try:
+        from data.ai_model_config import get_ai_model_config
+        ai_config = get_ai_model_config()
+        assignments = ai_config.get_all_assignments()
+        
+        if choice == "all":
+            current_info = (
+                f"**Current Assignments:**\n"
+                f"• Admin: {assignments.get('admin', {}).get('model', 'unknown')}\n"
+                f"• Authorized: {assignments.get('authorized', {}).get('model', 'unknown')}\n"
+                f"• Normal: {assignments.get('normal', {}).get('model', 'unknown')}"
+            )
+        else:
+            current_model = assignments.get(choice, {}).get('model', 'unknown')
+            model_info = ai_config.get_model_info(current_model)
+            current_info = (
+                f"**Current Assignment:**\n"
+                f"Model: {model_info.get('name', current_model)}\n"
+                f"Quality: {model_info.get('quality', 'Unknown')}"
+            )
+    except Exception as e:
+        user_logger.error(f"Error getting current assignments: {e}")
+        current_info = ""
+    
+    # Create buttons for model selection
+    keyboard = [
+        [InlineKeyboardButton("🟢 Gemini (Excellent, Free)", callback_data="model_gemini")],
+        [InlineKeyboardButton("🔵 Groq (Very Good, Free)", callback_data="model_groq")],
+        [InlineKeyboardButton("🟡 Sarvam (Good, Free, Indian)", callback_data="model_sarvam")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="model_cancel")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    user_type_display = choice.title() if choice != "all" else "All"
+    
+    await query.edit_message_text(
+        f"🤖 **AI Model Selection**\n\n"
+        f"**Configuring:** {user_type_display} Users\n\n"
+        f"{current_info}\n\n"
+        f"**Available Models:**\n"
+        f"• **Gemini** - Google AI (Excellent quality)\n"
+        f"• **Groq** - Llama 3.3 70B (Very good quality)\n"
+        f"• **Sarvam** - Indian AI (Good quality, Hindi support)\n\n"
+        f"Select the AI model to assign:",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+    
+    return SELECT_MODEL
+
+
+async def handle_model_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle model selection and apply the changes"""
+    query = update.callback_query
+    await query.answer()
+    
+    user = update.effective_user
+    config = get_config()
+    
+    # Check if user is still admin
+    if user.id != config.ADMIN_ID:
+        await query.edit_message_text("❌ Admin access required")
+        return ConversationHandler.END
+    
+    model = query.data.replace("model_", "")
+    
+    if model == "cancel":
+        await query.edit_message_text("❌ AI model assignment cancelled.")
+        return ConversationHandler.END
+    
+    user_type = context.user_data.get('ai_switch_user_type')
+    if not user_type:
+        await query.edit_message_text("❌ Error: User type not found. Please try again.")
+        return ConversationHandler.END
+    
+    # Apply the model assignment
+    try:
+        from data.ai_model_config import get_ai_model_config
+        ai_config = get_ai_model_config()
+        
+        if user_type == "all":
+            # Apply to all user types
+            success_msgs = []
+            error_msgs = []
+            
+            for ut in ['admin', 'authorized', 'normal']:
+                success, message = ai_config.set_model_for_user_type(ut, model, user.id)
+                if success:
+                    success_msgs.append(f"✅ {ut.title()}: {model}")
+                else:
+                    error_msgs.append(f"❌ {ut.title()}: {message}")
+            
+            if success_msgs and not error_msgs:
+                model_info = ai_config.get_model_info(model)
+                await query.edit_message_text(
+                    f"✅ **AI Model Updated for All Users!**\n\n"
+                    f"**Model:** {model_info.get('name', model)}\n"
+                    f"**Description:** {model_info.get('description', '')}\n"
+                    f"**Quality:** {model_info.get('quality', '')}\n"
+                    f"**Cost:** {model_info.get('cost', '')}\n\n"
+                    f"**Applied to:**\n" + "\n".join(success_msgs),
+                    parse_mode="Markdown"
+                )
+                user_logger.info(f"Admin {user.id} set {model} for all user types")
+            else:
+                await query.edit_message_text(
+                    f"⚠️ **Partial Success**\n\n" +
+                    "\n".join(success_msgs + error_msgs),
+                    parse_mode="Markdown"
+                )
+        else:
+            # Apply to specific user type
+            success, message = ai_config.set_model_for_user_type(user_type, model, user.id)
+            
+            if success:
+                model_info = ai_config.get_model_info(model)
+                await query.edit_message_text(
+                    f"✅ **AI Model Updated!**\n\n"
+                    f"**User Type:** {user_type.title()}\n"
+                    f"**Model:** {model_info.get('name', model)}\n"
+                    f"**Description:** {model_info.get('description', '')}\n"
+                    f"**Quality:** {model_info.get('quality', '')}\n"
+                    f"**Cost:** {model_info.get('cost', '')}\n\n"
+                    f"All {user_type} users will now use {model_info.get('name', model)} for AI conversations.",
+                    parse_mode="Markdown"
+                )
+                user_logger.info(f"Admin {user.id} set {model} for {user_type} users")
+            else:
+                await query.edit_message_text(f"❌ {message}")
+                user_logger.error(f"Failed to set {model} for {user_type}: {message}")
+    
+    except Exception as e:
+        user_logger.error(f"Error applying AI model assignment: {e}")
+        await query.edit_message_text(f"❌ Error: {str(e)[:200]}")
+    
+    # Clean up user data
+    context.user_data.pop('ai_switch_user_type', None)
+    
+    return ConversationHandler.END
+
+
+async def cancel_ai_model_switch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel the AI model switch conversation"""
+    context.user_data.pop('ai_switch_user_type', None)
+    
+    await update.message.reply_text(
+        "❌ AI model assignment cancelled.",
         reply_markup=ReplyKeyboardRemove()
     )
     return ConversationHandler.END
