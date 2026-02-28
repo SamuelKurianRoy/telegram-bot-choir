@@ -2245,39 +2245,7 @@ elif page == "About":
     </style>
     """, unsafe_allow_html=True)
 
-    # ── Row 1 ──────────────────────────────────────────────────────────────
-    col1, col2 = st.columns(2, gap="medium")
-
-    with col1:
-        st.markdown("""
-        <div class="about-card">
-            <h2>Bot Information</h2>
-            <p>This control panel lets you start, stop, and monitor the Choir Telegram Bot that serves your congregation.</p>
-            <ul>
-                <li>Search for hymns, lyrics &amp; convention songs</li>
-                <li>Track when songs were last sung</li>
-                <li>Search by theme or tune</li>
-                <li>View song details and history</li>
-                <li>Bible verse lookup &amp; reading</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.markdown("""
-        <div class="about-card">
-            <h2>Bot Commands</h2>
-            <div class="cmd-row"><span class="cmd-badge">/start</span><span class="cmd-desc">Start the bot</span></div>
-            <div class="cmd-row"><span class="cmd-badge">/help</span><span class="cmd-desc">Show help information</span></div>
-            <div class="cmd-row"><span class="cmd-badge">/search</span><span class="cmd-desc">Search for songs</span></div>
-            <div class="cmd-row"><span class="cmd-badge">/theme</span><span class="cmd-desc">Filter songs by theme</span></div>
-            <div class="cmd-row"><span class="cmd-badge">/tune</span><span class="cmd-desc">Find tunes by hymn number or index</span></div>
-            <div class="cmd-row"><span class="cmd-badge">/date</span><span class="cmd-desc">Songs sung on a specific date</span></div>
-            <div class="cmd-row"><span class="cmd-badge">/bible</span><span class="cmd-desc">Look up Bible passages</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # ── Row 2 ──────────────────────────────────────────────────────────────
+    # ── Bible Verse Game ────────────────────────────────────────────────────
     st.markdown("""
     <div class="about-card">
         <h2>Bible Verse Game</h2>
@@ -2298,65 +2266,37 @@ elif page == "About":
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Row 3 ──────────────────────────────────────────────────────────────
-    col3, col4 = st.columns(2, gap="medium")
-
-    with col3:
-        st.markdown("""
-        <div class="about-card">
-            <h2>Technical Details</h2>
-            <div class="tech-grid">
-                <div class="tech-item">
-                    <div class="tech-label">Verse Source</div>
-                    <div class="tech-value">WordProject.org</div>
-                </div>
-                <div class="tech-item">
-                    <div class="tech-label">Languages</div>
-                    <div class="tech-value">English &amp; Malayalam</div>
-                </div>
-                <div class="tech-item">
-                    <div class="tech-label">Verse Extraction</div>
-                    <div class="tech-value">Real-time web parsing</div>
-                </div>
-                <div class="tech-item">
-                    <div class="tech-label">Game Logic</div>
-                    <div class="tech-value">Difficulty-based random</div>
-                </div>
+    # ── Credits ─────────────────────────────────────────────────────────────
+    st.markdown("""
+    <div class="about-card">
+        <h2>Credits</h2>
+        <div class="credit-row">
+            <div class="credit-icon"></div>
+            <div>
+                <div class="credit-label">Bot Development</div>
+                <div class="credit-name">Samuel Kurian Roy</div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
-
-    with col4:
-        st.markdown("""
-        <div class="about-card">
-            <h2>Credits</h2>
-            <div class="credit-row">
-                <div class="credit-icon"></div>
-                <div>
-                    <div class="credit-label">Bot Development</div>
-                    <div class="credit-name">Samuel Kurian Roy</div>
-                </div>
-            </div>
-            <div class="credit-row">
-                <div class="credit-icon"></div>
-                <div>
-                    <div class="credit-label">Bible Content</div>
-                    <div class="credit-name">WordProject.org</div>
-                </div>
-            </div>
-            <div class="credit-row">
-                <div class="credit-icon"></div>
-                <div>
-                    <div class="credit-label">Framework</div>
-                    <div class="credit-name">Streamlit + Python Telegram Bot</div>
-                </div>
-            </div>
-            <div class="credit-row">
-                <div class="credit-icon"></div>
-                <div>
-                    <div class="credit-label">Hosting</div>
-                    <div class="credit-name">Streamlit Cloud</div>
-                </div>
+        <div class="credit-row">
+            <div class="credit-icon"></div>
+            <div>
+                <div class="credit-label">Bible Content</div>
+                <div class="credit-name">WordProject.org</div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        <div class="credit-row">
+            <div class="credit-icon"></div>
+            <div>
+                <div class="credit-label">Framework</div>
+                <div class="credit-name">Streamlit + Python Telegram Bot</div>
+            </div>
+        </div>
+        <div class="credit-row">
+            <div class="credit-icon"></div>
+            <div>
+                <div class="credit-label">Hosting</div>
+                <div class="credit-name">Streamlit Cloud</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
