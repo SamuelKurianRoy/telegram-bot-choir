@@ -653,18 +653,39 @@ st.markdown(f"""
     header {{
         background: transparent !important;
         height: auto !important;
+        visibility: visible !important;
+        display: block !important;
     }}
-    /* Ensure sidebar toggle is always visible */
+    /* Ensure header toolbar is visible */
+    [data-testid="stHeader"] {{
+        background: transparent !important;
+        visibility: visible !important;
+        display: flex !important;
+    }}
+    /* Ensure sidebar toggle is always visible - multiple selectors for compatibility */
     button[data-testid="baseButton-header"] {{
         display: block !important;
         visibility: visible !important;
+        opacity: 1 !important;
     }}
     [data-testid="collapsedControl"] {{
         display: block !important;
         visibility: visible !important;
+        opacity: 1 !important;
     }}
-    /* Hide settings/menu in header */
-    header button[kind="header"]:not([data-testid="baseButton-header"]) {{
+    button[kind="header"] {{
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }}
+    /* Ensure hamburger menu button is visible */
+    header button[aria-label*="navigation"] {{
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }}
+    /* Hide settings/menu in header but keep sidebar toggle */
+    header button[kind="header"]:not([data-testid="baseButton-header"]):not([aria-label*="navigation"]) {{
         display: none !important;
     }}
     #MainMenu {{
@@ -679,9 +700,14 @@ st.markdown(f"""
         visibility: hidden !important;
         display: none !important;
     }}
+    /* Keep toolbar visible for navigation button but hide deploy/settings */
     [data-testid="stToolbar"] {{
+        visibility: visible !important;
+        display: flex !important;
+    }}
+    /* Hide specific toolbar items but keep navigation */
+    [data-testid="stToolbar"] > div > button[kind="header"]:has(svg):not([aria-label*="navigation"]) {{
         display: none !important;
-        visibility: hidden !important;
     }}
     [data-testid="stDecoration"] {{
         display: none !important;
@@ -1445,14 +1471,41 @@ if not check_password():
 # Make sidebar toggle button visible and styled after login
 st.markdown("""
 <style>
-    /* Style the sidebar toggle button to be visible */
+    /* Ensure header and navigation controls are visible */
+    header {
+        visibility: visible !important;
+        display: block !important;
+    }
+    [data-testid="stHeader"] {
+        visibility: visible !important;
+        display: flex !important;
+    }
+    /* Style the sidebar toggle button to be visible - multiple selectors */
     [data-testid="collapsedControl"] {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
         background-color: rgba(102, 126, 234, 0.15) !important;
         border-radius: 8px !important;
         padding: 8px !important;
     }
     [data-testid="collapsedControl"]:hover {
         background-color: rgba(102, 126, 234, 0.25) !important;
+    }
+    button[kind="header"] {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+    button[data-testid="baseButton-header"] {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+    header button[aria-label*="navigation"] {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
     }
 </style>
 """, unsafe_allow_html=True)
