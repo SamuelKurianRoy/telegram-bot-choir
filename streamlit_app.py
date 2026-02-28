@@ -1617,7 +1617,7 @@ st.markdown("""
     }
     /* Style the top logout button */
     div.top-logout-wrap button {
-        background: linear-gradient(135deg, #667eea, #764ba2) !important;
+        background: linear-gradient(135deg, #ff416c, #ff4b2b) !important;
         border: none !important;
         color: #ffffff !important;
         border-radius: 20px !important;
@@ -1625,12 +1625,14 @@ st.markdown("""
         font-weight: 600 !important;
         padding: 0.25rem 0.9rem !important;
         white-space: nowrap !important;
-        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.35) !important;
+        box-shadow: 0 2px 10px rgba(255, 65, 108, 0.45) !important;
         letter-spacing: 0.03em !important;
+        transition: all 0.2s ease !important;
     }
     div.top-logout-wrap button:hover {
         opacity: 0.88 !important;
-        box-shadow: 0 4px 14px rgba(102, 126, 234, 0.5) !important;
+        box-shadow: 0 4px 18px rgba(255, 65, 108, 0.65) !important;
+        transform: translateY(-1px) !important;
     }
 </style>
 """, unsafe_allow_html=True)
