@@ -3410,7 +3410,7 @@ def get_vocabulary_categories():
 # ========================================
 
 # States for organist roster conversation
-ROOSTER_MENU, FILTER_ORGANIST_SELECT, ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT, SPECIAL_MENU, SPECIAL_SONG_SELECT, SPECIAL_ORGANIST_SELECT = range(7)
+ROOSTER_MENU, FILTER_ORGANIST_SELECT, ASSIGN_SONG_SELECT, ASSIGN_ORGANIST_SELECT, SPECIAL_MENU, SPECIAL_SONG_SELECT, SPECIAL_ORGANIST_SELECT, FILTER_TYPE_SELECT = range(8)
 
 async def organist_roster_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start the organist roster command - show main menu with 4 options"""
@@ -3426,7 +3426,8 @@ async def organist_roster_start(update: Update, context: ContextTypes.DEFAULT_TY
     keyboard = [
         ["📋 View Full Roster"],
         ["🔍 Filter by Organist"],
-        ["🎵 Assign Songs"],
+        ["�️ Filter by Type"],
+        ["�🎵 Assign Songs"],
         ["⚙️ Vestry/Doxology Settings"],
         ["❌ Cancel"]
     ]
@@ -3470,7 +3471,10 @@ async def rooster_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     elif selection == "🔍 Filter by Organist":
         return await filter_by_organist_start(update, context)
     
-    elif selection == "🎵 Assign Songs":
+    elif selection == "�️ Filter by Type":
+        return await filter_by_type_start(update, context)
+    
+    elif selection == "�🎵 Assign Songs":
         return await assign_songs_menu(update, context)
     
     elif selection == "⚙️ Vestry/Doxology Settings":
@@ -3694,6 +3698,176 @@ async def filter_organist_selected(update: Update, context: ContextTypes.DEFAULT
     
     user_logger.info(f"User {user.id} viewed songs for {organist_name} ({len(songs)} songs)")
     return ConversationHandler.END
+
+
+async def filter_by_type_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show type-selection keyboard so the user can toggle which types to display"""
+    from data.organist_roster import get_unique_types
+
+    user = update.effective_user
+    user_logger.info(f"User {user.id} ({user.first_name}) started Filter by Type")
+
+    available_types = get_unique_types()
+
+    if not available_types:
+        await update.message.reply_text(
+            "❌ No types found in the roster.\n\n"
+            "Make sure the 'Type' column exists in the Order of Songs sheet.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
+    # Initialise selected set — all types selected by default
+    context.user_data['selected_types'] = set(available_types)
+    context.user_data['available_types'] = available_types
+
+    # Build keyboard
+    keyboard = _build_type_keyboard(available_types, context.user_data['selected_types'])
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=False, resize_keyboard=True)
+
+    await update.message.reply_text(
+        "🏷️ *Filter by Type*\n\n"
+        "Tap a type to toggle it on/off.\n"
+        "Types with ✅ will be shown; types with ☐ will be hidden.\n\n"
+        "Press *✅ Show Results* when you're ready.",
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    return FILTER_TYPE_SELECT
+
+
+def _build_type_keyboard(available_types: list, selected_types: set) -> list:
+    """Build a ReplyKeyboard for type toggling with checkmark indicators."""
+    keyboard = []
+    for t in available_types:
+        mark = "✅" if t in selected_types else "☐"
+        keyboard.append([f"{mark} {t}"])
+    keyboard.append(["✅ Show Results"])
+    keyboard.append(["⬅️ Back to Menu", "❌ Cancel"])
+    return keyboard
+
+
+async def filter_type_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle type toggle presses and the Show Results action"""
+    from data.organist_roster import get_full_roster_table_filtered
+
+    user = update.effective_user
+    selection = update.message.text.strip()
+
+    available_types: list = context.user_data.get('available_types', [])
+    selected_types: set = context.user_data.get('selected_types', set())
+
+    if selection == "❌ Cancel":
+        await update.message.reply_text(
+            "Operation cancelled.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
+    if selection == "⬅️ Back to Menu":
+        return await organist_roster_start(update, context)
+
+    if selection == "✅ Show Results":
+        if not selected_types:
+            await update.message.reply_text(
+                "⚠️ No types selected — please toggle at least one type on before showing results.",
+                reply_markup=ReplyKeyboardMarkup(
+                    _build_type_keyboard(available_types, selected_types),
+                    one_time_keyboard=False,
+                    resize_keyboard=True
+                )
+            )
+            return FILTER_TYPE_SELECT
+
+        # Fetch filtered roster
+        roster_table = get_full_roster_table_filtered(include_types=list(selected_types))
+
+        if not roster_table:
+            await update.message.reply_text(
+                "ℹ️ No entries found for the selected types.",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return ConversationHandler.END
+
+        # Format the result
+        type_label = ", ".join(sorted(selected_types))
+        header = (
+            f"📋 *Roster — {type_label}*\n"
+            f"({len(roster_table)} entries)\n\n"
+        )
+
+        # Group entries under their type heading for readability
+        from collections import defaultdict as _defaultdict
+        groups = _defaultdict(list)
+        for song, organist, rtype in roster_table:
+            groups[rtype].append((song, organist))
+
+        lines = []
+        for rtype in sorted(groups.keys()):
+            lines.append(f"*{rtype}*")
+            for i, (song, organist) in enumerate(groups[rtype], 1):
+                lines.append(f"  {i}. {song} → {organist}")
+            lines.append("")
+
+        body = "\n".join(lines).strip()
+        full_message = header + body
+
+        await update.message.reply_text(
+            "✅ Showing filtered roster…",
+            reply_markup=ReplyKeyboardRemove()
+        )
+
+        if len(full_message) > 4000:
+            await update.message.reply_text(header, parse_mode=ParseMode.MARKDOWN)
+            chunk_lines = body.split("\n")
+            chunk, chunk_len = [], 0
+            for line in chunk_lines:
+                if chunk_len + len(line) + 1 > 3800:
+                    await update.message.reply_text("\n".join(chunk), parse_mode=ParseMode.MARKDOWN)
+                    chunk, chunk_len = [], 0
+                chunk.append(line)
+                chunk_len += len(line) + 1
+            if chunk:
+                await update.message.reply_text("\n".join(chunk), parse_mode=ParseMode.MARKDOWN)
+        else:
+            await update.message.reply_text(full_message, parse_mode=ParseMode.MARKDOWN)
+
+        user_logger.info(
+            f"User {user.id} viewed roster filtered by types: {sorted(selected_types)} "
+            f"({len(roster_table)} entries)"
+        )
+        return ConversationHandler.END
+
+    # --- Toggle logic ---
+    # Strip prefix marks to get clean type name
+    clean_selection = selection.lstrip("✅☐ ").strip()
+
+    if clean_selection in available_types:
+        if clean_selection in selected_types:
+            selected_types.discard(clean_selection)
+        else:
+            selected_types.add(clean_selection)
+        context.user_data['selected_types'] = selected_types
+
+        # Rebuild keyboard with updated state
+        keyboard = _build_type_keyboard(available_types, selected_types)
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=False, resize_keyboard=True)
+
+        selected_list = ", ".join(sorted(selected_types)) if selected_types else "none"
+        await update.message.reply_text(
+            f"🏷️ *Active types:* {selected_list}\n\nContinue toggling or press *✅ Show Results*.",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return FILTER_TYPE_SELECT
+
+    # Unknown input
+    await update.message.reply_text(
+        "❓ Please tap a type button or press *✅ Show Results*.",
+        parse_mode=ParseMode.MARKDOWN
+    )
+    return FILTER_TYPE_SELECT
 
 
 async def assign_songs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

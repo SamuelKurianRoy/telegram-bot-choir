@@ -312,6 +312,91 @@ def get_full_roster_table():
         user_logger.error(f"Error getting full table: {str(e)[:50]}")
         return []
 
+def get_unique_types():
+    """
+    Get list of unique types from the 'Type' column in the Order of Songs sheet.
+
+    Returns:
+        list: Sorted list of unique type strings (e.g. ['Doxology', 'Response', 'Song', 'Vestry'])
+              Returns empty list if column doesn't exist.
+    """
+    df = get_organist_roster_data()
+
+    if df is None:
+        return []
+
+    if 'Type' not in df.columns:
+        user_logger.warning("'Type' column not found in Order of Songs sheet")
+        return []
+
+    try:
+        types = df['Type'].dropna().tolist()
+        types = sorted(set([str(t).strip() for t in types if str(t).strip()]))
+        user_logger.info(f"Found {len(types)} unique types: {types}")
+        return types
+    except Exception as e:
+        user_logger.error(f"Error getting unique types: {str(e)[:100]}")
+        return []
+
+
+def get_full_roster_table_filtered(include_types=None):
+    """
+    Get the complete roster table optionally filtered by entry type.
+
+    Args:
+        include_types: list of type strings to include (e.g. ['Song', 'Vestry']).
+                       Pass None or empty list to return all rows unfiltered.
+
+    Returns:
+        list: List of tuples (song_name, organist_name, type_name) in original sheet order.
+    """
+    df = get_organist_roster_data()
+
+    if df is None:
+        return []
+
+    has_type_col = 'Type' in df.columns
+
+    try:
+        roster_table = []
+        for _, row in df.iterrows():
+            song = row['Song/ Responses']
+            organist = row['Name of The Organist']
+
+            # Skip rows without a song name
+            if not (pd.notna(song) and str(song).strip()):
+                continue
+
+            organist_name = (
+                str(organist).strip()
+                if pd.notna(organist) and str(organist).strip()
+                else "Not Assigned"
+            )
+
+            # Determine type
+            if has_type_col:
+                raw_type = row['Type']
+                type_name = str(raw_type).strip() if pd.notna(raw_type) and str(raw_type).strip() else 'Unknown'
+            else:
+                type_name = 'Unknown'
+
+            # Apply filter
+            if include_types and type_name not in include_types:
+                continue
+
+            roster_table.append((str(song).strip(), organist_name, type_name))
+
+        user_logger.info(
+            f"Retrieved filtered roster table ({len(roster_table)} entries, "
+            f"filter={include_types})"
+        )
+        return roster_table
+
+    except Exception as e:
+        user_logger.error(f"Error getting filtered roster table: {str(e)[:50]}")
+        return []
+
+
 def parse_date_input(date_str):
     """
     Parse user's date input in various formats.
