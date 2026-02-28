@@ -1274,14 +1274,16 @@ def get_songs_by_date(input_date):
                 input_date = pd.to_datetime(input_date, dayfirst=True).date()
             elif len(parts) == 2:
                 day, month = map(int, parts)
-                input_date = date(current_year, month, day)
+                import calendar
+                last_day = calendar.monthrange(current_year, month)[1]
+                input_date = date(current_year, month, min(day, last_day))
             elif len(parts) == 1:
                 day = int(parts[0])
                 input_date = date(current_year, current_month, day)
             else:
                 return "Invalid date format. Use DD, DD/MM, DD/MM/YY, or DD/MM/YYYY."
         except Exception as e:
-            return f"Date parsing error: {e}"
+            return f"Invalid date: {e}. Use DD, DD/MM, DD/MM/YY, or DD/MM/YYYY."
 
     # Ensure 'Date' column is datetime.date
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.date
