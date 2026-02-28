@@ -982,7 +982,65 @@ st.markdown(f"""
         border-radius: 5px;
     }}
     [data-testid="stSidebar"] {{
-        background-color: rgba(255, 255, 255, 0.95);
+        background: rgba(10, 10, 25, 0.82) !important;
+        backdrop-filter: blur(20px) saturate(160%) !important;
+        -webkit-backdrop-filter: blur(20px) saturate(160%) !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
+    }}
+    /* All text inside sidebar */
+    [data-testid="stSidebar"] * {{
+        color: #e5e7eb !important;
+    }}
+    /* Sidebar headings */
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {{
+        color: #c4b5fd !important;
+        font-weight: 700 !important;
+    }}
+    /* Sidebar divider */
+    [data-testid="stSidebar"] hr {{
+        border-color: rgba(255, 255, 255, 0.15) !important;
+    }}
+    /* Radio buttons */
+    [data-testid="stSidebar"] [data-testid="stRadio"] label {{
+        color: #e5e7eb !important;
+        font-size: 0.97rem !important;
+        padding: 0.3rem 0 !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {{
+        color: #e5e7eb !important;
+    }}
+    /* Selected radio option highlight */
+    [data-testid="stSidebar"] [role="radio"][aria-checked="true"] + div {{
+        color: #a78bfa !important;
+        font-weight: 600 !important;
+    }}
+    /* Sidebar buttons */
+    [data-testid="stSidebar"] button {{
+        background: rgba(255, 255, 255, 0.10) !important;
+        border: 1px solid rgba(255, 255, 255, 0.20) !important;
+        color: #e5e7eb !important;
+        border-radius: 10px !important;
+        font-weight: 500 !important;
+    }}
+    [data-testid="stSidebar"] button:hover {{
+        background: rgba(255, 255, 255, 0.20) !important;
+        border-color: rgba(255, 255, 255, 0.35) !important;
+    }}
+    [data-testid="stSidebar"] button[kind="primary"] {{
+        background: linear-gradient(135deg, #667eea, #764ba2) !important;
+        border: none !important;
+        color: #ffffff !important;
+        font-weight: 600 !important;
+    }}
+    [data-testid="stSidebar"] button[kind="primary"]:hover {{
+        opacity: 0.9 !important;
+    }}
+    /* Image centering */
+    [data-testid="stSidebar"] [data-testid="stImage"] {{
+        display: flex !important;
+        justify-content: center !important;
     }}
 </style>
 """, unsafe_allow_html=True)
