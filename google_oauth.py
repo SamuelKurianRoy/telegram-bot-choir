@@ -73,19 +73,27 @@ def get_google_signin_url():
             return None
         
         config = get_google_oauth_config()
-        
-        authorization_url, state = flow.authorization_url(
-            access_type='online',
-            include_granted_scopes='true',
-            prompt='select_account',
-            code_challenge_method=None  # Disable PKCE — server-side flow, verifier lost on redirect
-        )
-        
-        # Store state in session for verification
+
+        # Build the authorization URL manually — do NOT use flow.authorization_url()
+        # because google-auth-oauthlib automatically appends code_challenge (PKCE)
+        # regardless of arguments. Once Google sees code_challenge in the request it
+        # demands code_verifier in the token exchange; since Streamlit wipes session
+        # state on redirect the verifier is always lost → invalid_grant.
+        import urllib.parse, secrets
+        state = secrets.token_urlsafe(32)
         st.session_state['oauth_state'] = state
-        # Clear any stale verifier
-        st.session_state.pop('oauth_code_verifier', None)
-        
+
+        params = {
+            "client_id":     config["client_id"],
+            "redirect_uri":  config["redirect_uri"],
+            "response_type": "code",
+            "scope":         " ".join(SCOPES),
+            "access_type":   "online",
+            "state":         state,
+            "prompt":        "select_account",
+        }
+        authorization_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
+
         return authorization_url
     except Exception as e:
         st.error(f"❌ Error generating sign-in URL: {str(e)}")
