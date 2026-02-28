@@ -102,22 +102,56 @@ def verify_google_oauth_callback(auth_code):
         dict: User information or None if verification fails
     """
     try:
-        # No code_verifier needed — PKCE is disabled for this server-side flow
-        flow = create_oauth_flow()
-        
-        if not flow:
-            st.error("❌ Failed to create OAuth flow in callback")
+        config = get_google_oauth_config()
+        if not config:
+            st.error("❌ OAuth configuration missing")
             return None
-        
-        # Exchange authorization code for credentials
-        flow.fetch_token(code=auth_code)
-        credentials = flow.credentials
-        
-        # Get user info from Google
-        user_info = get_google_user_info(credentials)
-        
-        return user_info
-    
+
+        # Exchange auth code for tokens via direct HTTP POST — bypasses
+        # google-auth-oauthlib's PKCE logic entirely (Flow.fetch_token injects
+        # a code_verifier that is lost after the redirect, causing invalid_grant).
+        token_response = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code":          auth_code,
+                "client_id":     config["client_id"],
+                "client_secret": config["client_secret"],
+                "redirect_uri":  config["redirect_uri"],
+                "grant_type":    "authorization_code",
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+        if token_response.status_code != 200:
+            st.error(f"❌ Token exchange failed: {token_response.text}")
+            return None
+
+        token_data = token_response.json()
+        access_token = token_data.get("access_token")
+
+        if not access_token:
+            st.error("❌ No access token returned by Google")
+            return None
+
+        # Fetch user profile with the access token
+        profile_response = requests.get(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        if profile_response.status_code != 200:
+            st.error("❌ Failed to fetch user profile from Google")
+            return None
+
+        user_info = profile_response.json()
+        return {
+            "email":          user_info.get("email"),
+            "name":           user_info.get("name"),
+            "picture":        user_info.get("picture"),
+            "verified_email": user_info.get("verified_email"),
+            "google_id":      user_info.get("id"),
+        }
+
     except Exception as e:
         st.error(f"❌ OAuth verification error: {str(e)}")
         return None
