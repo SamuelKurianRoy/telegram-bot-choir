@@ -2229,27 +2229,6 @@ elif page == "About":
     </style>
     """, unsafe_allow_html=True)
 
-    # ── Bible Verse Game ────────────────────────────────────────────────────
-    st.markdown("""
-    <div class="about-card">
-        <h2>Bible Verse Game</h2>
-        <p>An interactive game that helps you learn and memorise Bible verses while keeping the app active.</p>
-        <p style="margin-top:0.8rem; margin-bottom:0.4rem; color:#9ca3af; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.07em;">Difficulty Levels</p>
-        <ul>
-            <li><span class="difficulty-pill pill-easy">Easy</span> Popular &amp; well-known verses (John 3:16, Genesis 1:1 …)</li>
-            <li><span class="difficulty-pill pill-medium">Medium</span> Important verses requiring deeper Bible knowledge</li>
-            <li><span class="difficulty-pill pill-hard">Hard</span> Lesser-known verses from minor prophets &amp; challenging books</li>
-        </ul>
-        <p style="margin-top:0.8rem; margin-bottom:0.4rem; color:#9ca3af; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.07em;">Features</p>
-        <ul>
-            <li>Multiple-choice format with 4 options per question</li>
-            <li>Live score tracking and accuracy display</li>
-            <li>Real-time verse fetching from WordProject.org</li>
-            <li>Reset functionality to start fresh at any time</li>
-        </ul>
-    </div>
-    """, unsafe_allow_html=True)
-
     # ── Credits ─────────────────────────────────────────────────────────────
     st.markdown("""
     <div class="about-card">
