@@ -1950,9 +1950,9 @@ elif page == "Change Password":
         st.markdown(f"**Username:** {current_user}")
         st.markdown("---")
         
-        old_password = st.text_input("🔑 Current Password", type="password", help="Enter your current password")
-        new_password = st.text_input("🔐 New Password", type="password", help="Enter your new password (minimum 6 characters)")
-        confirm_password = st.text_input("🔐 Confirm New Password", type="password", help="Re-enter your new password")
+        old_password = st.text_input("Current Password", type="password", help="Enter your current password")
+        new_password = st.text_input("New Password", type="password", help="Enter your new password (minimum 6 characters)")
+        confirm_password = st.text_input("Confirm New Password", type="password", help="Re-enter your new password")
         
         submit_button = st.form_submit_button("Change Password", type="primary", use_container_width=True)
     
@@ -2006,14 +2006,16 @@ elif page == "About":
     <style>
         /* About page card styles */
         .about-card {
-            background: rgba(15, 15, 30, 0.75);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(24px) saturate(160%);
+            -webkit-backdrop-filter: blur(24px) saturate(160%);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            border-top: 1px solid rgba(255, 255, 255, 0.38);
             border-radius: 18px;
             padding: 1.8rem 2rem;
             margin-bottom: 1.4rem;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.15);
         }
         .about-card h2 {
             font-size: 1.35rem;
@@ -2075,10 +2077,12 @@ elif page == "About":
             gap: 0.7rem;
         }
         .tech-item {
-            background: rgba(255,255,255,0.05);
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             border-radius: 10px;
             padding: 0.7rem 1rem;
-            border: 1px solid rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.18);
         }
         .tech-label {
             font-size: 0.75rem;
@@ -2097,7 +2101,7 @@ elif page == "About":
             align-items: center;
             gap: 0.75rem;
             padding: 0.6rem 0;
-            border-bottom: 1px solid rgba(255,255,255,0.07);
+            border-bottom: 1px solid rgba(255,255,255,0.14);
         }
         .credit-row:last-child { border-bottom: none; }
         .credit-icon {
@@ -2116,7 +2120,7 @@ elif page == "About":
     with col1:
         st.markdown("""
         <div class="about-card">
-            <h2>🎶 Bot Information</h2>
+            <h2>Bot Information</h2>
             <p>This control panel lets you start, stop, and monitor the Choir Telegram Bot that serves your congregation.</p>
             <ul>
                 <li>Search for hymns, lyrics &amp; convention songs</li>
@@ -2131,7 +2135,7 @@ elif page == "About":
     with col2:
         st.markdown("""
         <div class="about-card">
-            <h2>⌨️ Bot Commands</h2>
+            <h2>Bot Commands</h2>
             <div class="cmd-row"><span class="cmd-badge">/start</span><span class="cmd-desc">Start the bot</span></div>
             <div class="cmd-row"><span class="cmd-badge">/help</span><span class="cmd-desc">Show help information</span></div>
             <div class="cmd-row"><span class="cmd-badge">/search</span><span class="cmd-desc">Search for songs</span></div>
@@ -2145,7 +2149,7 @@ elif page == "About":
     # ── Row 2 ──────────────────────────────────────────────────────────────
     st.markdown("""
     <div class="about-card">
-        <h2>📖 Bible Verse Game</h2>
+        <h2>Bible Verse Game</h2>
         <p>An interactive game that helps you learn and memorise Bible verses while keeping the app active.</p>
         <p style="margin-top:0.8rem; margin-bottom:0.4rem; color:#9ca3af; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.07em;">Difficulty Levels</p>
         <ul>
@@ -2169,7 +2173,7 @@ elif page == "About":
     with col3:
         st.markdown("""
         <div class="about-card">
-            <h2>⚙️ Technical Details</h2>
+            <h2>Technical Details</h2>
             <div class="tech-grid">
                 <div class="tech-item">
                     <div class="tech-label">Verse Source</div>
@@ -2194,30 +2198,30 @@ elif page == "About":
     with col4:
         st.markdown("""
         <div class="about-card">
-            <h2>👥 Credits</h2>
+            <h2>Credits</h2>
             <div class="credit-row">
-                <div class="credit-icon">💻</div>
+                <div class="credit-icon"></div>
                 <div>
                     <div class="credit-label">Bot Development</div>
                     <div class="credit-name">Samuel Kurian Roy</div>
                 </div>
             </div>
             <div class="credit-row">
-                <div class="credit-icon">📖</div>
+                <div class="credit-icon"></div>
                 <div>
                     <div class="credit-label">Bible Content</div>
                     <div class="credit-name">WordProject.org</div>
                 </div>
             </div>
             <div class="credit-row">
-                <div class="credit-icon">🛠️</div>
+                <div class="credit-icon"></div>
                 <div>
                     <div class="credit-label">Framework</div>
                     <div class="credit-name">Streamlit + Python Telegram Bot</div>
                 </div>
             </div>
             <div class="credit-row">
-                <div class="credit-icon">☁️</div>
+                <div class="credit-icon"></div>
                 <div>
                     <div class="credit-label">Hosting</div>
                     <div class="credit-name">Streamlit Cloud</div>
