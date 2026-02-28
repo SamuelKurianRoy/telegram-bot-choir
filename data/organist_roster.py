@@ -331,8 +331,10 @@ def get_unique_types():
 
     try:
         types = df['Type'].dropna().tolist()
-        types = sorted(set([str(t).strip() for t in types if str(t).strip()]))
-        user_logger.info(f"Found {len(types)} unique types: {types}")
+        # Preserve original sheet order (not alphabetical) by using dict.fromkeys
+        seen = dict.fromkeys(str(t).strip() for t in types if str(t).strip())
+        types = list(seen)
+        user_logger.info(f"Found {len(types)} unique types (sheet order): {types}")
         return types
     except Exception as e:
         user_logger.error(f"Error getting unique types: {str(e)[:100]}")

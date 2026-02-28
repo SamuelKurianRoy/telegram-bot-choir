@@ -3720,15 +3720,17 @@ async def filter_by_type_start(update: Update, context: ContextTypes.DEFAULT_TYP
     # Initialise selected set — all types selected by default
     context.user_data['selected_types'] = set(available_types)
     context.user_data['available_types'] = available_types
+    context.user_data['include_organist'] = True  # Show organist names by default
 
     # Build keyboard
-    keyboard = _build_type_keyboard(available_types, context.user_data['selected_types'])
+    keyboard = _build_type_keyboard(available_types, context.user_data['selected_types'], context.user_data['include_organist'])
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=False, resize_keyboard=True)
 
     await update.message.reply_text(
         "🏷️ *Filter by Type*\n\n"
         "Tap a type to toggle it on/off.\n"
         "Types with ✅ will be shown; types with ☐ will be hidden.\n\n"
+        "You can also toggle whether to include the organist name.\n\n"
         "Press *✅ Show Results* when you're ready.",
         reply_markup=reply_markup,
         parse_mode=ParseMode.MARKDOWN
@@ -3737,12 +3739,15 @@ async def filter_by_type_start(update: Update, context: ContextTypes.DEFAULT_TYP
     return FILTER_TYPE_SELECT
 
 
-def _build_type_keyboard(available_types: list, selected_types: set) -> list:
+def _build_type_keyboard(available_types: list, selected_types: set, include_organist: bool = True) -> list:
     """Build a ReplyKeyboard for type toggling with checkmark indicators."""
     keyboard = []
     for t in available_types:
         mark = "✅" if t in selected_types else "☐"
         keyboard.append([f"{mark} {t}"])
+    # Organist name toggle
+    org_mark = "✅" if include_organist else "☐"
+    keyboard.append([f"{org_mark} Include Organist Name"])
     keyboard.append(["✅ Show Results"])
     keyboard.append(["⬅️ Back to Menu", "❌ Cancel"])
     return keyboard
@@ -3770,10 +3775,11 @@ async def filter_type_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if selection == "✅ Show Results":
         if not selected_types:
+            include_organist = context.user_data.get('include_organist', True)
             await update.message.reply_text(
                 "⚠️ No types selected — please toggle at least one type on before showing results.",
                 reply_markup=ReplyKeyboardMarkup(
-                    _build_type_keyboard(available_types, selected_types),
+                    _build_type_keyboard(available_types, selected_types, include_organist),
                     one_time_keyboard=False,
                     resize_keyboard=True
                 )
@@ -3790,8 +3796,10 @@ async def filter_type_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return ConversationHandler.END
 
+        include_organist = context.user_data.get('include_organist', True)
+
         # Format the result
-        type_label = ", ".join(sorted(selected_types))
+        type_label = ", ".join(t for t in available_types if t in selected_types)
         header = (
             f"📋 *Roster — {type_label}*\n"
             f"({len(roster_table)} entries)\n\n"
@@ -3803,11 +3811,17 @@ async def filter_type_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         for song, organist, rtype in roster_table:
             groups[rtype].append((song, organist))
 
+        # Display groups in sheet order (not alphabetical)
         lines = []
-        for rtype in sorted(groups.keys()):
+        for rtype in available_types:
+            if rtype not in groups:
+                continue
             lines.append(f"*{rtype}*")
             for i, (song, organist) in enumerate(groups[rtype], 1):
-                lines.append(f"  {i}. {song} → {organist}")
+                if include_organist:
+                    lines.append(f"  {i}. {song} → {organist}")
+                else:
+                    lines.append(f"  {i}. {song}")
             lines.append("")
 
         body = "\n".join(lines).strip()
@@ -3843,6 +3857,22 @@ async def filter_type_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Strip prefix marks to get clean type name
     clean_selection = selection.lstrip("✅☐ ").strip()
 
+    # Handle organist name toggle
+    if clean_selection == "Include Organist Name":
+        include_organist = context.user_data.get('include_organist', True)
+        context.user_data['include_organist'] = not include_organist
+
+        keyboard = _build_type_keyboard(available_types, selected_types, context.user_data['include_organist'])
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=False, resize_keyboard=True)
+
+        org_status = "shown" if context.user_data['include_organist'] else "hidden"
+        await update.message.reply_text(
+            f"👤 Organist names will be *{org_status}* in results.\n\nContinue toggling or press *✅ Show Results*.",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return FILTER_TYPE_SELECT
+
     if clean_selection in available_types:
         if clean_selection in selected_types:
             selected_types.discard(clean_selection)
@@ -3851,10 +3881,11 @@ async def filter_type_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.user_data['selected_types'] = selected_types
 
         # Rebuild keyboard with updated state
-        keyboard = _build_type_keyboard(available_types, selected_types)
+        include_organist = context.user_data.get('include_organist', True)
+        keyboard = _build_type_keyboard(available_types, selected_types, include_organist)
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=False, resize_keyboard=True)
 
-        selected_list = ", ".join(sorted(selected_types)) if selected_types else "none"
+        selected_list = ", ".join(t for t in available_types if t in selected_types) if selected_types else "none"
         await update.message.reply_text(
             f"🏷️ *Active types:* {selected_list}\n\nContinue toggling or press *✅ Show Results*.",
             reply_markup=reply_markup,
