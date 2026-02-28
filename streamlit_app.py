@@ -459,6 +459,8 @@ def check_password():
             # Center content using columns
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
+                # Glass backdrop card (absolute-positioned behind all widgets)
+                st.markdown("<div class='login-glass-backdrop'></div>", unsafe_allow_html=True)
                 st.markdown("<div class='login-title'>Sign In</div>", unsafe_allow_html=True)
                 
                 # Username field
@@ -559,6 +561,8 @@ def check_password():
             # Center content using columns
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
+                # Glass backdrop card (absolute-positioned behind all widgets)
+                st.markdown("<div class='login-glass-backdrop'></div>", unsafe_allow_html=True)
                 st.markdown("<div class='login-title'>Sign In</div>", unsafe_allow_html=True)
                 
                 # Username field
@@ -786,8 +790,18 @@ st.markdown(f"""
         max-width: 650px;
         margin: 2rem auto;
     }} */
-    /* Glass card around the login column */
-    div[data-testid="column"]:has(.login-title) {{
+    /* Make login column a positioning root for the glass backdrop */
+    div[data-testid="column"]:has(.login-glass-backdrop) {{
+        position: relative !important;
+        overflow: visible !important;
+        padding: 2.5rem 2rem !important;
+        margin-top: 2rem !important;
+    }}
+    /* The actual glass card – sits behind all widgets */
+    .login-glass-backdrop {{
+        position: absolute !important;
+        inset: 0 !important;
+        z-index: 0 !important;
         background: rgba(255, 255, 255, 0.10) !important;
         backdrop-filter: blur(28px) saturate(160%) !important;
         -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
@@ -796,8 +810,7 @@ st.markdown(f"""
         border-top: 1px solid rgba(255, 255, 255, 0.40) !important;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.30),
                     inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
-        padding: 2.5rem 2rem !important;
-        margin-top: 2rem !important;
+        pointer-events: none !important;
     }}
     .login-title {{
         font-size: 2rem;
