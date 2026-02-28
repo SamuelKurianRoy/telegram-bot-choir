@@ -1891,129 +1891,193 @@ elif page == "Logs":
 elif page == "Bible Game":
     st.markdown("<h1 class='main-header'>📖 Bible Verse Game</h1>", unsafe_allow_html=True)
 
-    # Game description
     st.markdown("""
-    <div class='info-box'>
-        <h3>How to Play</h3>
-        <p>Test your Bible knowledge! A verse will be displayed, and you need to guess which Bible reference it's from.</p>
-        <p>Choose your language (English or Malayalam), difficulty level, and start playing!</p>
-    </div>
+    <style>
+        .game-card {
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(24px) saturate(160%);
+            -webkit-backdrop-filter: blur(24px) saturate(160%);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            border-top: 1px solid rgba(255, 255, 255, 0.38);
+            border-radius: 18px;
+            padding: 1.6rem 2rem;
+            margin-bottom: 1.2rem;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.15);
+        }
+        .game-card h3 {
+            color: #c4b5fd;
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin: 0 0 0.6rem 0;
+        }
+        .game-card p {
+            color: #e5e7eb !important;
+            font-size: 0.95rem;
+            line-height: 1.7;
+            margin: 0;
+        }
+        .verse-card {
+            background: rgba(102, 126, 234, 0.12);
+            backdrop-filter: blur(20px) saturate(140%);
+            -webkit-backdrop-filter: blur(20px) saturate(140%);
+            border: 1px solid rgba(102, 126, 234, 0.35);
+            border-left: 4px solid #667eea;
+            border-radius: 14px;
+            padding: 1.5rem 1.8rem;
+            margin-bottom: 1.2rem;
+        }
+        .verse-label {
+            font-size: 0.75rem;
+            color: #a5b4fc !important;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-weight: 700;
+            margin-bottom: 0.7rem;
+        }
+        .verse-text {
+            font-size: 1.15rem;
+            font-style: italic;
+            color: #f3f4f6 !important;
+            line-height: 1.8;
+        }
+        .stat-card {
+            background: rgba(255,255,255,0.07);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 14px;
+            padding: 1rem 1.2rem;
+            text-align: center;
+        }
+        .stat-label {
+            font-size: 0.75rem;
+            color: #9ca3af !important;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.3rem;
+        }
+        .stat-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #c4b5fd !important;
+        }
+        /* Selectbox label */
+        [data-testid="stSelectbox"] label {
+            color: #e5e7eb !important;
+            font-weight: 600 !important;
+        }
+    </style>
     """, unsafe_allow_html=True)
 
-    # Language and difficulty selection
-    col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
-
-    with col1:
+    # ── Settings row ────────────────────────────────────────────────────────
+    st.markdown('<div class="game-card">', unsafe_allow_html=True)
+    cfg1, cfg2, cfg3, cfg4 = st.columns([2, 2, 1, 1])
+    with cfg1:
         language = st.selectbox(
-            "Select Language:",
+            "🌐 Language",
             ["English", "Malayalam"],
             index=["English", "Malayalam"].index(st.session_state["game_language"])
         )
         if language != st.session_state["game_language"]:
             st.session_state["game_language"] = language
-            st.session_state["current_question"] = None  # Reset current question
-
-    with col2:
+            st.session_state["current_question"] = None
+    with cfg2:
         difficulty = st.selectbox(
-            "Select Difficulty:",
+            "🎯 Difficulty",
             ["Easy", "Medium", "Hard"],
             index=["Easy", "Medium", "Hard"].index(st.session_state["game_difficulty"])
         )
         if difficulty != st.session_state["game_difficulty"]:
             st.session_state["game_difficulty"] = difficulty
-            st.session_state["current_question"] = None  # Reset current question
+            st.session_state["current_question"] = None
+    with cfg3:
+        total = st.session_state["bible_game_total"]
+        score = st.session_state["bible_game_score"]
+        st.markdown(f'<div class="stat-card"><div class="stat-label">Score</div><div class="stat-value">{score}/{total}</div></div>', unsafe_allow_html=True)
+    with cfg4:
+        if total > 0:
+            pct = score / total * 100
+            st.markdown(f'<div class="stat-card"><div class="stat-label">Accuracy</div><div class="stat-value">{pct:.0f}%</div></div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="stat-card"><div class="stat-label">Accuracy</div><div class="stat-value">—</div></div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    with col3:
-        st.metric("Score", f"{st.session_state['bible_game_score']}/{st.session_state['bible_game_total']}")
-
-    with col4:
-        if st.session_state["bible_game_total"] > 0:
-            percentage = (st.session_state["bible_game_score"] / st.session_state["bible_game_total"]) * 100
-            st.metric("Accuracy", f"{percentage:.1f}%")
-
-    # Game controls
-    col1, col2 = st.columns([1, 1])
-
-    with col1:
-        if st.button("🎮 New Question", type="primary"):
+    # ── Action buttons ──────────────────────────────────────────────────────
+    btn1, btn2 = st.columns([1, 1])
+    with btn1:
+        if st.button("🎮 New Question", type="primary", use_container_width=True):
             with st.spinner("Loading Bible verse..."):
-                # Convert language name to lowercase for the function
-                lang_code = language.lower()
-                question = create_bible_question(difficulty, lang_code)
+                question = create_bible_question(difficulty, language.lower())
                 if question:
                     st.session_state["current_question"] = question
                     st.rerun()
                 else:
-                    st.error("Failed to load Bible verse. Please try again.")
-
-    with col2:
-        if st.button("🔄 Reset Score"):
+                    st.error("Failed to load verse. Please try again.")
+    with btn2:
+        if st.button("🔄 Reset Score", use_container_width=True):
             st.session_state["bible_game_score"] = 0
             st.session_state["bible_game_total"] = 0
             st.session_state["current_question"] = None
-            st.success("Score reset!")
             st.rerun()
 
-    # Display current question
+    # ── Question display ────────────────────────────────────────────────────
     if st.session_state["current_question"]:
         question = st.session_state["current_question"]
 
-        st.markdown("---")
-        st.markdown(f"### 📜 {question['difficulty']} Level - {question.get('language', 'English').title()}")
+        diff_colors = {"Easy": "#6ee7b7", "Medium": "#fcd34d", "Hard": "#fca5a5"}
+        diff_color = diff_colors.get(question["difficulty"], "#a5b4fc")
+        lang_display = question.get("language", "english").title()
 
-        # Display the verse in a nice box
         st.markdown(f"""
-        <div style="background-color: #f0f8ff; padding: 20px; border-radius: 10px; border-left: 5px solid #1E88E5; margin: 20px 0;">
-            <h4 style="color: #0D47A1; margin-bottom: 15px;">📖 Bible Verse:</h4>
-            <p style="font-size: 1.2em; font-style: italic; color: #333; line-height: 1.6;">
-                "{question['verse_text']}"
-            </p>
+        <div style="margin: 0.5rem 0 0.8rem 0; display:flex; align-items:center; gap:0.6rem;">
+            <span style="background:rgba(255,255,255,0.1); border:1px solid {diff_color}; color:{diff_color};
+                         font-size:0.78rem; font-weight:700; padding:2px 12px; border-radius:99px;">
+                {question["difficulty"]}
+            </span>
+            <span style="color:#9ca3af; font-size:0.85rem;">{lang_display}</span>
+        </div>
+        <div class="verse-card">
+            <div class="verse-label">📖 Which reference is this verse from?</div>
+            <div class="verse-text">"{question['verse_text']}"</div>
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown("### Which Bible reference is this verse from?")
-
-        # Create answer buttons
         for i, option in enumerate(question["options"]):
-            if st.button(f"{chr(65+i)}) {option}", key=f"option_{i}", use_container_width=True):
+            if st.button(f"  {chr(65+i)})  {option}", key=f"option_{i}", use_container_width=True):
                 st.session_state["bible_game_total"] += 1
-
                 if option == question["correct_answer"]:
                     st.session_state["bible_game_score"] += 1
-                    st.success(f"🎉 Correct! The answer is {question['correct_answer']}")
+                    st.success(f"🎉 Correct! — {question['correct_answer']}")
                 else:
-                    st.error(f"❌ Wrong! The correct answer is {question['correct_answer']}")
-
-                # Clear current question after answering
+                    st.error(f"❌ Wrong! Correct answer: **{question['correct_answer']}**")
                 st.session_state["current_question"] = None
                 time.sleep(2)
                 st.rerun()
 
     else:
-        st.markdown("---")
-        st.info("👆 Click 'New Question' to start playing!")
+        st.markdown("""
+        <div class="game-card" style="text-align:center; padding: 2rem;">
+            <p style="font-size:1.05rem; color:#9ca3af !important;">
+                Press <strong style="color:#c4b5fd;">New Question</strong> to start playing
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # Game statistics
+    # ── Stats ───────────────────────────────────────────────────────────────
     if st.session_state["bible_game_total"] > 0:
-        st.markdown("---")
-        st.markdown("### 📊 Game Statistics")
+        total = st.session_state["bible_game_total"]
+        score = st.session_state["bible_game_score"]
+        wrong = total - score
+        accuracy = score / total * 100
 
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            st.metric("Total Questions", st.session_state["bible_game_total"])
-
-        with col2:
-            st.metric("Correct Answers", st.session_state["bible_game_score"])
-
-        with col3:
-            wrong_answers = st.session_state["bible_game_total"] - st.session_state["bible_game_score"]
-            st.metric("Wrong Answers", wrong_answers)
-
-        with col4:
-            if st.session_state["bible_game_total"] > 0:
-                accuracy = (st.session_state["bible_game_score"] / st.session_state["bible_game_total"]) * 100
-                st.metric("Overall Accuracy", f"{accuracy:.1f}%")
+        st.markdown(f"""
+        <div style="display:grid; grid-template-columns: repeat(4,1fr); gap:0.8rem; margin-top:0.5rem;">
+            <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">{total}</div></div>
+            <div class="stat-card"><div class="stat-label">Correct</div><div class="stat-value" style="color:#6ee7b7 !important;">{score}</div></div>
+            <div class="stat-card"><div class="stat-label">Wrong</div><div class="stat-value" style="color:#fca5a5 !important;">{wrong}</div></div>
+            <div class="stat-card"><div class="stat-label">Accuracy</div><div class="stat-value">{accuracy:.0f}%</div></div>
+        </div>
+        """, unsafe_allow_html=True)
 
 elif page == "Settings":
     st.markdown("<h1 class='main-header'>Bot Settings</h1>", unsafe_allow_html=True)
