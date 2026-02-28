@@ -459,25 +459,26 @@ def check_password():
             # Center content using columns
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
-                # Inject glass card CSS targeting this exact middle column
+                # Target middle column by its flex:2 inline style (set by st.columns([1,2,1]))
                 st.markdown("""
                 <style>
-                div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) {
+                div[data-testid="column"][style*="flex: 2"],
+                div[data-testid="column"][style*="flex:2"] {
                     background: rgba(255, 255, 255, 0.10) !important;
                     backdrop-filter: blur(28px) saturate(160%) !important;
                     -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
                     border-radius: 20px !important;
                     border: 1px solid rgba(255, 255, 255, 0.22) !important;
-                    border-top: 1px solid rgba(255, 255, 255, 0.40) !important;
-                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.30),
-                                inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
+                    border-top: 1.5px solid rgba(255, 255, 255, 0.45) !important;
+                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35),
+                                inset 0 1px 0 rgba(255, 255, 255, 0.20) !important;
                     padding: 2.5rem 2rem !important;
-                    margin-top: 2rem !important;
+                    margin-top: 1.5rem !important;
                 }
                 </style>
                 """, unsafe_allow_html=True)
                 st.markdown("<div class='login-title'>Sign In</div>", unsafe_allow_html=True)
-                
+
                 # Username field
                 st.markdown("<div class='input-label'>Username</div>", unsafe_allow_html=True)
                 st.text_input(
@@ -486,7 +487,7 @@ def check_password():
                     placeholder="Enter your username",
                     label_visibility="collapsed"
                 )
-                
+
                 # Password field
                 st.markdown("<div class='input-label'>Password</div>", unsafe_allow_html=True)
                 st.text_input(
@@ -506,12 +507,12 @@ def check_password():
                         st.rerun()
                     else:
                         st.error("Login failed. Please check your credentials.")
-                
+
                 # Forgot password link
                 if st.button("Forgot Password?", key="forgot_link", use_container_width=True):
                     st.session_state["show_forgot_password"] = True
                     st.rerun()
-                
+
                 # Google Sign In option
                 if GOOGLE_OAUTH_AVAILABLE:
                     st.markdown("<div class='divider-text'>Or</div>", unsafe_allow_html=True)
@@ -576,20 +577,21 @@ def check_password():
             # Center content using columns
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
-                # Inject glass card CSS targeting this exact middle column
+                # Target middle column by its flex:2 inline style (set by st.columns([1,2,1]))
                 st.markdown("""
                 <style>
-                div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) {
+                div[data-testid="column"][style*="flex: 2"],
+                div[data-testid="column"][style*="flex:2"] {
                     background: rgba(255, 255, 255, 0.10) !important;
                     backdrop-filter: blur(28px) saturate(160%) !important;
                     -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
                     border-radius: 20px !important;
                     border: 1px solid rgba(255, 255, 255, 0.22) !important;
-                    border-top: 1px solid rgba(255, 255, 255, 0.40) !important;
-                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.30),
-                                inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
+                    border-top: 1.5px solid rgba(255, 255, 255, 0.45) !important;
+                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35),
+                                inset 0 1px 0 rgba(255, 255, 255, 0.20) !important;
                     padding: 2.5rem 2rem !important;
-                    margin-top: 2rem !important;
+                    margin-top: 1.5rem !important;
                 }
                 </style>
                 """, unsafe_allow_html=True)
