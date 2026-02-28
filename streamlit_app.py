@@ -1613,20 +1613,22 @@ st.markdown("""
     div[data-testid="stHorizontalBlock"]:has(button[data-testid="baseButton-secondary"]) {
         margin-bottom: -0.5rem !important;
     }
-    /* Style the top logout button - targets button inside the narrow right column */
+    /* Style the top logout button */
     div.top-logout-wrap button {
-        background: rgba(239, 68, 68, 0.15) !important;
-        border: 1px solid rgba(239, 68, 68, 0.45) !important;
-        color: #f87171 !important;
+        background: linear-gradient(135deg, #667eea, #764ba2) !important;
+        border: none !important;
+        color: #ffffff !important;
         border-radius: 20px !important;
         font-size: 0.82rem !important;
         font-weight: 600 !important;
         padding: 0.25rem 0.9rem !important;
         white-space: nowrap !important;
+        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.35) !important;
+        letter-spacing: 0.03em !important;
     }
     div.top-logout-wrap button:hover {
-        background: rgba(239, 68, 68, 0.30) !important;
-        border-color: rgba(239, 68, 68, 0.70) !important;
+        opacity: 0.88 !important;
+        box-shadow: 0 4px 14px rgba(102, 126, 234, 0.5) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1634,7 +1636,7 @@ st.markdown("""
 _gap, _logout_col = st.columns([7, 1])
 with _logout_col:
     st.markdown('<div class="top-logout-wrap">', unsafe_allow_html=True)
-    if st.button("🚪 Logout", key="top_logout", use_container_width=True):
+    if st.button("Logout", key="top_logout", use_container_width=True):
         for key in ["password_correct", "login_time", "current_user"]:
             if key in st.session_state:
                 del st.session_state[key]
