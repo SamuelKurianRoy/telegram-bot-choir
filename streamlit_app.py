@@ -2002,65 +2002,226 @@ elif page == "Change Password":
 elif page == "About":
     st.markdown("<h1 class='main-header'>About Choir Bot</h1>", unsafe_allow_html=True)
 
-    # Bot information
-    st.markdown("## 🎶 Bot Information")
     st.markdown("""
-    This control panel allows you to start and stop the Choir Telegram Bot.
+    <style>
+        /* About page card styles */
+        .about-card {
+            background: rgba(15, 15, 30, 0.75);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 18px;
+            padding: 1.8rem 2rem;
+            margin-bottom: 1.4rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+        .about-card h2 {
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #c4b5fd;
+            margin-bottom: 1rem;
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .about-card p, .about-card li {
+            color: #e5e7eb !important;
+            font-size: 0.97rem;
+            line-height: 1.75;
+        }
+        .about-card ul {
+            padding-left: 1.2rem;
+            margin: 0.5rem 0;
+        }
+        .about-card li {
+            margin-bottom: 0.3rem;
+        }
+        .cmd-badge {
+            display: inline-block;
+            background: rgba(102, 126, 234, 0.3);
+            border: 1px solid rgba(102, 126, 234, 0.6);
+            color: #a5b4fc !important;
+            font-family: monospace;
+            font-size: 0.85rem;
+            padding: 2px 9px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+        .cmd-row {
+            display: flex;
+            align-items: baseline;
+            gap: 0.6rem;
+            margin-bottom: 0.55rem;
+        }
+        .cmd-desc {
+            color: #d1d5db !important;
+            font-size: 0.93rem;
+        }
+        .difficulty-pill {
+            display: inline-block;
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 2px 10px;
+            border-radius: 99px;
+            margin-right: 6px;
+        }
+        .pill-easy   { background: rgba(52, 211, 153, 0.2); color: #6ee7b7; border: 1px solid #6ee7b7; }
+        .pill-medium { background: rgba(251, 191, 36, 0.2); color: #fcd34d; border: 1px solid #fcd34d; }
+        .pill-hard   { background: rgba(239, 68, 68, 0.2);  color: #fca5a5; border: 1px solid #fca5a5; }
+        .tech-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.7rem;
+        }
+        .tech-item {
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            padding: 0.7rem 1rem;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .tech-label {
+            font-size: 0.75rem;
+            color: #9ca3af !important;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.2rem;
+        }
+        .tech-value {
+            font-size: 0.95rem;
+            color: #e5e7eb !important;
+            font-weight: 600;
+        }
+        .credit-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+        }
+        .credit-row:last-child { border-bottom: none; }
+        .credit-icon {
+            font-size: 1.4rem;
+            width: 2.2rem;
+            text-align: center;
+        }
+        .credit-label { color: #9ca3af !important; font-size: 0.82rem; }
+        .credit-name  { color: #e5e7eb !important; font-size: 0.97rem; font-weight: 600; }
+    </style>
+    """, unsafe_allow_html=True)
 
-    **Bot Features:**
-    - Search for hymns, lyrics, and convention songs
-    - Get information about when songs were last sung
-    - Search by theme or tune
-    - View song details and history
-    - Bible verse lookup and reading
+    # ── Row 1 ──────────────────────────────────────────────────────────────
+    col1, col2 = st.columns(2, gap="medium")
 
-    **Bot Commands:**
-    - `/start` - Start the bot
-    - `/help` - Show help information
-    - `/search` - Search for songs
-    - `/theme` - Filter songs by theme
-    - `/tune` - Find tunes by hymn number or tune index
-    - `/date` - Show songs sung on a specific date
-    - `/bible` - Look up Bible passages
-    """)
+    with col1:
+        st.markdown("""
+        <div class="about-card">
+            <h2>🎶 Bot Information</h2>
+            <p>This control panel lets you start, stop, and monitor the Choir Telegram Bot that serves your congregation.</p>
+            <ul>
+                <li>Search for hymns, lyrics &amp; convention songs</li>
+                <li>Track when songs were last sung</li>
+                <li>Search by theme or tune</li>
+                <li>View song details and history</li>
+                <li>Bible verse lookup &amp; reading</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # Bible Game information
-    st.markdown("## 📖 Bible Game")
+    with col2:
+        st.markdown("""
+        <div class="about-card">
+            <h2>⌨️ Bot Commands</h2>
+            <div class="cmd-row"><span class="cmd-badge">/start</span><span class="cmd-desc">Start the bot</span></div>
+            <div class="cmd-row"><span class="cmd-badge">/help</span><span class="cmd-desc">Show help information</span></div>
+            <div class="cmd-row"><span class="cmd-badge">/search</span><span class="cmd-desc">Search for songs</span></div>
+            <div class="cmd-row"><span class="cmd-badge">/theme</span><span class="cmd-desc">Filter songs by theme</span></div>
+            <div class="cmd-row"><span class="cmd-badge">/tune</span><span class="cmd-desc">Find tunes by hymn number or index</span></div>
+            <div class="cmd-row"><span class="cmd-badge">/date</span><span class="cmd-desc">Songs sung on a specific date</span></div>
+            <div class="cmd-row"><span class="cmd-badge">/bible</span><span class="cmd-desc">Look up Bible passages</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── Row 2 ──────────────────────────────────────────────────────────────
     st.markdown("""
-    The Bible Game is an interactive feature that helps you learn and memorize Bible verses.
+    <div class="about-card">
+        <h2>📖 Bible Verse Game</h2>
+        <p>An interactive game that helps you learn and memorise Bible verses while keeping the app active.</p>
+        <p style="margin-top:0.8rem; margin-bottom:0.4rem; color:#9ca3af; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.07em;">Difficulty Levels</p>
+        <ul>
+            <li><span class="difficulty-pill pill-easy">Easy</span> Popular &amp; well-known verses (John 3:16, Genesis 1:1 …)</li>
+            <li><span class="difficulty-pill pill-medium">Medium</span> Important verses requiring deeper Bible knowledge</li>
+            <li><span class="difficulty-pill pill-hard">Hard</span> Lesser-known verses from minor prophets &amp; challenging books</li>
+        </ul>
+        <p style="margin-top:0.8rem; margin-bottom:0.4rem; color:#9ca3af; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.07em;">Features</p>
+        <ul>
+            <li>Multiple-choice format with 4 options per question</li>
+            <li>Live score tracking and accuracy display</li>
+            <li>Real-time verse fetching from WordProject.org</li>
+            <li>Reset functionality to start fresh at any time</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
 
-    **Game Features:**
-    - **Three Difficulty Levels:**
-      - **Easy:** Popular and well-known verses (John 3:16, Genesis 1:1, etc.)
-      - **Medium:** Important verses that require more Bible knowledge
-      - **Hard:** Lesser-known verses from minor prophets and challenging books
+    # ── Row 3 ──────────────────────────────────────────────────────────────
+    col3, col4 = st.columns(2, gap="medium")
 
-    - **Multiple Choice Format:** Each question provides 4 options to choose from
-    - **Score Tracking:** Keep track of your correct answers and accuracy
-    - **Real-time Verse Fetching:** Verses are fetched live from WordProject.org
-    - **Reset Functionality:** Start fresh anytime with the reset button
+    with col3:
+        st.markdown("""
+        <div class="about-card">
+            <h2>⚙️ Technical Details</h2>
+            <div class="tech-grid">
+                <div class="tech-item">
+                    <div class="tech-label">Verse Source</div>
+                    <div class="tech-value">WordProject.org</div>
+                </div>
+                <div class="tech-item">
+                    <div class="tech-label">Languages</div>
+                    <div class="tech-value">English &amp; Malayalam</div>
+                </div>
+                <div class="tech-item">
+                    <div class="tech-label">Verse Extraction</div>
+                    <div class="tech-value">Real-time web parsing</div>
+                </div>
+                <div class="tech-item">
+                    <div class="tech-label">Game Logic</div>
+                    <div class="tech-value">Difficulty-based random</div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    **How It Helps:**
-    - Prevents the Streamlit app from sleeping due to inactivity
-    - Provides an engaging way to learn Bible verses
-    - Tests your knowledge of Bible references
-    - Helps memorize important passages
-    """)
-
-    # Technical information
-    st.markdown("## ⚙️ Technical Details")
-    st.markdown("""
-    **Bible Verse Source:** WordProject.org
-    **Languages Supported:** English and Malayalam
-    **Verse Extraction:** Real-time parsing from web content
-    **Game Logic:** Random selection with difficulty-based filtering
-    """)
-
-    # Credits
-    st.markdown("## 👥 Credits")
-    st.markdown("""
-    - **Bot Development:** Samuel Kurian Roy
-    - **Bible Content:** WordProject.org
-    - **Framework:** Streamlit + Python Telegram Bot
-    - **Hosting:** Streamlit Cloud
-    """)
+    with col4:
+        st.markdown("""
+        <div class="about-card">
+            <h2>👥 Credits</h2>
+            <div class="credit-row">
+                <div class="credit-icon">💻</div>
+                <div>
+                    <div class="credit-label">Bot Development</div>
+                    <div class="credit-name">Samuel Kurian Roy</div>
+                </div>
+            </div>
+            <div class="credit-row">
+                <div class="credit-icon">📖</div>
+                <div>
+                    <div class="credit-label">Bible Content</div>
+                    <div class="credit-name">WordProject.org</div>
+                </div>
+            </div>
+            <div class="credit-row">
+                <div class="credit-icon">🛠️</div>
+                <div>
+                    <div class="credit-label">Framework</div>
+                    <div class="credit-name">Streamlit + Python Telegram Bot</div>
+                </div>
+            </div>
+            <div class="credit-row">
+                <div class="credit-icon">☁️</div>
+                <div>
+                    <div class="credit-label">Hosting</div>
+                    <div class="credit-name">Streamlit Cloud</div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
