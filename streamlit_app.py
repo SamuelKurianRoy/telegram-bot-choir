@@ -786,18 +786,24 @@ st.markdown(f"""
         max-width: 650px;
         margin: 2rem auto;
     }} */
-    /* Style the middle column to create the login box - COMMENTED OUT TO REMOVE WHITE BOX */
-    /* div[data-testid="column"]:has(.login-title) {{
-        background: rgba(255, 255, 255, 0.95);
-        border-radius: 16px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-        padding: 3rem 2.5rem;
-        margin-top: 2rem;
-    }} */
+    /* Glass card around the login column */
+    div[data-testid="column"]:has(.login-title) {{
+        background: rgba(255, 255, 255, 0.10) !important;
+        backdrop-filter: blur(28px) saturate(160%) !important;
+        -webkit-backdrop-filter: blur(28px) saturate(160%) !important;
+        border-radius: 20px !important;
+        border: 1px solid rgba(255, 255, 255, 0.22) !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.40) !important;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.30),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
+        padding: 2.5rem 2rem !important;
+        margin-top: 2rem !important;
+    }}
     .login-title {{
         font-size: 2rem;
         font-weight: 700;
-        color: #1a1a1a;
+        color: #ffffff;
+        text-shadow: 0 2px 8px rgba(0,0,0,0.4);
         text-align: center;
         margin-bottom: 2rem;
         margin-top: 0 !important;
@@ -806,7 +812,7 @@ st.markdown(f"""
     .input-label {{
         font-size: 0.9rem;
         font-weight: 600;
-        color: #1a1a1a;
+        color: #e5e7eb;
         margin-bottom: 0.5rem;
         margin-top: 1rem;
         display: block;
@@ -823,41 +829,46 @@ st.markdown(f"""
         padding-top: 0 !important;
     }}
     .stTextInput input {{
-        background-color: #ffffff !important;
-        border: 1.5px solid #d1d5db !important;
-        border-radius: 8px !important;
-        color: #1a1a1a !important;
+        background-color: rgba(255, 255, 255, 0.12) !important;
+        border: 1px solid rgba(255, 255, 255, 0.28) !important;
+        border-radius: 10px !important;
+        color: #ffffff !important;
         font-size: 1rem !important;
         padding: 0.75rem 1rem !important;
         font-weight: 400 !important;
-        box-shadow: none !important;
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.15) !important;
         transition: all 0.2s ease !important;
         width: 100% !important;
+        backdrop-filter: blur(6px) !important;
+        -webkit-backdrop-filter: blur(6px) !important;
     }}
     .stTextInput input:focus {{
-        background-color: #ffffff !important;
-        border: 1.5px solid #667eea !important;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+        background-color: rgba(255, 255, 255, 0.20) !important;
+        border: 1px solid rgba(102, 126, 234, 0.8) !important;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.25) !important;
         outline: none !important;
     }}
     .stTextInput input::placeholder {{
-        color: #9ca3af !important;
+        color: rgba(255, 255, 255, 0.5) !important;
         font-weight: 400 !important;
     }}
     .stButton button {{
         width: 100%;
-        background-color: #f3f4f6 !important;
-        border: 1px solid #d1d5db !important;
-        color: #1a1a1a !important;
+        background-color: rgba(255, 255, 255, 0.12) !important;
+        border: 1px solid rgba(255, 255, 255, 0.28) !important;
+        color: #f3f4f6 !important;
         font-size: 0.95rem !important;
         padding: 0.65rem 1.2rem !important;
-        border-radius: 8px !important;
+        border-radius: 10px !important;
         font-weight: 500 !important;
         transition: all 0.2s ease !important;
         margin-top: 0.5rem !important;
+        backdrop-filter: blur(6px) !important;
+        -webkit-backdrop-filter: blur(6px) !important;
     }}
     .stButton button:hover {{
-        background-color: #e5e7eb !important;
+        background-color: rgba(255, 255, 255, 0.22) !important;
+        border-color: rgba(255, 255, 255, 0.45) !important;
     }}
     .stButton button[kind="primary"] {{
         background-color: #667eea !important;
@@ -886,7 +897,7 @@ st.markdown(f"""
     .divider-text {{
         text-align: center;
         margin: 1.5rem 0;
-        color: #6b7280;
+        color: rgba(255, 255, 255, 0.55);
         font-size: 0.9rem;
         font-weight: 500;
     }}
