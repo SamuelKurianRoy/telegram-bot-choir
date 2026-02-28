@@ -397,6 +397,56 @@ def get_full_roster_table_filtered(include_types=None):
         return []
 
 
+def get_full_program():
+    """
+    Return the complete Order of Songs grouped by Type in liturgical order:
+      Vestry → Song → Response → Doxology → (any other types)
+
+    Only reads 'Song/ Responses' and 'Type' columns.
+    Organist names are intentionally excluded for privacy.
+
+    Returns:
+        dict:  {type_name: [song_str, ...], ...}  – keys in display order.
+        Returns empty dict on failure.
+    """
+    df = get_organist_roster_data()
+    if df is None:
+        return {}
+
+    has_type_col = 'Type' in df.columns
+    LITURGICAL_ORDER = ['Vestry', 'Song', 'Response', 'Doxology']
+
+    groups: dict = {}
+
+    try:
+        for _, row in df.iterrows():
+            song = row['Song/ Responses']
+            if not (pd.notna(song) and str(song).strip()):
+                continue
+
+            # Only use Type — organist column is deliberately not accessed
+            if has_type_col:
+                raw_type = row['Type']
+                type_name = str(raw_type).strip() if pd.notna(raw_type) and str(raw_type).strip() else 'Other'
+            else:
+                type_name = 'Other'
+
+            groups.setdefault(type_name, []).append(str(song).strip())
+
+        # Sort keys: liturgical order first, then alphabetical for anything extra
+        known     = [t for t in LITURGICAL_ORDER if t in groups]
+        remainder = sorted([t for t in groups if t not in LITURGICAL_ORDER])
+        ordered = {t: groups[t] for t in known + remainder}
+
+        total = sum(len(v) for v in ordered.values())
+        user_logger.info(f"get_full_program: {total} entries across {len(ordered)} types")
+        return ordered
+
+    except Exception as e:
+        user_logger.error(f"Error in get_full_program: {str(e)[:100]}")
+        return {}
+
+
 def parse_date_input(date_str):
     """
     Parse user's date input in various formats.

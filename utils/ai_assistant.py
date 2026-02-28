@@ -261,18 +261,19 @@ Available commands:
 1. /date <DD/MM/YYYY> - Find songs sung on a specific date (e.g., "What songs were sung on Christmas?" → /date 25/12/2024)
 2. /search - Search for songs by title, lyrics, or hymn number (e.g., "Find H-44" or "Search for Emmanuel")
 3. /rooster - View organist roster and assignments (e.g., "Who is the organist?" or "Show organist roster")
-4. /last <song_code> - Check when a song was last sung (e.g., "When was H-44 last sung?")
-5. /check <song_code> - Get details about a song (e.g., "Tell me about L-323")
-6. /tune <song_code> - Find tune information (e.g., "What tune is H-44?")
-7. /theme - Search songs by theme (e.g., "Songs about Christmas" or "Advent songs")
-8. /bible <reference> - Look up Bible verses (e.g., "Show John 3:16")
-9. /games - Play Bible quiz games
-10. /download - Download audio from YouTube/Spotify links
-11. /help - Show help information
-12. /updatesunday - Update Songs for Sunday sheet with next available date
-13. /updatedate <date> - Update Songs for Sunday sheet with songs for a specific date (e.g., /updatedate 25/12/2025)
-14. /notation <song_code> - Get sheet music notation (requires authorization, will check user permissions)
-15. None - If the message is just casual conversation or doesn't match any command
+4. /program - Show the full Sunday program from the Order of Songs sheet, grouped by type (Vestry → Songs → Responses → Doxology). Use when user asks for "the program", "Sunday program", "order of service", "vestry song + songs + doxology combined", or any request that needs both songs AND vestry/doxology together.
+5. /last <song_code> - Check when a song was last sung (e.g., "When was H-44 last sung?")
+6. /check <song_code> - Get details about a song (e.g., "Tell me about L-323")
+7. /tune <song_code> - Find tune information (e.g., "What tune is H-44?")
+8. /theme - Search songs by theme (e.g., "Songs about Christmas" or "Advent songs")
+9. /bible <reference> - Look up Bible verses (e.g., "Show John 3:16")
+10. /games - Play Bible quiz games
+11. /download - Download audio from YouTube/Spotify links
+12. /help - Show help information
+13. /updatesunday - Update Songs for Sunday sheet with next available date
+14. /updatedate <date> - Update Songs for Sunday sheet with songs for a specific date (e.g., /updatedate 25/12/2025)
+15. /notation <song_code> - Get sheet music notation (requires authorization, will check user permissions)
+16. None - If the message is just casual conversation or doesn't match any command
 
 NOTE: /notation requires authorization but the system will automatically check user permissions. Include it as an option if user asks for notation or sheet music.
 
@@ -352,6 +353,9 @@ IMPORTANT: If asked about the bot creator, developer, or who made it:
 Examples:
 "What songs did we sing on Christmas?" → {{"command": "date", "parameters": {{"date": "25/12/{current_year}"}}, "response_text": "Let me check what songs were sung on Christmas!", "confidence": 0.9, "mentioned_entities": {{"date": "25/12/{current_year}"}}}}
 "Songs from last Sunday" → {{"command": "date", "parameters": {{"date": "{last_sunday_str}"}}, "response_text": "I'll look up the songs sung on last Sunday for you!", "confidence": 0.95, "mentioned_entities": {{"date": "{last_sunday_str}"}}}}
+"Show Sunday program" → {{"command": "program", "parameters": {{}}, "response_text": "Here's the full Sunday program from the Order of Songs sheet!", "confidence": 0.97}}
+"Can you give me vestry + songs + doxology?" → {{"command": "program", "parameters": {{}}, "response_text": "Fetching the complete Sunday program with Vestry, Songs, Responses and Doxology!", "confidence": 0.95}}
+"What is the order of service?" → {{"command": "program", "parameters": {{}}, "response_text": "Let me pull up the Order of Service for you!", "confidence": 0.95}}
 "Find H-44" → {{"command": "search", "parameters": {{"query": "H-44"}}, "response_text": "Searching for hymn H-44...", "confidence": 0.95}}
 "When was hymn 21 last sung?" → {{"command": "last", "parameters": {{"song_code": "H-21"}}, "response_text": "Let me check when Hymn 21 was last sung!", "confidence": 0.95}}
 "When was convention 21 sung?" → {{"command": "last", "parameters": {{"song_code": "C-21"}}, "response_text": "Let me check when Convention 21 was last sung!", "confidence": 0.95}}

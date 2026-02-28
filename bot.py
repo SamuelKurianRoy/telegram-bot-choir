@@ -27,7 +27,7 @@ try:
         admin_debug_features, admin_add_missing_features, admin_restore_all_features,
         admin_check_ai_model, admin_test_ai_model,
         list_uploads_command, notation_status_command, missing_notations_command, update_notation_status_command,
-        ai_message_handler, midi_command, handle_midi_file
+        ai_message_handler, midi_command, handle_midi_file, program_command
     )
     from telegram_handlers.conversations import (
         SEARCH_METHOD, INDEX_CATEGORY, INDEX_TEXT, NUMBER_CATEGORY, NUMBER_INPUT,
@@ -282,6 +282,7 @@ upload_conv_handler = ConversationHandler(
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
 app.add_handler(CommandHandler("midi", midi_command))
+app.add_handler(CommandHandler("program", program_command))
 app.add_handler(bible_conv_handler)
 app.add_handler(bible_game_conv_handler)
 app.add_handler(settings_conv_handler)

@@ -2276,6 +2276,7 @@ async def admin_list_commands(update: Update, context: CallbackContext) -> None:
 • `/vocabulary` - Access choir vocabulary
 • `/theme` - Search by themes
 • `/rooster` - View organist assignments for songs
+• `/program` - View the full Sunday program (Vestry → Songs → Responses → Doxology)
 
 🎹 *MIDI & Audio:*
 • `/midi` - Convert MIDI files to Synthesia-style piano videos
@@ -4352,6 +4353,9 @@ async def execute_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE,
             from telegram_handlers.conversations import organist_roster_start
             await organist_roster_start(update, context)
         
+        elif command == "program":
+            await program_command(update, context)
+        
         elif command == "last":
             song_code = parameters.get("song_code", "")
             if song_code:
@@ -4749,6 +4753,78 @@ async def update_notation_status_command(update: Update, context: CallbackContex
         user_logger.error(f"Error in update_notation_status_command: {e}")
         import traceback
         traceback.print_exc()
+
+
+# === Sunday Program Command ===
+
+async def program_command(update: Update, context: CallbackContext) -> None:
+    """
+    /program — Display the full Sunday program from the Order of Songs sheet,
+    grouped by type in liturgical order: Vestry → Song → Response → Doxology → ...
+    """
+    from data.organist_roster import get_full_program
+    from telegram.constants import ParseMode
+
+    user = update.effective_user
+    user_logger.info(f"User {user.id} ({user.first_name}) used /program")
+
+    wait_msg = await update.message.reply_text("📋 Loading Sunday program…")
+
+    program = get_full_program()
+
+    if not program:
+        await wait_msg.edit_text(
+            "❌ Could not load the Order of Songs.\n\n"
+            "Please check that the roster sheet is accessible and the "
+            "'Order of Songs' sheet exists."
+        )
+        return
+
+    # Type icons -– add more as needed
+    TYPE_ICONS = {
+        'Vestry':   '🏛️',
+        'Song':     '🎵',
+        'Response': '🔔',
+        'Doxology': '🎼',
+    }
+
+    lines = ["🗓️ *Sunday Program*\n"]
+    for section_type, entries in program.items():
+        icon = TYPE_ICONS.get(section_type, '📌')
+        lines.append(f"{icon} *{section_type}*")
+        for song in entries:
+            lines.append(f"  • {song}")
+        lines.append("")   # blank line between sections
+
+    message = "\n".join(lines).strip()
+
+    await wait_msg.delete()
+
+    # Telegram 4096-char limit
+    if len(message) > 4000:
+        parts = []
+        current = ""
+        for line in lines:
+            if len(current) + len(line) + 1 > 3800:
+                parts.append(current.strip())
+                current = ""
+            current += line + "\n"
+        if current.strip():
+            parts.append(current.strip())
+
+        for i, part in enumerate(parts):
+            await update.message.reply_text(
+                part,
+                parse_mode=ParseMode.MARKDOWN
+            )
+    else:
+        await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
+
+    user_logger.info(
+        f"User {user.id} viewed Sunday program "
+        f"({sum(len(v) for v in program.values())} entries, "
+        f"{len(program)} sections)"
+    )
 
 
 # === MIDI to Video Converter Command ===
