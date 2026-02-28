@@ -1712,7 +1712,7 @@ with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/musical-notes.png", width=100)
     st.title("Navigation")
     
-    page = st.radio("Go to", ["Dashboard", "Logs", "Settings", "Change Password", "Bible Game", "About"])
+    page = st.radio("Go to", ["Dashboard", "Change Password", "Bible Game", "About"])
     
     st.markdown("---")
     
