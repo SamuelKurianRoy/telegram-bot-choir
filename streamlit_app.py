@@ -2270,33 +2270,9 @@ elif page == "About":
     st.markdown("""
     <div class="about-card">
         <h2>Credits</h2>
-        <div class="credit-row">
-            <div class="credit-icon"></div>
-            <div>
-                <div class="credit-label">Bot Development</div>
-                <div class="credit-name">Samuel Kurian Roy</div>
-            </div>
-        </div>
-        <div class="credit-row">
-            <div class="credit-icon"></div>
-            <div>
-                <div class="credit-label">Bible Content</div>
-                <div class="credit-name">WordProject.org</div>
-            </div>
-        </div>
-        <div class="credit-row">
-            <div class="credit-icon"></div>
-            <div>
-                <div class="credit-label">Framework</div>
-                <div class="credit-name">Streamlit + Python Telegram Bot</div>
-            </div>
-        </div>
-        <div class="credit-row">
-            <div class="credit-icon"></div>
-            <div>
-                <div class="credit-label">Hosting</div>
-                <div class="credit-name">Streamlit Cloud</div>
-            </div>
-        </div>
+        <p>This bot was created by <strong style="color:#e5e7eb;">Samuel Kurian Roy</strong> to help the choir community search hymns, track songs, and engage with Scripture.</p>
+        <p style="margin-top:0.8rem;">Bible verse content used in the game is sourced from <strong style="color:#e5e7eb;"><a href="https://wordproject.org" target="_blank" style="color:#a5b4fc; text-decoration:none;">WordProject.org</a></strong>, a non-profit ministry dedicated to spreading the Word of God in every language.</p>
+        <p style="margin-top:1.4rem; text-align:center; font-size:1.1rem; font-weight:700; letter-spacing:0.18em; color:#c4b5fd;">S.D.G</p>
+        <p style="text-align:center; font-size:0.78rem; color:#9ca3af; margin-top:0.1rem; letter-spacing:0.12em;">Soli Deo Gloria</p>
     </div>
     """, unsafe_allow_html=True)
