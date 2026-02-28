@@ -853,27 +853,28 @@ st.markdown(f"""
         padding-top: 0 !important;
     }}
     .stTextInput input {{
-        background-color: rgba(255, 255, 255, 0.12) !important;
-        border: 1px solid rgba(255, 255, 255, 0.28) !important;
+        background-color: rgba(255, 255, 255, 0.88) !important;
+        border: 1px solid rgba(255, 255, 255, 0.60) !important;
         border-radius: 10px !important;
-        color: #ffffff !important;
+        color: #1a1a2e !important;
         font-size: 1rem !important;
         padding: 0.75rem 1rem !important;
         font-weight: 400 !important;
-        box-shadow: inset 0 1px 3px rgba(0,0,0,0.15) !important;
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.08) !important;
         transition: all 0.2s ease !important;
         width: 100% !important;
         backdrop-filter: blur(6px) !important;
         -webkit-backdrop-filter: blur(6px) !important;
     }}
     .stTextInput input:focus {{
-        background-color: rgba(255, 255, 255, 0.20) !important;
+        background-color: rgba(255, 255, 255, 0.98) !important;
         border: 1px solid rgba(102, 126, 234, 0.8) !important;
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.25) !important;
         outline: none !important;
+        color: #1a1a2e !important;
     }}
     .stTextInput input::placeholder {{
-        color: rgba(255, 255, 255, 0.5) !important;
+        color: rgba(30, 30, 60, 0.45) !important;
         font-weight: 400 !important;
     }}
     .stButton button {{
