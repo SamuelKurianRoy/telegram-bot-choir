@@ -1740,22 +1740,6 @@ with st.sidebar:
             st.success("All bot instances forcefully terminated!")
             time.sleep(1)
             st.rerun()
-    
-    # Environment status
-    st.markdown("### Environment")
-    
-    # Check if Google Drive service is available
-    drive_service, drive_success, drive_message = setup_google_drive()
-    if drive_success:
-        st.success("Google Drive: Connected")
-    else:
-        st.error("Google Drive: Disconnected")
-    
-    # Check if logs are properly set up
-    if os.path.exists("bot_log.txt") and os.path.exists("user_log.txt"):
-        st.success("Logs: Initialized")
-    else:
-        st.warning("Logs: Not found")
 
 # Main content
 if page == "Dashboard":
