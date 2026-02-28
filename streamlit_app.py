@@ -1605,6 +1605,43 @@ st.markdown("""
 
 # Add a centered welcome message
 current_user = st.session_state.get("current_user", "Unknown")
+
+# Top-right logout button
+st.markdown("""
+<style>
+    div[data-testid="stHorizontalBlock"]:has(button[data-testid="baseButton-secondary"]) {
+        margin-bottom: -0.5rem !important;
+    }
+    /* Style the top logout button - targets button inside the narrow right column */
+    div.top-logout-wrap button {
+        background: rgba(239, 68, 68, 0.15) !important;
+        border: 1px solid rgba(239, 68, 68, 0.45) !important;
+        color: #f87171 !important;
+        border-radius: 20px !important;
+        font-size: 0.82rem !important;
+        font-weight: 600 !important;
+        padding: 0.25rem 0.9rem !important;
+        white-space: nowrap !important;
+    }
+    div.top-logout-wrap button:hover {
+        background: rgba(239, 68, 68, 0.30) !important;
+        border-color: rgba(239, 68, 68, 0.70) !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+_gap, _logout_col = st.columns([7, 1])
+with _logout_col:
+    st.markdown('<div class="top-logout-wrap">', unsafe_allow_html=True)
+    if st.button("🚪 Logout", key="top_logout", use_container_width=True):
+        for key in ["password_correct", "login_time", "current_user"]:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.success("Logged out!")
+        time.sleep(1)
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
 st.markdown(f"""
 <style>
     /* Aggressively remove white boxes and containers */
