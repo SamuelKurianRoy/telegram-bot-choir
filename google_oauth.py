@@ -33,7 +33,7 @@ def get_google_oauth_config():
         st.error(f"Google OAuth configuration error: {e}")
         return None
 
-def create_oauth_flow(code_verifier=None):
+def create_oauth_flow():
     """Create OAuth flow for Google Sign In"""
     config = get_google_oauth_config()
     
@@ -57,10 +57,6 @@ def create_oauth_flow(code_verifier=None):
         redirect_uri=config['redirect_uri']
     )
     
-    # Restore code_verifier if provided (needed for PKCE token exchange)
-    if code_verifier:
-        flow.code_verifier = code_verifier
-    
     # Disable HTTPS requirement ONLY for local development
     if 'localhost' in config['redirect_uri'] or '127.0.0.1' in config['redirect_uri']:
         os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
@@ -81,16 +77,14 @@ def get_google_signin_url():
         authorization_url, state = flow.authorization_url(
             access_type='online',
             include_granted_scopes='true',
-            prompt='select_account'
+            prompt='select_account',
+            code_challenge_method=None  # Disable PKCE — server-side flow, verifier lost on redirect
         )
         
         # Store state in session for verification
         st.session_state['oauth_state'] = state
-        # Store code_verifier if PKCE was used (prevents invalid_grant on token exchange)
-        if hasattr(flow, 'code_verifier') and flow.code_verifier:
-            st.session_state['oauth_code_verifier'] = flow.code_verifier
-        else:
-            st.session_state.pop('oauth_code_verifier', None)
+        # Clear any stale verifier
+        st.session_state.pop('oauth_code_verifier', None)
         
         return authorization_url
     except Exception as e:
@@ -108,9 +102,8 @@ def verify_google_oauth_callback(auth_code):
         dict: User information or None if verification fails
     """
     try:
-        # Restore code_verifier from session state to match the original auth request
-        code_verifier = st.session_state.pop('oauth_code_verifier', None)
-        flow = create_oauth_flow(code_verifier=code_verifier)
+        # No code_verifier needed — PKCE is disabled for this server-side flow
+        flow = create_oauth_flow()
         
         if not flow:
             st.error("❌ Failed to create OAuth flow in callback")
