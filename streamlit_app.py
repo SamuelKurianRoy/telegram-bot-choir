@@ -896,17 +896,19 @@ st.markdown(f"""
         border-color: rgba(255, 255, 255, 0.45) !important;
     }}
     .stButton button[kind="primary"] {{
-        background-color: #667eea !important;
+        background: linear-gradient(135deg, #667eea, #764ba2) !important;
         color: white !important;
         border: none !important;
         font-size: 1rem !important;
         padding: 0.75rem 1.2rem !important;
         font-weight: 600 !important;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.35) !important;
         margin-top: 1.5rem !important;
+        letter-spacing: 0.02em !important;
     }}
     .stButton button[kind="primary"]:hover {{
-        background-color: #5568d3 !important;
+        opacity: 0.88 !important;
+        box-shadow: 0 4px 14px rgba(102, 126, 234, 0.55) !important;
     }}
     .forgot-password-link {{
         text-align: center;
