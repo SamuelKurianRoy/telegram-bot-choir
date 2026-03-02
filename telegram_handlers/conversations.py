@@ -508,6 +508,10 @@ async def notation_code_input(update: Update, context: ContextTypes.DEFAULT_TYPE
                         # Show list of matches
                         file_list = "\n".join([f"{i+1}. {filename}" for i, (_, filename) in enumerate(matching_files)])
                         
+                        # Store matching files in context for callback lookup
+                        # (callback_data has a 64-byte limit, so we use short indices)
+                        context.user_data['upload_notation_files'] = matching_files
+                        
                         # Create inline keyboard for selection
                         keyboard = []
                         for i, (file_id, filename) in enumerate(matching_files):
@@ -515,7 +519,7 @@ async def notation_code_input(update: Update, context: ContextTypes.DEFAULT_TYPE
                             display_name = filename[:50] + "..." if len(filename) > 50 else filename
                             keyboard.append([InlineKeyboardButton(
                                 f"{i+1}. {display_name}", 
-                                callback_data=f"upload_notation:{file_id}|{filename}"
+                                callback_data=f"upload_notation:{i}"
                             )])
                         
                         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -548,8 +552,6 @@ async def notation_code_input(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             user_logger.error(f"Error in text search for '{search_text}': {str(e)}")
         
-        await update.message.reply_text("Enter another hymn or lyric number, or type /cancel to stop.")
-        return NOTATION_TYPE
         await update.message.reply_text("Enter another hymn or lyric number, or type /cancel to stop.")
         return NOTATION_TYPE
 
@@ -1016,9 +1018,20 @@ async def handle_upload_notation_callback(update: Update, context: ContextTypes.
 
     try:
         data = query.data.replace("upload_notation:", "")
-        file_id, filename = data.split("|", 1)
-    except ValueError:
-        await query.edit_message_text("⚠️ Invalid callback format.")
+        # Support both new index-based and legacy file_id|filename format
+        if "|" in data:
+            # Legacy format: file_id|filename
+            file_id, filename = data.split("|", 1)
+        else:
+            # New format: numeric index into context.user_data
+            idx = int(data)
+            upload_files = context.user_data.get('upload_notation_files', [])
+            if idx < 0 or idx >= len(upload_files):
+                await query.edit_message_text("⚠️ File selection expired. Please search again.")
+                return
+            file_id, filename = upload_files[idx]
+    except (ValueError, IndexError):
+        await query.edit_message_text("⚠️ Invalid callback format. Please search again.")
         return
 
     # Show downloading message
